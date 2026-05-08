@@ -132,10 +132,11 @@ BNL_SEC_OFF_HI     = 5
 
 BUNDLE_VALIDATE_RES = $01549C   ; 1 byte : résultat dernier validate
 
-; Sprint 2.l : résultats find_code
+; Sprint 2.l : résultats find_code + app_exec
 BUNDLE_FOUND_NSEC   = $015496   ; 1 byte : nsec scan tmp
 BUNDLE_FOUND_SIZE   = $015498   ; 2 bytes : size de la section trouvée
 BUNDLE_FOUND_OFFSET = $01549A   ; 2 bytes : offset de la section
+BUNDLE_APP_BANK     = $01549F   ; 1 byte : bank alloué pour app
 
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
@@ -387,13 +388,22 @@ kernel_entry:
         jsr kernel_alloc_bank
         sta BANK_DEMO+2         ; = $06
 
-        ; Sprint 2.h : test free list LIFO. Free le 2e bank ($05),
-        ; puis alloc. Le prochain alloc doit retourner $05 (LIFO),
-        ; pas $07 (bump). On stocke à BANK_DEMO+3 pour vérification.
+        ; Sprint 2.h : test free list LIFO.
         lda BANK_DEMO+1         ; $05
         jsr kernel_free_bank
         jsr kernel_alloc_bank
         sta BANK_DEMO+3         ; doit être $05 (free list pop)
+
+        ; ── Sprint 2.l.1 : kernel_app_exec sur bundle_test ─────────
+        ; Doit être APRÈS bank init (alloc dépend de BANK_NEXT).
+        lda #$01
+        sta DP_PTR+2
+        lda #<bundle_test
+        sta DP_PTR
+        lda #>bundle_test
+        sta DP_PTR+1
+        jsr kernel_app_exec
+        ; App exec : 'Z' écrit à $BBAB.
 
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
@@ -507,6 +517,91 @@ bv_bad_magic:
 bv_bad_version:
         lda #BUNDLE_ERR_VERSION
         rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_app_exec — load + run une app bundle (Sprint 2.l.1)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP_PTR (24-bit) → bundle.
+; Out  : A = $00 OK ou code erreur (validate/find_code/alloc).
+;        Bank app conservée allouée (free explicite v0.2).
+; Modifie : A, X, Y, BUNDLE_APP_BANK, DP zero page tmp slots.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_app_exec
+kernel_app_exec:
+        jsr kernel_bundle_validate
+        cmp #BUNDLE_OK
+        beq ae_after_validate
+        rts
+ae_after_validate:
+        jsr kernel_bundle_find_code
+        cmp #BUNDLE_OK
+        beq ae_after_find
+        rts
+ae_after_find:
+        jsr kernel_alloc_bank
+        cmp #$00
+        bne ae_after_alloc
+        rts                             ; A=$00 (pool exhausted)
+ae_after_alloc:
+        sta BUNDLE_APP_BANK
+
+        ; Setup DP_SRC = DP_PTR + BUNDLE_FOUND_OFFSET (24-bit add)
+        rep #$20
+        lda DP_PTR
+        clc
+        adc BUNDLE_FOUND_OFFSET
+        sta $18                         ; DP_SRC low/high (16-bit)
+        sep #$20
+        lda DP_PTR+2
+        sta $1A                         ; DP_SRC bank
+
+        ; Setup DP_DEST = APP_BANK : $0200
+        lda #$00
+        sta $1B
+        lda #$02
+        sta $1C
+        lda BUNDLE_APP_BANK
+        sta $1D
+
+        ; Copy section CODE byte par byte (v0.1 : size 8-bit max)
+        lda BUNDLE_FOUND_SIZE
+        sta $16
+        ldy #$00
+ae_copy:
+        cpy $16
+        bcs ae_copy_done
+        lda [$18],Y
+        sta [$1B],Y
+        iny
+        bra ae_copy
+ae_copy_done:
+
+        ; Patch JSL self-modifying. ld65 résout les labels CODE en 16-bit
+        ; (bank=0 par défaut dans STA al). Workaround : DP indirect long
+        ; avec bank=$01 explicite (CODE segment loaded en bank 1).
+        lda #<app_exec_jsl_bank
+        sta $20
+        lda #>app_exec_jsl_bank
+        sta $21
+        lda #$01
+        sta $22
+        lda BUNDLE_APP_BANK
+        sta [$20]
+
+        jsr app_exec_call
+        lda #BUNDLE_OK
+        rts
+
+; Self-modifying JSL : opcode + 3 bytes addr. Le 4e byte (bank) est
+; modifié dynamiquement avant l'appel.
+app_exec_call:
+        .byte $22                       ; JSL al opcode
+        .byte $00                       ; addr lo  ($0200)
+        .byte $02                       ; addr hi
+app_exec_jsl_bank:
+        .byte $00                       ; bank — modifié par app_exec
+        rts                             ; retour ici quand l'app fait RTL
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_panic — erreur fatale (Sprint 2.i)
@@ -735,8 +830,11 @@ kernel_print_banner:
 banner_str:
         .byte "OricOS v0.7", $0A, $00
 
-; ─── Bundle test (Sprint 2.k.1) ─────────────────────────────────────
+; ─── Bundle test (Sprint 2.k+l) ─────────────────────────────────────
 ; Format OricOS Object v1 : header + 1 section CODE.
+; Code app : ldx #'Z' ; lda #$01 ; cop #$AA ; rtl
+;            (= SYS_PRINT_CHAR avec X='Z' puis return long)
+; 7 bytes total.
 .export bundle_test
 bundle_test:
         ; Header (8 bytes)
@@ -745,14 +843,17 @@ bundle_test:
         .byte $00                       ; flags
         .byte $01                       ; num_sections = 1
         .byte $00                       ; reserved
-        ; Section[0] entry (8 bytes) : CODE, size=2, offset=16
+        ; Section[0] entry (8 bytes) : CODE, size=7, offset=16
         .byte BUNDLE_SEC_CODE
         .byte $00                       ; reserved
-        .byte $02, $00                  ; size = 2 (LE)
+        .byte $07, $00                  ; size = 7 (LE)
         .byte $10, $00                  ; offset = 16 (LE)
         .byte $00, $00                  ; reserved
-        ; Section[0] data : 2 bytes (RTS RTS placeholder)
-        .byte $60, $60
+        ; Section[0] data (offset 16 from bundle start) : app code
+        .byte $A2, 'Z'                  ; LDX #'Z'
+        .byte $A9, $01                  ; LDA #$01 (SYS_PRINT_CHAR)
+        .byte $02, $AA                  ; COP #$AA
+        .byte $6B                       ; RTL
 
 ; ════════════════════════════════════════════════════════════════════
 ;  Driver clavier (Sprint 2.d)

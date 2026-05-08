@@ -5,6 +5,51 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.19.0] - 2026-05-08
+
+### Sprint 2.l.1 — kernel_app_exec : LOADER COMPLET ✨
+
+#### Added
+- **`kernel_app_exec (DP_PTR)`** : orchestre l'exécution complète d'une
+  app bundle. Pipeline :
+  1. `kernel_bundle_validate` (magic + version).
+  2. `kernel_bundle_find_code` (size + offset section CODE).
+  3. `kernel_alloc_bank` → bank app dédiée.
+  4. **Copy** section CODE de bundle vers `bank:0200` via DP indirect
+     long (`[$18],Y` source, `[$1B],Y` dest, byte-by-byte).
+  5. **Patch JSL self-modifying** : écrit `BUNDLE_APP_BANK` au byte 4
+     de `app_exec_call` (instruction JSL al). Workaround ld65 :
+     utilise `STA [dp]` long indirect car `STA al` sur label CODE
+     génère bank=$00 par défaut.
+  6. `jsr app_exec_call` → exécute JSL `$BANK:0200`.
+- **`bundle_test`** refactor : section CODE = vraie app `ldx #'Z';
+  lda #$01; cop #$AA; rtl` (7 bytes). Exécute en bank app via syscall
+  SYS_PRINT_CHAR pour écrire 'Z' à l'écran.
+- **`BUNDLE_APP_BANK`** ($01549F) : bank alloué pour app courante.
+
+#### Validation
+- Test d'intégration : ASSERT `mem[$00BBAB] = 'Z'` — l'app a écrit 'Z'
+  via syscall depuis bank 7. ASSERT `mem[$01549F] = $07`.
+- 501 tests OK.
+- **Démo SDL2 visible** : "OricOS v0.7" + "YABZ" sur écran (Y kernel
+  syscall + AB hex + **Z app loader**).
+- Golden frame régénérée pour test visuel pixel-perfect.
+
+#### Note technique
+- ld65 ne distingue pas le bank d'un label dans un segment. `STA al`
+  sur label = bank $00 par défaut. Workaround : init pointer 24-bit
+  en DP zero page avec bank explicite ($01) puis `STA [dp]`.
+- App tourne en mode N + M=1/X=1 préservés (cf. fix PH-bug-dp-indirect-Y
+  bank1 sur P mode N qui rendait possible cop syscall propre).
+
+#### v0.2 (reportés)
+- Free bank app après exit (kernel_free_bank).
+- Multi-section CODE+DATA+ICON+MANIFEST.
+- App args via syscall (argc/argv).
+- Sandbox bank-based — privilèges app (ADR-15 future).
+
+---
+
 ## [0.18.0] - 2026-05-08
 
 ### Sprint 2.l.0 — kernel_bundle_find_code (parse sections)
