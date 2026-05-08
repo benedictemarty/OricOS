@@ -276,6 +276,20 @@ KBD_MATRIX      = $015470       ; 8 octets bank 1 (col 0..7 active low)
 T1_PERIOD_LO    = $00           ; $1000 = 4096 cycles
 T1_PERIOD_HI    = $10
 
+; ─── HIRES Oric 2 framebuffer (Sprint 3.b, ADR-12) ──────────────────
+; Bank 128 ($80xxxx) offset 0, 240×200×3bpp = 18 000 octets/frame.
+; 8 pixels groupés en 24 bits sur 3 octets, big-endian (pixel 0 = bits hauts).
+; Palette 8 couleurs Oric 1 : 0=black, 1=red, 2=green, 3=yellow,
+;                              4=blue, 5=magenta, 6=cyan, 7=white.
+HIRES2_BANK     = $80           ; bank du framebuffer
+HIRES2_FB_SIZE  = 18000         ; total bytes (90 × 200) = $4650
+; ZP tmp pour kernel_hires2_clear (libres au moment du boot)
+HIRES2_PAT_PTR  = $20           ; 3 bytes : DP indirect long → pattern_table
+HIRES2_FB_PTR   = $24           ; 3 bytes : DP indirect long → $80:0000
+HIRES2_PB0      = $34           ; pattern byte 0
+HIRES2_PB1      = $35           ; pattern byte 1
+HIRES2_PB2      = $36           ; pattern byte 2
+
 ; ════════════════════════════════════════════════════════════════════
 ;  CODE — boot + tasks
 ; ════════════════════════════════════════════════════════════════════
@@ -300,6 +314,12 @@ kernel_entry:
         tcs                     ; S = $01FF
         sep #$20
         sep #$30                ; M=1, X=1
+
+        ; ── Sprint 3.b : init framebuffer HIRES Oric 2 (bank 128) ──
+        ; Efface en blue (color 4) pour validation visuelle. La 1ère
+        ; écriture déclenche le lazy alloc B1.8 du bank 128.
+        lda #$04                ; blue
+        jsr kernel_hires2_clear
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -1717,6 +1737,90 @@ task_b_entry:
         inc a
         sta TASK_B_CTR
         bra task_b_entry
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_hires2_clear — efface framebuffer HIRES Oric 2 (Sprint 3.b)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : A = color (0..7).
+; Effets : remplit bank $80 (HIRES Oric 2) avec une couleur uniforme.
+;          18 000 octets écrits avec le pattern 24-bit color × $249249,
+;          répété 6000 fois (90 octets/ligne × 200 lignes).
+; Modifie : A, X, Y, $20-$22, $24-$26, $34-$36.
+; Pré-cond : mode N M=1 X=1, DBR=0. Bank 128 lazy-alloc à 1ère écriture.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_hires2_clear
+kernel_hires2_clear:
+        and #$07                ; color &= 7
+        sta HIRES2_PB0          ; tmp save color
+        ; index = color × 3 (offset dans pattern_table 8 entries × 3B)
+        asl                     ; ×2
+        clc
+        adc HIRES2_PB0          ; +color = ×3
+        ; HIRES2_PAT_PTR = pattern_table + index (bank 1)
+        clc
+        adc #<pattern_table
+        sta HIRES2_PAT_PTR
+        lda #>pattern_table
+        adc #$00                ; +carry
+        sta HIRES2_PAT_PTR+1
+        lda #$01                ; segment CODE = bank 1
+        sta HIRES2_PAT_PTR+2
+        ; Lit 3 octets pattern via [HIRES2_PAT_PTR],Y
+        ldy #$00
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB0
+        iny
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB1
+        iny
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB2
+        ; HIRES2_FB_PTR = $80:0000 (dest framebuffer)
+        lda #$00
+        sta HIRES2_FB_PTR
+        sta HIRES2_FB_PTR+1
+        lda #HIRES2_BANK
+        sta HIRES2_FB_PTR+2
+        ; Loop 6000 itérations (= 18000/3) écrivant 3 bytes à chaque step.
+        rep #$10                ; X/Y 16-bit
+        ldy #$0000
+hr2c_loop:
+        cpy #HIRES2_FB_SIZE
+        bcs hr2c_done
+        lda HIRES2_PB0
+        sta [HIRES2_FB_PTR],Y
+        iny
+        lda HIRES2_PB1
+        sta [HIRES2_FB_PTR],Y
+        iny
+        lda HIRES2_PB2
+        sta [HIRES2_FB_PTR],Y
+        iny
+        bra hr2c_loop
+hr2c_done:
+        sep #$10                ; X/Y 8-bit retour
+        rts
+
+; pattern_table — pattern 24-bit color × $249249 par color (8 × 3B).
+; Calculé : color * $249249 (= 8 pixels même couleur sur 24 bits).
+;   color 0 = $000000 → octets $00 $00 $00
+;   color 1 = $249249 → octets $24 $92 $49
+;   color 2 = $492492 → octets $49 $24 $92
+;   color 3 = $6DB6DB → octets $6D $B6 $DB
+;   color 4 = $924924 → octets $92 $49 $24
+;   color 5 = $B6DB6D → octets $B6 $DB $6D
+;   color 6 = $DB6DB6 → octets $DB $6D $B6
+;   color 7 = $FFFFFF → octets $FF $FF $FF
+pattern_table:
+        .byte $00, $00, $00     ; 0 black
+        .byte $24, $92, $49     ; 1 red
+        .byte $49, $24, $92     ; 2 green
+        .byte $6D, $B6, $DB     ; 3 yellow
+        .byte $92, $49, $24     ; 4 blue
+        .byte $B6, $DB, $6D     ; 5 magenta
+        .byte $DB, $6D, $B6     ; 6 cyan
+        .byte $FF, $FF, $FF     ; 7 white
 
 ; ════════════════════════════════════════════════════════════════════
 ;  NMI_HANDLER — bank 1 $5500

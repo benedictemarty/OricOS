@@ -5,6 +5,47 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.29.0] - 2026-05-09
+
+### Sprint 3.b v0.1 — Kernel primitive HIRES Oric 2 (clear_screen) ✨
+
+#### Added
+- **`kernel_hires2_clear(A=color)`** : remplit le framebuffer HIRES
+  Oric 2 (bank 128, ADR-12) avec une couleur uniforme 0..7. 18 000
+  octets écrits via DP indirect long (3 octets par groupe de 8 pixels).
+- **`pattern_table`** : 8 entries × 3 octets, pré-calcul du pattern
+  24-bit `color × $249249` (8 pixels même couleur).
+- Constantes `HIRES2_BANK = $80`, `HIRES2_FB_SIZE = 18000`.
+- ZP tmp : `HIRES2_PAT_PTR ($20)`, `HIRES2_FB_PTR ($24)`,
+  `HIRES2_PB0..PB2 ($34..$36)`.
+- **Boot kernel intégré** : appel `kernel_hires2_clear(blue)` tôt dans
+  `kernel_entry` (après bascule mode N, avant sentinel). Lazy alloc
+  bank 128 via 1ère écriture (mécanisme B1.8 Phosphoric).
+
+#### Validation (côté Phosphoric)
+- 515 tests OK (514 → 515, +1).
+- Test `test_oricos_hires2_clear_fills_blue` :
+  - Boot kernel → ASSERT pattern octets `$92 $49 $24` aux 4 coins
+    + dernier triple (offset 17997-17999).
+  - ASSERT `hires_oric2_get_pixel = 4` (blue) sur 5 positions.
+  - ASSERT 100% des pixels ARGB = `0x0000FF` (= scan complet 240×200).
+
+#### Reportés Sprint 3.b v0.2
+- `kernel_pixel_set(x, y, color)` arbitraire pixel-perfect
+  (gestion bit_shift cross-octet pour pixels 2 et 5).
+- `kernel_fill_rect(x, y, w, h, color)` arbitraire.
+- `kernel_blit(src, dst, w, h)` pour rendering de fontes / icônes.
+- Bascule mode TEXT Oric 1 ↔ HIRES Oric 2 (registre I/O `VID_MODE`).
+
+#### Importance architecturale
+**Premier code OricOS qui écrit dans le framebuffer Oric 2.** Le pipeline
+complet est désormais opérationnel : kernel asm → bank 128 → render
+ARGB → ASSERT visuel. Les futurs sprints 3.c/d/e (window manager,
+toolkit, multifenêtré) pourront s'appuyer sur des primitives de plus
+haut niveau (fill_rect, blit) construites sur ce socle.
+
+---
+
 ## [0.28.0] - 2026-05-09
 
 ### Sprint 2.l v0.2 — App loader multi-cluster depuis SD ✨
