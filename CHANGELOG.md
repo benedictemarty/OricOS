@@ -5,6 +5,40 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-05-08
+
+### Sprint 2.d.1 — Driver clavier matrice (scan via PSG R14)
+
+#### Added
+- **Routines PSG bus** (`psg_set_reg`, `psg_write_data`, `psg_read_data`)
+  via VIA PCR (CA2=BC1, CB2=BDIR). Constantes : `PCR_LATCH_ADDR=$EE`,
+  `PCR_WRITE_DATA=$EA`, `PCR_READ_DATA=$AE`, `PCR_INACTIVE=$AA`.
+- **`kernel_kbd_init`** : `DDRA=$FF`, `DDRB=$F7`, PSG R7=`$FF` (port A
+  input), init `KBD_MATRIX[0..7]=$FF` (= no key pressed, active low).
+- **`kernel_kbd_scan`** : scan 8 colonnes via VIA ORB[0:2] + lecture
+  PSG R14, stocke matrice 8 octets à `$015470`. Appelé depuis IRQ T1
+  handler à chaque tick.
+
+#### Changed
+- **Période T1 : 512 → 4096 cycles** (`T1_PERIOD_HI = $10`). Le scan
+  dure ~830 cycles ; à 512 cycles de période, T1 ré-asserte avant que
+  les tasks aient le temps d'exécuter (B_ctr restait à 0). 4096 cycles
+  = 8 ticks/frame PAL, ~3000 cycles/slot disponibles aux tasks.
+
+#### Validation
+- 494 tests passent (compteur inchangé).
+- `test_oricos_sprint2a` : avec scan actif, A_ctr=149 B_ctr=66 swap=9
+  (vs A=247 B=239 sans scan, avant T1=512 → 4096).
+
+#### Known issue (à creuser)
+- **Bug Phosphoric latent** : `TXS` en mode N M=X=1 + ldx 8-bit copie
+  seulement low byte → S high = $00 (au lieu de $01 attendu pour page 1
+  stack). Stack OricOS tourne en bank 0 page 0 par chance. Observable
+  via `TASK_A_S=$00F8` après save_A. Tracé dans `BACKLOG.md` racine
+  workspace. Ne casse rien actuellement — à fixer côté Phosphoric.
+
+---
+
 ## [Unreleased] - 2026-05-08
 
 ### Docs — Roadmap révisée suite point critique architecte

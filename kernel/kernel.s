@@ -69,15 +69,39 @@ STACK_B_TOP     = $02FF         ; bank 0, task B stack top
 ; ─── VIA 6522 registers (bank 0 mappés $0300-$030F) ─────────────────
 ; Note 6522 : pour démarrer T1, écrire au registre T1C-H ($05). Le
 ; registre T1L-L/H ($06/$07) ne fait que poser le latch sans démarrer.
+VIA_ORB         = $000300       ; port B (bits 0-2 = col select clavier)
+VIA_ORA         = $000301       ; port A (bus PSG data)
+VIA_DDRB        = $000302
+VIA_DDRA        = $000303
 VIA_T1CL        = $000304       ; T1 counter low (read=ack T1 / write=latch lo)
 VIA_T1CH        = $000305       ; T1 counter high (write load+start)
 VIA_ACR         = $00030B       ; Aux control (T1 mode)
+VIA_PCR         = $00030C       ; Periph control (CA2/CB2 = BC1/BDIR PSG)
 VIA_IFR         = $00030D       ; Interrupt flag register
 VIA_IER         = $00030E       ; Interrupt enable register
 
+; ─── Driver clavier (Sprint 2.d) ────────────────────────────────────
+; Matrice 8x8, scan via VIA ORB[0:2] (col select) + PSG R14 (rows).
+; PSG bus : VIA CA2 = BC1, VIA CB2 = BDIR.
+;   PCR = $EE → BDIR=1 BC1=1 (Latch Address)
+;   PCR = $EA → BDIR=1 BC1=0 (Write Data)
+;   PCR = $AE → BDIR=0 BC1=1 (Read Data)
+;   PCR = $AA → Inactive (BDIR=0 BC1=0)
+; Active low : 0 = touche pressée.
+PCR_LATCH_ADDR  = $EE
+PCR_WRITE_DATA  = $EA
+PCR_READ_DATA   = $AE
+PCR_INACTIVE    = $AA
+KBD_MATRIX      = $015470       ; 8 octets bank 1 (col 0..7 active low)
+
 ; ─── Période timer T1 (cycles entre IRQ) ────────────────────────────
-T1_PERIOD_LO    = $00           ; $0200 = 512 cycles
-T1_PERIOD_HI    = $02
+; Sprint 2.d : passé de 512 → 4096 cycles. L'IRQ handler avec
+; kernel_kbd_scan dure ~830 cycles ; à 512 cycles de période,
+; T1 ré-asserte avant que les tasks aient le temps d'exécuter
+; (B_ctr restait à 0). 4096 cycles laisse ~3000 cycles/slot aux
+; tasks, suffisant pour incrémenter leur compteur.
+T1_PERIOD_LO    = $00           ; $1000 = 4096 cycles
+T1_PERIOD_HI    = $10
 
 ; ════════════════════════════════════════════════════════════════════
 ;  CODE — boot + tasks
@@ -165,6 +189,9 @@ kernel_entry:
         jsr kernel_install_charset
         jsr kernel_clear_screen
         jsr kernel_print_banner
+
+        ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
+        jsr kernel_kbd_init
 
         ; ── Sprint 2.b : init bank allocator ───────────────────────
         lda #BANK_POOL_BASE
@@ -291,6 +318,87 @@ kernel_print_banner:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  Driver clavier (Sprint 2.d)
+; ════════════════════════════════════════════════════════════════════
+;
+; ── psg_set_reg : sélectionne registre PSG (A = numéro reg) ─────────
+psg_set_reg:
+        sta VIA_ORA
+        lda #PCR_LATCH_ADDR
+        sta VIA_PCR
+        lda #PCR_INACTIVE
+        sta VIA_PCR
+        rts
+
+; ── psg_write_data : écrit data au registre sélectionné (A = val) ──
+psg_write_data:
+        sta VIA_ORA
+        lda #PCR_WRITE_DATA
+        sta VIA_PCR
+        lda #PCR_INACTIVE
+        sta VIA_PCR
+        rts
+
+; ── psg_read_data : lit data du registre sélectionné (retour A) ────
+psg_read_data:
+        lda #PCR_READ_DATA
+        sta VIA_PCR
+        lda VIA_ORA              ; IRA reflète le PSG en mode read
+        pha
+        lda #PCR_INACTIVE
+        sta VIA_PCR
+        pla
+        rts
+
+; ── kernel_kbd_init : DDR + PSG R7 + matrice initiale ──────────────
+; Pré-cond : mode N M=X=1, DBR=0.
+.export kernel_kbd_init
+kernel_kbd_init:
+        ; DDRA = $FF (port A en sortie pour PSG bus)
+        lda #$FF
+        sta VIA_DDRA
+        ; DDRB = $F7 (bits 0-2 col select output, bit 3 input scan, 4-7 output)
+        lda #$F7
+        sta VIA_DDRB
+        ; PSG R7 = $FF : tones 0-2 enabled, port A en input mode (bit 6=1
+        ;                dans la convention Phosphoric/Oricutron Oric 1).
+        lda #$07
+        jsr psg_set_reg
+        lda #$FF
+        jsr psg_write_data
+        ; Init KBD_MATRIX à $FF (= no key pressed, active low)
+        ldx #$00
+kbd_init_loop:
+        lda #$FF
+        sta KBD_MATRIX,X
+        inx
+        cpx #$08
+        bcc kbd_init_loop
+        rts
+
+; ── kernel_kbd_scan : scan 8 colonnes → KBD_MATRIX ─────────────────
+; Pré-cond : mode N M=X=1, DBR=0. Modifie A, X. Préserve Y.
+.export kernel_kbd_scan
+kernel_kbd_scan:
+        ldx #$00
+kbd_scan_loop:
+        ; Sélectionne col X via VIA ORB bits 0-2 (bits 3-7 forcés à 0
+        ; — OricOS ne pilote ni cassette ni printer ; à étendre plus
+        ; tard si besoin).
+        txa
+        and #$07
+        sta VIA_ORB
+        ; Demande PSG R14 (port A input → rangées clavier)
+        lda #$0E
+        jsr psg_set_reg
+        jsr psg_read_data        ; A = état des 8 rangées de la col X
+        sta KBD_MATRIX,X
+        inx
+        cpx #$08
+        bcc kbd_scan_loop
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_alloc_bank — allocateur de bank simple (Sprint 2.b)
 ; ════════════════════════════════════════════════════════════════════
 ;
@@ -373,6 +481,9 @@ kernel_irq_handler:
 
         ; ── Ack VIA T1 IRQ (lecture T1C-L clear T1 IFR) ────────────
         lda VIA_T1CL
+
+        ; ── Sprint 2.d : scan clavier à chaque tick ────────────────
+        jsr kernel_kbd_scan
 
         ; ── Increment tick counter ─────────────────────────────────
         lda TICK_COUNTER
