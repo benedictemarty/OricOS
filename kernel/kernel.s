@@ -101,7 +101,7 @@ kernel_entry:
         ;   $02F5 : Y init = 0       (3e ply du handler)
         ;   $02F6 : X init = 0       (2e plx du handler)
         ;   $02F7 : A init = 0       (1er pla du handler)
-        ;   $02F8 : P init = $24 (I=1, UNUSED=1, mode N M=X=1 default)
+        ;   $02F8 : P init = $30 (mode N M=1 X=1, I=0 → IRQ enabled)
         ;   $02F9 : PCL of task_b_entry
         ;   $02FA : PCH of task_b_entry
         ;   $02FB : PB = $01 (bank 1)
@@ -110,7 +110,7 @@ kernel_entry:
         sta $0002F5             ; Y_init
         sta $0002F6             ; X_init
         sta $0002F7             ; A_init
-        lda #$24
+        lda #$30                ; M=1, X=1 (mode N), I=0 (IRQ enabled)
         sta $0002F8             ; P_init
         lda #<task_b_entry
         sta $0002F9             ; PCL
@@ -152,18 +152,36 @@ task_b_entry:
         bra task_b_entry
 
 ; ════════════════════════════════════════════════════════════════════
-;  NMI_HANDLER — scheduler préemptif (bank 1 $5500)
+;  NMI_HANDLER — bank 1 $5500
 ; ════════════════════════════════════════════════════════════════════
 ;
-; Entrée hw : PB/PC/P pushés sur la stack courante. Mode N.
-; Sortie : RTI vers la *autre* tâche (round-robin). Si TICK_COUNTER
-; atteint TICK_GOAL après incrément, STP au lieu de RTI.
+; Sprint 1.c : NMI réservé pour le futur (panic, debug). Pour l'instant
+; un simple RTI no-op.
 ;
 ; ════════════════════════════════════════════════════════════════════
         .segment "NMI_HANDLER"
 
 .export kernel_nmi_handler
 kernel_nmi_handler:
+        rti
+
+; ════════════════════════════════════════════════════════════════════
+;  IRQ_HANDLER — scheduler préemptif (bank 1 $5600)
+; ════════════════════════════════════════════════════════════════════
+;
+; Sprint 1.c : le scheduler est désormais sur la ligne IRQ — déclenchée
+; par VIA T1 (Sprint 2 ; pour Sprint 1.c le test inject IRQF_VIA en
+; pattern set/step/clear pour mimer un timer).
+;
+; Entrée hw mode N : PB/PC/P pushés sur la stack courante.
+; L'ack de la source IRQ (lecture VIA registre) est implicite ici —
+; le test côté Phosphoric clear cpu->irq juste après inject.
+;
+; ════════════════════════════════════════════════════════════════════
+        .segment "IRQ_HANDLER"
+
+.export kernel_irq_handler
+kernel_irq_handler:
         sep #$30                ; M=1, X=1 (sécurité)
 
         ; ── Save A/X/Y de la tâche courante sur sa stack ───────────
@@ -212,13 +230,4 @@ restore_and_return:
         ply
         plx
         pla
-        rti
-
-; ════════════════════════════════════════════════════════════════════
-;  IRQ_HANDLER — placeholder (Sprint 1.c — VIA T1 timer)
-; ════════════════════════════════════════════════════════════════════
-        .segment "IRQ_HANDLER"
-
-.export kernel_irq_handler
-kernel_irq_handler:
         rti
