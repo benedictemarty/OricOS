@@ -204,6 +204,17 @@ FS_SPF          = $016167       ; 4 sectors per FAT (FAT32)
 FS_ROOT         = $01616B       ; 4 root cluster (FAT32)
 FS_FDS          = $01616F       ; 4 first data sector (calculé)
 
+; Sprint 2.j.4 : résultats fat_open
+FS_FOUND_CLUSTER = $016173      ; 4 first cluster du fichier trouvé
+FS_FOUND_SIZE    = $016177      ; 4 size en octets
+FS_OPEN_RESULT   = $01617B      ; 1 (0=OK, 1=NOT_FOUND)
+
+; Filename 11B en zero page (DP+$40..$4A)
+DP_FILENAME      = $40
+
+; Pointer entry courante en zero page (DP+$50..$52, 24-bit)
+DP_ENTRY         = $50
+
 ; Offsets dans le boot sector
 BS_BPS          = $0B
 BS_SPC          = $0D
@@ -211,6 +222,17 @@ BS_RSC          = $0E
 BS_NFAT         = $10
 BS_SPF          = $24            ; FAT32 spécifique
 BS_ROOT         = $2C            ; FAT32 spécifique
+
+; Offsets dans une dir entry 32B
+DE_NAME         = $00            ; 11 bytes
+DE_ATTR         = $0B            ; 1 byte
+DE_CLUS_HI      = $14            ; 2 bytes
+DE_CLUS_LO      = $1A            ; 2 bytes
+DE_SIZE         = $1C            ; 4 bytes
+DE_SIZE_BYTES   = 32             ; total entry
+
+DE_ATTR_LFN     = $0F            ; long filename : skip
+DE_ATTR_DIR_VOL = $18            ; mask : volume_label ($08) | directory ($10)
 
 ; ─── SD device (Sprint 2.j Oric 2) — bloc 512 bytes via I/O ────────
 ; Mappé à $0320-$0327 dans bank 0 :
@@ -463,6 +485,32 @@ kernel_entry:
         ; Buffer FS distinct ($5F60) → préserve test 2.j.1 à $5D40.
         jsr kernel_fat_init
 
+        ; ── Sprint 2.j.4 : kernel_fat_open "HELLO   BIN" ──────────
+        ; Setup DP_FILENAME 11 bytes (uppercase 8.3 padded espaces).
+        lda #'H'
+        sta $40
+        lda #'E'
+        sta $41
+        lda #'L'
+        sta $42
+        sta $43
+        lda #'O'
+        sta $44
+        lda #' '
+        sta $45
+        sta $46
+        sta $47
+        lda #'B'
+        sta $48
+        lda #'I'
+        sta $49
+        lda #'N'
+        sta $4A
+        jsr kernel_fat_open
+        ; Sans image FAT32 valide : FS_OPEN_RESULT = $01.
+        ; Avec image + entry "HELLO   BIN" : FS_OPEN_RESULT = $00,
+        ; FS_FOUND_CLUSTER + FS_FOUND_SIZE renseignés.
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -598,6 +646,122 @@ fds_loop:
         dex
         bra fds_loop
 fds_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fat_open — recherche un fichier dans le root dir (Sprint 2.j.4)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP+$40..$4A = filename 11B (8.3 padded espaces, uppercase).
+; Effets : si trouvé, FS_FOUND_CLUSTER = first_cluster (4B),
+;          FS_FOUND_SIZE = size (4B), FS_OPEN_RESULT = $00.
+;          Sinon FS_OPEN_RESULT = $01.
+; v0.1 : 1 secteur de root dir (16 entries max). FS_ROOT supposé = 2,
+;        donc LBA root = FS_FDS. Cluster chain non parcourue (TODO v0.2).
+; Modifie : A, X, Y, FS_BUFFER, FS_FOUND_*, $30/$31, DP_PCPTR, $50-$52.
+; Pré-cond : kernel_fat_init OK (FS_INIT_RESULT = 0).
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fat_open
+kernel_fat_open:
+        ; LBA = FS_FDS (16-bit, suppose root_cluster = 2)
+        rep #$20
+        lda FS_FDS
+        sta $30
+        sep #$20
+        ; dest = FS_BUFFER
+        lda #<FS_BUFFER
+        sta DP_PCPTR
+        lda #>FS_BUFFER
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_sd_read_block
+
+        ; Init pointer DP_ENTRY = FS_BUFFER (entry 0)
+        lda #<FS_BUFFER
+        sta DP_ENTRY
+        lda #>FS_BUFFER
+        sta DP_ENTRY+1
+        lda #$01
+        sta DP_ENTRY+2
+
+        ldx #$00                        ; entry counter (max 16 = $0200/$20)
+fop_loop:
+        cpx #16
+        bcs fop_not_found
+
+        ; Lire byte 0 de l'entry
+        ldy #DE_NAME
+        lda [DP_ENTRY],Y
+        cmp #$00
+        beq fop_not_found               ; $00 = end of dir
+        cmp #$E5
+        beq fop_next_entry              ; deleted
+
+        ; Skip LFN ($0F)
+        ldy #DE_ATTR
+        lda [DP_ENTRY],Y
+        cmp #DE_ATTR_LFN
+        beq fop_next_entry
+        ; Skip volume_label / directory
+        and #DE_ATTR_DIR_VOL
+        bne fop_next_entry
+
+        ; Compare 11 bytes : entry name vs DP_FILENAME
+        ldy #$00
+fop_cmp:
+        lda [DP_ENTRY],Y
+        cmp a:DP_FILENAME,Y             ; cmp abs,Y (D9 abs LE) ; force abs
+        bne fop_next_entry
+        iny
+        cpy #11
+        bcc fop_cmp
+
+        ; Match ! Lit cluster_low (offset $1A 2B)
+        ldy #DE_CLUS_LO
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_CLUSTER
+        iny
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_CLUSTER+1
+        ; cluster_high (offset $14 2B)
+        ldy #DE_CLUS_HI
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_CLUSTER+2
+        iny
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_CLUSTER+3
+        ; size (offset $1C 4B)
+        ldy #DE_SIZE
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_SIZE
+        iny
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_SIZE+1
+        iny
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_SIZE+2
+        iny
+        lda [DP_ENTRY],Y
+        sta FS_FOUND_SIZE+3
+        lda #$00
+        sta FS_OPEN_RESULT
+        rts
+
+fop_next_entry:
+        ; Avance pointer de 32 bytes
+        rep #$20
+        lda DP_ENTRY
+        clc
+        adc #DE_SIZE_BYTES
+        sta DP_ENTRY
+        sep #$20
+        inx
+        bra fop_loop
+
+fop_not_found:
+        lda #$01
+        sta FS_OPEN_RESULT
         rts
 
 ; ════════════════════════════════════════════════════════════════════

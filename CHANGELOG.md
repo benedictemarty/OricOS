@@ -5,6 +5,48 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.24.0] - 2026-05-08
+
+### Sprint 2.j.4 — kernel_fat_open (root dir lookup 8.3)
+
+#### Added
+- **`kernel_fat_open`** : recherche un fichier 11B (8.3 padded espaces,
+  uppercase) dans le root dir.
+  - Args : `DP+$40..$4A` = filename 11B.
+  - Lit root dir cluster (LBA = `FS_FDS`, suppose `FS_ROOT=2`) dans
+    `FS_BUFFER` via `kernel_sd_read_block`.
+  - Scanne 16 entries de 32B :
+    - skip `$00` (end of dir, → NOT_FOUND)
+    - skip `$E5` (deleted)
+    - skip `$0F` attribute (LFN)
+    - skip `$08`/`$10` attributes (volume label, directory)
+    - sinon compare nom byte-par-byte via `cmp a:DP_FILENAME,Y`
+  - Sur match : extrait `first_cluster` (cluster_low+high → 4B) et
+    `size` (4B) → stocke dans `FS_FOUND_CLUSTER`/`FS_FOUND_SIZE`.
+  - `FS_OPEN_RESULT` = `$00` OK / `$01` NOT_FOUND.
+- **Constantes `DE_*`** pour offsets dir entry, `DP_FILENAME = $40`,
+  `DP_ENTRY = $50` (pointer 24-bit en zero page).
+
+#### Validation
+- 503 tests OK.
+- Image FAT32 test étendue à 161 secteurs : boot sector + zéros +
+  bloc FDS=160 avec entry "HELLO   BIN" cluster=3, size=$DEADBEEF.
+- Test ASSERT après boot kernel : `FS_OPEN_RESULT=0`,
+  `FS_FOUND_CLUSTER=$00000003`, `FS_FOUND_SIZE=$DEADBEEF`.
+
+#### Limitations v0.1
+- 1 secteur de root dir max (16 entries). Cluster chain non parcourue.
+- LBA root = `FS_FDS` (suppose `FS_ROOT=2`). Si `FS_ROOT > 2`, faut
+  calculer `FDS + (FS_ROOT-2)*FS_SPC` — reporté v0.2.
+- Pas de support LFN (long filename).
+
+#### Reportés (OS-2.j.5+)
+- **OS-2.j.5** : `kernel_fat_read(file, dest, size)` — traverse FAT
+  chain via lookups dans la FAT.
+- **OS-2.j.6** : intégration loader (charge app depuis SD).
+
+---
+
 ## [0.23.0] - 2026-05-08
 
 ### Sprint 2.j.3 — Parse complet boot sector FAT32
