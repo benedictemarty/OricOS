@@ -209,6 +209,10 @@ FS_FOUND_CLUSTER = $016173      ; 4 first cluster du fichier trouvé
 FS_FOUND_SIZE    = $016177      ; 4 size en octets
 FS_OPEN_RESULT   = $01617B      ; 1 (0=OK, 1=NOT_FOUND)
 
+; Sprint 2.j v0.2 : kernel_fat_next_cluster (cluster chain)
+FS_NEXT_CLUSTER  = $01617C      ; 4 cluster suivant (>= $0FFFFFF8 = EOC)
+FS_QUERY_CLUSTER = $016180      ; 4 cluster en entrée (caller setup)
+
 ; Filename 11B en zero page (DP+$40..$4A)
 DP_FILENAME      = $40
 
@@ -535,6 +539,19 @@ kernel_entry:
         lda #$01
         sta DP_PTR+2
         jsr kernel_app_exec
+
+        ; ── Sprint 2.j v0.2 : test cluster chain ─────────────────────
+        ; Set FS_QUERY_CLUSTER = 4 (cluster fictif BIG.BIN), appelle
+        ; kernel_fat_next_cluster. Sur l'image test, FAT[4] = 5 →
+        ; FS_NEXT_CLUSTER doit valoir 5. Validation chaîne FAT32.
+        ; Préserve FS_FOUND_CLUSTER (résultat fat_open intact).
+        lda #$04
+        sta FS_QUERY_CLUSTER
+        lda #$00
+        sta FS_QUERY_CLUSTER+1
+        sta FS_QUERY_CLUSTER+2
+        sta FS_QUERY_CLUSTER+3
+        jsr kernel_fat_next_cluster
 skip_fat_read:
 
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
@@ -815,6 +832,82 @@ kernel_fat_read_cluster:
         sta $30                         ; LBA pour sd_read_block
         sep #$20
         jsr kernel_sd_read_block
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fat_next_cluster — lit FAT entry (Sprint 2.j v0.2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : FS_QUERY_CLUSTER (4B) = cluster courant.
+; Effets : FS_NEXT_CLUSTER (4B) = cluster suivant dans la chaîne FAT32.
+;          Si FS_NEXT_CLUSTER >= $0FFFFFF8 → EOC (fin de chaîne).
+;          High nibble du byte 3 masqué (FAT32 = 28 bits effectifs).
+; v0.2 : suppose BPS=512, cluster < 16384 (offset_bytes 16-bit).
+;        FAT lookup : LBA = FS_RSC + cluster*4/512,
+;                     offset_in_sec = cluster*4 % 512.
+; Modifie : A, X, Y, FS_BUFFER (FAT sector), $20-$21, $30-$32, DP_PCPTR,
+;           DP_ENTRY ($50-$52).
+; Pré-cond : kernel_fat_init OK.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fat_next_cluster
+kernel_fat_next_cluster:
+        ; tmp = FS_QUERY_CLUSTER (low 16) * 4
+        rep #$20
+        lda FS_QUERY_CLUSTER
+        asl                             ; *2
+        asl                             ; *4
+        sta $20                         ; tmp_offset 16-bit ($20-$21)
+        sep #$20
+
+        ; sector_offset = tmp >> 9 = ($21 >> 1) en 8-bit (cluster < 16384)
+        lda $21
+        lsr a
+        ; LBA = FS_RSC + sector_offset (16-bit)
+        clc
+        adc FS_RSC
+        sta $30
+        lda FS_RSC+1
+        adc #$00
+        sta $31
+        lda #$00
+        sta $32
+
+        ; DP_PCPTR = FS_BUFFER (bank 1)
+        lda #<FS_BUFFER
+        sta DP_PCPTR
+        lda #>FS_BUFFER
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_sd_read_block
+
+        ; DP_ENTRY = FS_BUFFER + offset_in_sec
+        ; offset_in_sec = ($21 & 1) << 8 | $20 (max $1FF)
+        clc
+        lda $20
+        adc #<FS_BUFFER
+        sta DP_ENTRY
+        lda $21
+        and #$01
+        adc #>FS_BUFFER
+        sta DP_ENTRY+1
+        lda #$01
+        sta DP_ENTRY+2
+
+        ; Lire 4 octets FAT entry → FS_NEXT_CLUSTER
+        ldy #$00
+        lda [DP_ENTRY],y
+        sta FS_NEXT_CLUSTER
+        iny
+        lda [DP_ENTRY],y
+        sta FS_NEXT_CLUSTER+1
+        iny
+        lda [DP_ENTRY],y
+        sta FS_NEXT_CLUSTER+2
+        iny
+        lda [DP_ENTRY],y
+        and #$0F                        ; FAT32 = 28 bits effectifs
+        sta FS_NEXT_CLUSTER+3
         rts
 
 ; ════════════════════════════════════════════════════════════════════

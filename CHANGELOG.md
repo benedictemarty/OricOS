@@ -5,6 +5,47 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.26.0] - 2026-05-08
+
+### Sprint 2.j v0.2 — kernel_fat_next_cluster (cluster chain) ✨
+
+#### Added
+- **`kernel_fat_next_cluster`** : lit l'entry FAT32 d'un cluster pour
+  obtenir le cluster suivant dans la chaîne. Permet la lecture de
+  fichiers > 1 cluster.
+- Convention : input dans `FS_QUERY_CLUSTER` (4B, $016180..$016183),
+  output dans `FS_NEXT_CLUSTER` (4B, $01617C..$01617F). Le high
+  nibble du byte 3 est masqué (FAT32 = 28 bits effectifs). Une valeur
+  de retour >= $0FFFFFF8 = EOC (fin de chaîne).
+- Algorithme : LBA = `FS_RSC + (cluster*4) / FS_BPS`,
+  `offset_in_sec = (cluster*4) % FS_BPS`. Hypothèse v0.2 : BPS=512,
+  cluster < 16384 (offset_bytes 16-bit).
+- Boot kernel intégré : test cluster chain avec `FS_QUERY_CLUSTER = 4`,
+  vérifie `FS_NEXT_CLUSTER == 5` (FAT[4] = 5 dans l'image test).
+
+#### Validation
+- 503 tests OK (pas de nouveau test, ASSERT supplémentaire dans
+  `test_oricos_fat_init_validates_fat32_signature`).
+- Image SD test étendue : LBA 32 contient une vraie FAT FAT32 partielle
+  avec FAT[0..5] (media descriptor + reserved + root EOC + HELLO.BIN
+  EOC + BIG.BIN cluster 4 → 5 → EOC).
+- ASSERT `FS_NEXT_CLUSTER = $00000005` après boot kernel.
+
+#### Reportés v0.3
+- `kernel_fat_read_file` : itération sur la chaîne complète pour
+  charger un fichier > 1 cluster.
+- BPS != 512.
+- Cluster >= 16384 (FAT spread sur plusieurs secteurs).
+- Subdirectories (parser dirs au-delà de root).
+
+#### Importance architecturale
+La traversée de chaîne FAT est un building block essentiel : sans elle,
+OricOS ne peut charger que des fichiers ≤ 512 octets. Avec elle, la
+v0.3 pourra charger des fichiers de taille arbitraire en bouclant sur
+`fat_next_cluster` jusqu'à EOC.
+
+---
+
 ## [0.25.0] - 2026-05-08
 
 ### Sprint 2.j.5/6 — App chargée depuis SD via FAT32 ✨
