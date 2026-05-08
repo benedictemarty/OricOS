@@ -5,6 +5,39 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.18.0] - 2026-05-08
+
+### Sprint 2.l.0 — kernel_bundle_find_code (parse sections)
+
+#### Added
+- **`kernel_bundle_find_code (DP_PTR)`** : parse les sections d'un
+  bundle, trouve la section CODE. Retourne :
+  - A = `BUNDLE_OK` ($00) si trouvée, `BUNDLE_ERR_NOT_FOUND` ($03) sinon.
+  - `BUNDLE_FOUND_SIZE` ($015498, 16-bit) = taille section.
+  - `BUNDLE_FOUND_OFFSET` ($01549A, 16-bit) = offset relatif au bundle.
+- **Constantes** `BNL_HDR_SIZE=8`, `BNL_SEC_SIZE=8`, `BNL_SEC_TYPE/SZ_LO/
+  SZ_HI/OFF_LO/OFF_HI`.
+- **Test au boot** : `kernel_bundle_find_code` sur `bundle_test`.
+  ASSERT côté Phosphoric : SIZE=$0002, OFFSET=$0010.
+
+#### Notes implémentation
+- `cpx` n'a pas de variant long-absolute (24-bit). Utilise tmp DP
+  zero page `$15` pour stocker nsec et faire `cpx zp`.
+- Boucle parcourt les sections jusqu'à TYPE=CODE ou nsec atteint.
+- Calcul entry offset : `(X+1)*8` (= BNL_HDR_SIZE + X*BNL_SEC_SIZE
+  pour valeurs 8/8). À généraliser quand HDR/SEC tailles changeront.
+
+#### Validation
+- 501 tests OK.
+
+#### v0.1 (suite — OS-2.l.1)
+- `kernel_app_exec (DP_PTR)` : validate + find_code + alloc_bank +
+  copy code section vers `bank:0200` + JSL self-modifying.
+- App test : bundle inline avec section CODE = `ldx #'Z'; lda #$01;
+  cop #$AA; rtl`.
+
+---
+
 ## [0.17.0] - 2026-05-08
 
 ### Sprint 2.k.1 finalisé — bug Phosphoric corrigé, validate fonctionnel

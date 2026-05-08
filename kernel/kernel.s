@@ -115,12 +115,27 @@ BUNDLE_SEC_MAN  = $04
 BNL_HDR_VER     = 4
 BNL_HDR_NSEC    = 6
 
-; Erreur codes pour validate
-BUNDLE_OK           = $00
-BUNDLE_ERR_MAGIC    = $01
-BUNDLE_ERR_VERSION  = $02
+; Erreur codes pour validate / find
+BUNDLE_OK              = $00
+BUNDLE_ERR_MAGIC       = $01
+BUNDLE_ERR_VERSION     = $02
+BUNDLE_ERR_NOT_FOUND   = $03
+
+BNL_HDR_SIZE       = 8          ; bytes header total (avant sections)
+BNL_SEC_SIZE       = 8          ; bytes per section entry
+; Offsets dans une section entry (relatifs à entry start)
+BNL_SEC_TYPE       = 0
+BNL_SEC_SZ_LO      = 2
+BNL_SEC_SZ_HI      = 3
+BNL_SEC_OFF_LO     = 4
+BNL_SEC_OFF_HI     = 5
 
 BUNDLE_VALIDATE_RES = $01549C   ; 1 byte : résultat dernier validate
+
+; Sprint 2.l : résultats find_code
+BUNDLE_FOUND_NSEC   = $015496   ; 1 byte : nsec scan tmp
+BUNDLE_FOUND_SIZE   = $015498   ; 2 bytes : size de la section trouvée
+BUNDLE_FOUND_OFFSET = $01549A   ; 2 bytes : offset de la section
 
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
@@ -351,6 +366,10 @@ kernel_entry:
         jsr kernel_bundle_validate
         sta BUNDLE_VALIDATE_RES
 
+        ; ── Sprint 2.l : bundle_find_code ──────────────────────────
+        jsr kernel_bundle_find_code
+        ; A = $00 OK, BUNDLE_FOUND_SIZE/OFFSET stockés.
+
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
 
@@ -393,6 +412,62 @@ kernel_entry:
         ; ── Active interruptions et démarre task A ─────────────────
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_bundle_find_code — trouve la section CODE (Sprint 2.l)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP_PTR (24-bit) → bundle.
+; Out  : A = $00 (OK) ou $03 (NOT_FOUND).
+;        Si OK : BUNDLE_FOUND_SIZE = size 16-bit,
+;                BUNDLE_FOUND_OFFSET = offset 16-bit.
+; Modifie : A, X, Y. Préserve : nothing important.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_bundle_find_code
+kernel_bundle_find_code:
+        ; Lit nsec dans DP zero page tmp ($15) pour cpx ZP.
+        ldy #BNL_HDR_NSEC
+        lda [DP_PTR],Y
+        sta BUNDLE_FOUND_NSEC
+        sta $15                 ; tmp ZP pour cpx
+        ldx #$00                ; section index
+fc_loop:
+        cpx $15                 ; cpx zp (cpx long abs n'existe pas)
+        bcs fc_not_found
+        ; entry offset = BNL_HDR_SIZE + X * BNL_SEC_SIZE = 8 + X*8 = (X+1)*8
+        txa
+        clc
+        adc #$01                ; X+1
+        asl                     ; (X+1)*2
+        asl                     ; (X+1)*4
+        asl                     ; (X+1)*8 = BNL_HDR_SIZE + X*BNL_SEC_SIZE (pour BNL_HDR_SIZE=8 et SEC_SIZE=8)
+        tay                     ; Y = entry offset (max 8 sections * 8 = 64 bytes)
+        ; Read type
+        lda [DP_PTR],Y
+        cmp #BUNDLE_SEC_CODE
+        beq fc_found
+        inx
+        bra fc_loop
+fc_found:
+        ; Read size + offset depuis entry. Y = entry start.
+        iny
+        iny                     ; Y = entry + 2 (size_lo)
+        lda [DP_PTR],Y
+        sta BUNDLE_FOUND_SIZE
+        iny                     ; Y = entry + 3
+        lda [DP_PTR],Y
+        sta BUNDLE_FOUND_SIZE+1
+        iny                     ; Y = entry + 4
+        lda [DP_PTR],Y
+        sta BUNDLE_FOUND_OFFSET
+        iny                     ; Y = entry + 5
+        lda [DP_PTR],Y
+        sta BUNDLE_FOUND_OFFSET+1
+        lda #BUNDLE_OK
+        rts
+fc_not_found:
+        lda #BUNDLE_ERR_NOT_FOUND
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_bundle_validate — vérifie format OricOS bundle (Sprint 2.k)
