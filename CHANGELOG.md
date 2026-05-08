@@ -5,6 +5,17 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-05-08
+
+### Docs — Roadmap révisée suite point critique architecte
+- §7 CLAUDE.md : insertion Sprints 2.d → 2.m comme prérequis stricts
+  avant Sprint 3 GUI (driver clavier, console générique, syscalls,
+  TCB refactor, allocator avec free, modèle d'erreur, FAT32, bundle
+  apps, app loader).
+- Source de vérité : `../BACKLOG.md` racine workspace.
+
+---
+
 ## [0.8.0] - 2026-05-08
 
 ### Sprint 2.c+ — Fonte char embarquée (autonomie OS native)
