@@ -63,16 +63,11 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 
 ; Zero page kernel (DP=0)
 ; print_string utilise DP_PTR (long indirect [dp],Y → bank 1 strings).
-; print_char utilise DP_PCPTR (long indirect [dp] → bank 0 screen RAM).
+; print_char utilise DP_PCPTR (DP indirect (dp) → bank DBR=0 screen RAM).
 ; Séparés pour éviter conflit lors de print_char appelé depuis print_string.
 DP_PTR          = $08            ; DP+$08/$09/$0A : pointer 24-bit
-DP_PCPTR        = $0C            ; DP+$0C/$0D/$0E : pointer 24-bit
+DP_PCPTR        = $0C            ; DP+$0C/$0D : pointer 16-bit
 DP_TMP          = $10            ; DP+$10 : char temp
-
-; Note : Phosphoric (golden model 65C816) n'implémente PAS l'opcode $92
-; (STA (dp), DP indirect 16-bit). Trou identifié — à fixer côté
-; Phosphoric. En attendant, on utilise [dp] long indirect ($87) qui
-; est implémenté, avec bank explicite en DP+$0E.
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
@@ -140,10 +135,14 @@ kernel_entry:
         rep #$20
         lda #$0000
         tcd                     ; D = 0
+        ; ── Stack task A initiale en page 1 ($01FF) ────────────────
+        ; TXS en mode N + X=1 (8-bit) ne donne S = $00:XL (high forcé
+        ; à 0 par SEP #$10). Pour stack page 1 standard, utiliser TCS
+        ; (transfer C 16-bit to S) en M=0.
+        lda #$01FF
+        tcs                     ; S = $01FF
         sep #$20
         sep #$30                ; M=1, X=1
-        ldx #$FF
-        txs                     ; S = $01FF (stack task A initiale)
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -343,16 +342,14 @@ kernel_print_char:
         sta DP_TMP               ; sauve char
         cmp #$0A
         beq pc_lf
-        ; Char normal : store at CURSOR_ADDR (bank 0)
-        ; Setup pointer 24-bit DP_PCPTR : low/high = CURSOR_ADDR, bank = $00
+        ; Char normal : store at CURSOR_ADDR (bank DBR=0 par défaut)
+        ; Setup pointer 16-bit DP_PCPTR ← CURSOR_ADDR ; DBR fournit bank 0.
         rep #$20
         lda CURSOR_ADDR
-        sta DP_PCPTR             ; DP+$0C/$0D = low/high
+        sta DP_PCPTR             ; DP+$0C/$0D = low/high (16-bit)
         sep #$20
-        lda #$00
-        sta DP_PCPTR+2           ; DP+$0E = bank 0 (screen RAM)
         lda DP_TMP
-        sta [DP_PCPTR]           ; opcode $87 — STA dp indirect long, écrit bank0:CURSOR_ADDR
+        sta (DP_PCPTR)           ; opcode $92 — STA dp indirect, écrit DBR:CURSOR_ADDR
         ; Advance cursor
         rep #$20
         lda CURSOR_ADDR

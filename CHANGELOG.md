@@ -5,6 +5,28 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-05-08
+
+### Cleanup — basculer vers opcodes natifs après fixes Phosphoric
+
+#### Changed
+- **`kernel_entry`** : `ldx #$FF; txs` (mode N + X=1, S=$00FF par bug
+  perçu) → `lda #$01FF; tcs` (M=0). Stack désormais en page 1 standard
+  $01FF — clarifié WDC §A.32 : SEP #$10 force X high=0, TXS copie X
+  entier → S=$00:XL. Pour stack page 1, utiliser TCS.
+- **`kernel_print_char`** : `STA [DP_PCPTR]` (long indirect $87 + bank
+  explicite en DP+$0E) → `STA (DP_PCPTR)` (DP indirect $92, écrit à
+  DBR:ptr). Code plus court, plus idiomatique. Possible suite à
+  PH-fix-dp-indirect côté Phosphoric.
+
+#### Fixed
+- DP_PCPTR réduit de 24-bit à 16-bit (DP+$0C/$0D), bank fournie par DBR=0.
+
+#### Tests
+- 498 tests OK.
+
+---
+
 ## [0.11.0] - 2026-05-08
 
 ### Sprint 2.f.1 — Mécanisme syscall COP (ADR-13 ratifiée)
