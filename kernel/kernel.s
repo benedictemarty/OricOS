@@ -53,6 +53,16 @@ SCREEN_BASE     = $00BB80
 SCREEN_SIZE     = $0460          ; 40 * 28
 SCREEN_FILL     = $20            ; espace ASCII
 
+; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
+; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
+; (128 chars × 8 lignes). La ROM Oric 1 historique copie sa fonte ici
+; au boot ; OricOS doit faire pareil puisqu'il boote sans la ROM.
+; La fonte (1024 octets) est embedded dans le kernel.bin en bank 1
+; à $5800 via .incbin (segment CHARSET).
+CHARSET_SRC     = $015800        ; source (bank 1)
+CHARSET_DST     = $00B400        ; dest (bank 0, Oric 1 mode TEXT)
+CHARSET_SIZE    = $0400          ; 1024 octets (128 chars × 8 lignes)
+
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top
 STACK_B_TOP     = $02FF         ; bank 0, task B stack top
 
@@ -151,7 +161,8 @@ kernel_entry:
         sta TASK_B_S
         sep #$20
 
-        ; ── Sprint 2.c : clear screen + print banner ───────────────
+        ; ── Sprint 2.c : install charset + clear screen + banner ──
+        jsr kernel_install_charset
         jsr kernel_clear_screen
         jsr kernel_print_banner
 
@@ -192,6 +203,33 @@ kernel_panic:
         bra *
 
 ; ════════════════════════════════════════════════════════════════════
+;  kernel_install_charset — copie 1024 oct. fonte $015800 → $00B400
+; ════════════════════════════════════════════════════════════════════
+;
+; Sprint 2.c+ : la ROM Oric 1 historique installe la fonte char en RAM
+; bank 0 $B400-$B7FF lors du boot. OricOS boot sans la ROM, donc le
+; kernel installe lui-même sa fonte (embedded via .incbin). Sans cela,
+; le rendu mode TEXT affiche du noir partout (fonte tout-zéro).
+;
+; Pré-condition : mode N, M=X=1, DBR=0.
+; Modifie : A, X. Préserve Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_install_charset
+kernel_install_charset:
+        rep #$10                ; X 16-bit
+        ldx #$0000
+charset_loop:
+        cpx #CHARSET_SIZE
+        bcs charset_done
+        lda CHARSET_SRC,X       ; long $lll,X
+        sta CHARSET_DST,X       ; long $lll,X
+        inx
+        bra charset_loop
+charset_done:
+        sep #$10                ; X 8-bit retour
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_clear_screen — remplit screen RAM Oric 1 d'espaces (Sprint 2.c)
 ; ════════════════════════════════════════════════════════════════════
 ;
@@ -224,28 +262,32 @@ clr_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_print_banner
 kernel_print_banner:
-        lda #'O'
+        ; Oric 1 mode TEXT : attribute byte $07 (INK 7 = blanc) en début
+        ; de ligne pour rendre le texte visible.
+        lda #$07
         sta SCREEN_BASE+0
-        lda #'r'
-        sta SCREEN_BASE+1
-        lda #'i'
-        sta SCREEN_BASE+2
-        lda #'c'
-        sta SCREEN_BASE+3
         lda #'O'
+        sta SCREEN_BASE+1
+        lda #'r'
+        sta SCREEN_BASE+2
+        lda #'i'
+        sta SCREEN_BASE+3
+        lda #'c'
         sta SCREEN_BASE+4
-        lda #'S'
+        lda #'O'
         sta SCREEN_BASE+5
-        lda #' '
+        lda #'S'
         sta SCREEN_BASE+6
-        lda #'v'
+        lda #' '
         sta SCREEN_BASE+7
-        lda #'0'
+        lda #'v'
         sta SCREEN_BASE+8
-        lda #'.'
+        lda #'0'
         sta SCREEN_BASE+9
-        lda #'7'
+        lda #'.'
         sta SCREEN_BASE+10
+        lda #'7'
+        sta SCREEN_BASE+11
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -374,3 +416,14 @@ restore_and_return:
         plx
         pla
         rti
+
+; ════════════════════════════════════════════════════════════════════
+;  CHARSET — fonte char Oric 1 (1024 octets) embedded à bank 1 $5800
+; ════════════════════════════════════════════════════════════════════
+; Extraite de roms/basic11b.rom offset $3B78 (= ROM $FB78). 128 chars
+; × 8 lignes. Le kernel copie ce blob vers bank 0 $B400 au boot.
+; ════════════════════════════════════════════════════════════════════
+        .segment "CHARSET"
+.export kernel_charset
+kernel_charset:
+        .incbin "../data/charset.bin"
