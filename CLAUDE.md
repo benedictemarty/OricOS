@@ -113,32 +113,50 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 
 ## 7. Roadmap OricOS
 
-### Sprint 0 — Hello world (en cours)
-- [x] Repo créé, structure initialisée.
-- [ ] Kernel hello world : boot asm 65C816, écrit sentinel, STP.
-- [ ] Build via ca65/ld65 → flat binary chargeable en bank 1.
-- [ ] Test intégration côté Phosphoric (`test_oricos_boot`).
+> **Note 2026-05-08** : roadmap **révisée suite point critique**
+> architecte senior. La version d'origine sautait directement de
+> Sprint 2.c (driver console minimal) à Sprint 3 (GUI), ce qui n'était
+> pas viable. Ajout de Sprints 2.d → 2.i comme prérequis stricts
+> avant tout sprint GUI. Voir `BACKLOG.md` à la racine du workspace
+> pour la source de vérité ordonnée.
 
-### Sprint 1 — Kernel core
-- [ ] Vecteurs natifs (NMI/RES/IRQ/COP/BRK/ABORT) installés en bank 1.
-- [ ] Stubs trampoline en bank 0 (routage E↔N).
-- [ ] Scheduler préemptif minimal (1-2 tâches kernel).
-- [ ] IRQ timer (ULA tick).
+### Sprint 0 — Hello world ✅ (clos 2026-05-08)
+- [x] Kernel hello world : boot asm 65C816, sentinel, STP.
+- [x] Build ca65/ld65 → flat binary chargeable en bank 1.
+- [x] Test `test_oricos_boot` côté Phosphoric.
 
-### Sprint 2 — IPC et drivers
-- [ ] Driver console (text mode 80x25 sur ULA host).
-- [ ] FAT32 SD lecture seule.
-- [ ] Allocator banks dynamique.
+### Sprint 1 — Kernel core ✅ (clos 2026-05-08)
+- [x] Vecteurs natifs (NMI/RES/IRQ) installés bank 0/1.
+- [x] Stubs trampoline en bank 0 (routage E↔N).
+- [x] Scheduler préemptif round-robin 2 tâches.
+- [x] IRQ timer VIA T1.
 
-### Sprint 3 — GUI
-- [ ] Window manager basique (1 fenêtre).
-- [ ] Toolkit minimal (frame, text, button).
+### Sprint 2 — IPC et drivers (en cours, **partiellement clos**)
+- [x] **2.a** VIA T1 drives scheduler autonomously
+- [x] **2.b** Bank allocator (incrémental v0.1)
+- [x] **2.c** Driver console minimal (banner hardcoded)
+- [x] **2.c+** Fonte char embarquée (autonomie OS native)
+- [ ] **2.d** Driver clavier Oric 1 (matrice VIA PB) ← **JALON COURANT**
+- [ ] **2.e** Driver console générique (`print_char`/`print_string`/cursor/scroll)
+- [ ] **2.f** Mécanisme syscall (COP handler + table) — bloqué par ADR-13
+- [ ] **2.g** Refactor TCB-based scheduler (struct task_t, N tâches, états) — bloqué par ADR-14
+- [ ] **2.h** Bank allocator bitmap avec free
+- [ ] **2.i** Modèle d'erreur kernel (panic codes, kernel log ring buffer)
+- [ ] **2.j** FAT32 SD lecture seule
+- [ ] **2.k** Format bundle apps (header + sections) — implémente ADR-08
+- [ ] **2.l** App loader (parse bundle, alloc bank, exec)
+- [ ] **2.m** Première app "hello" en asm (PoC userland sans llvm-mos)
+
+### Sprint 3 — GUI (différé : prérequis Sprint 2.d→2.i)
 - [ ] Compositor logique au-dessus du HW.
+- [ ] Window manager basique (1 fenêtre + focus).
+- [ ] Event loop (clavier/timer/IRQ) — pré-req 2.d.
+- [ ] Toolkit minimal (frame, label, button).
 
-### Sprint 4 — Userland C (llvm-mos requis)
-- [ ] Toolchain llvm-mos intégrée.
-- [ ] libc minimal.
-- [ ] Première app : `clock` (horloge).
+### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
+- [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).
+- [ ] libc minimal (printf via syscalls, malloc bank-based).
+- [ ] Première app C : `clock`.
 
 ### Sprint 5 — Guest Oric 1
 - [ ] Lancement guest Oric 1 dans une fenêtre OricOS.
