@@ -1,103 +1,139 @@
 ; ============================================================
-; OricOS — Kernel hello world (Sprint 0)
+; OricOS — Kernel core (Sprint 1.a)
 ; ============================================================
 ; Auteur : bmarty (benedicte) <bmarty@mailo.com>
 ; Date   : 2026-05-08
 ;
-; Démontre le boot OricOS sur Phosphoric --machine oric2 :
-;   1. Le CPU démarre en mode E (RESET force E=1, PC=$00FFFC vector).
-;   2. Le vecteur RESET pointe sur un stub bank 0 (configuré côté
-;      Phosphoric par le test d'intégration ; CLC ; XCE ; JML kernel).
-;   3. Le kernel s'exécute en bank 1 mode N. Il :
-;      - Configure D, S, DBR pour un fonctionnement propre.
-;      - Écrit le sentinel "ORIOS\x00" à $015000 (bank 1, signature
-;        ROM système — signe que OricOS a bien booté).
-;      - Écrit version et build info à $015010.
-;      - STP pour arrêter proprement la simulation.
+; Sprint 0 → 1.a :
+;   - Sentinels boot conservés ("ORIOS\x00" + "v0.1\x00").
+;   - Ajout : kernel_nmi_handler en bank 1 $5500.
+;   - Boot active CLI ; polling loop sur tick counter ($015400).
+;   - STP quand counter atteint 5 (5 NMI injectés par le test).
 ;
-; Note : ce code est un démonstrateur Sprint 0. Le vrai kernel Sprint 1+
-; installera les vecteurs, le scheduler et IRQ handler.
+; Le test côté Phosphoric installe :
+;   - Trampoline bank 0 $0130  : JML $015500 (vers le NMI handler).
+;   - Vecteur NMI mode N $00FFEA → $0130.
 ;
-; Convention asm : ca65 syntaxe WDC, --cpu 65816.
+; Convention : ca65 syntaxe WDC, --cpu 65816.
 ; ============================================================
 
         .setcpu "65816"
-        .feature labels_without_colons
         .smart  +
 
+; ─── Constantes ─────────────────────────────────────────────────────
+TICK_COUNTER    = $015400       ; bank 1 $5400 — incrémenté par NMI
+SENTINEL_BASE   = $015000       ; bank 1 $5000 — "ORIOS\x00"
+VERSION_BASE    = $015010       ; bank 1 $5010 — "v0.1\x00"
+TICK_GOAL       = $05           ; STP après 5 ticks
+
+; ════════════════════════════════════════════════════════════════════
+;  CODE — boot + main loop
+; ════════════════════════════════════════════════════════════════════
         .segment "CODE"
 
-; ─── kernel_entry : entry point en bank 1 $0200 ─────────────────────
-;
-; Préconditions :
-;   - PBR = $01, PC = $0200
-;   - mode N (E=0). Le stub trampoline en bank 0 a déjà fait CLC ; XCE.
-;   - DBR = inconnu, D = inconnu.
-; ────────────────────────────────────────────────────────────────────
 .export kernel_entry
 kernel_entry:
-        ; ── Setup state ────────────────────────────────────────────
-        ; DBR = 0 par défaut pour les accès "abs" — mais on utilisera
-        ; le long addressing pour écrire en bank 1 (depuis bank 1 PBR=1
-        ; mais DBR peut être différent).
+        ; ── Force mode N M=X=1 ─────────────────────────────────────
         sec
-        xce                     ; → mode E (force M=X=1, S high=$01)
+        xce                     ; → mode E (force M=X=1, S=$01..)
         clc
-        xce                     ; → mode N à nouveau, mais maintenant
-                                ; M=1 et X=1 sont *certifiés* dans P.
-                                ; (ADR-05 : kernel asm reste 8-bit pour
-                                ; cette v0.1.)
+        xce                     ; → mode N (M=1 et X=1 certifiés en P)
 
-        ; D = 0 : direct page en bank 0. Future : D pointe vers la DP
-        ; kernel en $01:0000.
+        ; ── D=0, S=$01FF, DBR=0 (préparation kernel) ──────────────
         rep #$20                ; M=0 pour LDA 16-bit
         lda #$0000
         tcd                     ; D = 0
         sep #$20                ; M=1 retour 8-bit
-
-        ; S = $01FF : stack en bank 0 page 1 (mode E compatible).
-        ; En mode N S est 16-bit. Pour Sprint 0 on reste avec S small
-        ; en bank 0 page 1 (compat E).
-        sep #$30                ; M=1, X=1 (8-bit)
+        sep #$30                ; M=1, X=1 (sécurité)
         ldx #$FF
         txs                     ; S = $01FF
+        ; DBR : reste à 0 (par défaut au reset). On utilise long
+        ; addressing pour les stores cross-bank.
 
-        ; ── Écrit le sentinel "ORIOS\x00" à $015000 ───────────────
-        ; Long addressing pour pointer en bank 1.
+        ; ── Sentinel "ORIOS\x00" à $015000 ─────────────────────────
         lda #'O'
-        sta $015000
+        sta SENTINEL_BASE+0
         lda #'R'
-        sta $015001
+        sta SENTINEL_BASE+1
         lda #'I'
-        sta $015002
+        sta SENTINEL_BASE+2
         lda #'O'
-        sta $015003
+        sta SENTINEL_BASE+3
         lda #'S'
-        sta $015004
+        sta SENTINEL_BASE+4
         lda #$00
-        sta $015005
+        sta SENTINEL_BASE+5
 
-        ; ── Écrit version "v0.1" à $015010 ────────────────────────
+        ; ── Version "v0.2\x00" à $015010 ───────────────────────────
         lda #'v'
-        sta $015010
+        sta VERSION_BASE+0
         lda #'0'
-        sta $015011
+        sta VERSION_BASE+1
         lda #'.'
-        sta $015012
-        lda #'1'
-        sta $015013
+        sta VERSION_BASE+2
+        lda #'2'
+        sta VERSION_BASE+3
         lda #$00
-        sta $015014
+        sta VERSION_BASE+4
 
-        ; ── Halt (Sprint 0 : pas de scheduler encore) ─────────────
-        stp                     ; Stop : simulation arrêtée proprement
+        ; ── Initialise le tick counter à 0 ─────────────────────────
+        lda #$00
+        sta TICK_COUNTER
 
-        ; Si on reprend (impossible sans RESET), boucle infinie.
-        bra *
+        ; ── Active les interruptions et entre dans la boucle ───────
+        cli                     ; clear I → IRQ enabled (NMI sans masque)
 
-; ─── kernel_panic : appelé sur erreur fatale (Sprint 1+) ────────────
-.export kernel_panic
-kernel_panic:
-        ; v0.1 : juste STP. Sprint 1+ : screen panic, dump registres.
+main_loop:
+        ; Polling minimal — sera remplacé par WAI en Sprint 1.b
+        ; quand on aura un IRQ timer.
+        lda TICK_COUNTER
+        cmp #TICK_GOAL
+        bcc main_loop           ; if counter < goal : loop
+
+        ; ── Halt propre ────────────────────────────────────────────
         stp
         bra *
+
+; ─── kernel_panic : appelé sur erreur fatale (Sprint 2+) ────────────
+.export kernel_panic
+kernel_panic:
+        stp
+        bra *
+
+; ════════════════════════════════════════════════════════════════════
+;  NMI_HANDLER — service NMI en bank 1 $5500
+; ════════════════════════════════════════════════════════════════════
+;
+; Préconditions :
+;   - Le hardware a poussé : PB ($00, le bank 0 du trampoline),
+;                            PCH:PCL (retour vers le trampoline),
+;                            P (avec B=0, NMI ≠ BRK).
+;   - I est positionné à 1, D à 0.
+;   - On entre ici via JML $015500 depuis le trampoline bank 0.
+;
+; Fonction : incrémente le tick counter ($015400). Save A localement.
+;
+; ════════════════════════════════════════════════════════════════════
+        .segment "NMI_HANDLER"
+
+.export kernel_nmi_handler
+kernel_nmi_handler:
+        ; ── Save A (mode N, P inconnu — assume M=1 pour minimum) ───
+        sep #$30                ; sécurité : M=X=1
+        pha
+        ; ── Increment tick counter ─────────────────────────────────
+        lda TICK_COUNTER
+        inc a                   ; INC A 65C816-only
+        sta TICK_COUNTER
+        ; ── Restore A et retour ────────────────────────────────────
+        pla
+        rti
+
+; ════════════════════════════════════════════════════════════════════
+;  IRQ_HANDLER — placeholder (Sprint 1.b)
+; ════════════════════════════════════════════════════════════════════
+        .segment "IRQ_HANDLER"
+
+.export kernel_irq_handler
+kernel_irq_handler:
+        rti                     ; v0.2 : no-op
