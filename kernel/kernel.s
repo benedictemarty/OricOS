@@ -188,12 +188,29 @@ VIA_PCR         = $00030C       ; Periph control (CA2/CB2 = BC1/BDIR PSG)
 VIA_IFR         = $00030D       ; Interrupt flag register
 VIA_IER         = $00030E       ; Interrupt enable register
 
-; ─── FAT32 (Sprint 2.j.2 Oric 2) — buffer + résultat ──────────────
+; ─── FAT32 (Sprint 2.j.2/3 Oric 2) — buffer + résultat + champs ────
 ; Buffer 512B en bank 1 zone fill (après CHARSET). Distinct du buffer
 ; sd_read_block test ($015D40) pour ne pas écraser le pattern testé.
 FS_BUFFER       = $015F60       ; 512 octets
 FS_INIT_RESULT  = $016160       ; 1 octet : 0=OK, 1=BAD
 FS_FAT32_SIG    = $52            ; offset signature "FAT32   " dans boot sector
+
+; Champs parsés du boot sector (Sprint 2.j.3)
+FS_BPS          = $016161       ; 2 bytes per sector
+FS_SPC          = $016163       ; 1 sectors per cluster
+FS_RSC          = $016164       ; 2 reserved sectors count
+FS_NFAT         = $016166       ; 1 num FATs
+FS_SPF          = $016167       ; 4 sectors per FAT (FAT32)
+FS_ROOT         = $01616B       ; 4 root cluster (FAT32)
+FS_FDS          = $01616F       ; 4 first data sector (calculé)
+
+; Offsets dans le boot sector
+BS_BPS          = $0B
+BS_SPC          = $0D
+BS_RSC          = $0E
+BS_NFAT         = $10
+BS_SPF          = $24            ; FAT32 spécifique
+BS_ROOT         = $2C            ; FAT32 spécifique
 
 ; ─── SD device (Sprint 2.j Oric 2) — bloc 512 bytes via I/O ────────
 ; Mappé à $0320-$0327 dans bank 0 :
@@ -503,12 +520,84 @@ kernel_fat_init:
         lda FS_BUFFER + FS_FAT32_SIG + 4
         cmp #'2'
         bne fat_init_bad
+        ; Sig OK : parse les champs FAT32
+        jsr fat_parse_boot_sector
         lda #$00
         sta FS_INIT_RESULT
         rts
 fat_init_bad:
         lda #$01
         sta FS_INIT_RESULT
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  fat_parse_boot_sector — parse champs FAT32 + calcule FDS (interne)
+; ════════════════════════════════════════════════════════════════════
+;
+; Pré-cond : FS_BUFFER contient le boot sector valide.
+; Effets : remplit FS_BPS, FS_SPC, FS_RSC, FS_NFAT, FS_SPF, FS_ROOT,
+;          FS_FDS (= FS_RSC + FS_NFAT * FS_SPF, 16-bit en v0.1).
+; Modifie : A, X, Y.
+; ════════════════════════════════════════════════════════════════════
+fat_parse_boot_sector:
+        ; FS_BPS (2B) ← FS_BUFFER + BS_BPS
+        lda FS_BUFFER + BS_BPS
+        sta FS_BPS
+        lda FS_BUFFER + BS_BPS + 1
+        sta FS_BPS+1
+        ; FS_SPC (1B)
+        lda FS_BUFFER + BS_SPC
+        sta FS_SPC
+        ; FS_RSC (2B)
+        lda FS_BUFFER + BS_RSC
+        sta FS_RSC
+        lda FS_BUFFER + BS_RSC + 1
+        sta FS_RSC+1
+        ; FS_NFAT (1B)
+        lda FS_BUFFER + BS_NFAT
+        sta FS_NFAT
+        ; FS_SPF (4B)
+        lda FS_BUFFER + BS_SPF
+        sta FS_SPF
+        lda FS_BUFFER + BS_SPF + 1
+        sta FS_SPF+1
+        lda FS_BUFFER + BS_SPF + 2
+        sta FS_SPF+2
+        lda FS_BUFFER + BS_SPF + 3
+        sta FS_SPF+3
+        ; FS_ROOT (4B)
+        lda FS_BUFFER + BS_ROOT
+        sta FS_ROOT
+        lda FS_BUFFER + BS_ROOT + 1
+        sta FS_ROOT+1
+        lda FS_BUFFER + BS_ROOT + 2
+        sta FS_ROOT+2
+        lda FS_BUFFER + BS_ROOT + 3
+        sta FS_ROOT+3
+
+        ; FS_FDS = FS_RSC + FS_NFAT * FS_SPF (v0.1 16-bit max).
+        ; Init FS_FDS = FS_RSC, puis ajouter FS_SPF NFAT fois.
+        rep #$20
+        lda FS_RSC
+        sta FS_FDS
+        sep #$20
+        lda #$00
+        sta FS_FDS+2
+        sta FS_FDS+3
+        lda FS_NFAT             ; ldx long-abs n'existe pas → via lda+tax
+        tax
+fds_loop:
+        cpx #$00
+        beq fds_done
+        rep #$20
+        lda FS_FDS
+        clc
+        adc FS_SPF
+        sta FS_FDS
+        sep #$20
+        dex
+        bra fds_loop
+fds_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
