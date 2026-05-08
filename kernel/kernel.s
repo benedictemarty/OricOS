@@ -89,6 +89,39 @@ BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
 ; ─── Modèle erreur kernel (Sprint 2.i) ──────────────────────────────
 PANIC_CODE      = $015495       ; 1 byte : dernier code panic (0 = OK)
 
+; ─── Format bundle apps (Sprint 2.k, ADR-08 v0.1) ───────────────────
+; Header bundle "OOS\x01" : 8 octets fixes :
+;   +0  magic         "OOS\x01"  (4B)
+;   +4  version       (1B, = $01)
+;   +5  flags         (1B, bit 0 = relocatable, autres réservés)
+;   +6  num_sections  (1B)
+;   +7  reserved      (1B)
+;   +8  section[i] entries (8B chacune) :
+;     +0 type          (1B : $01=CODE, $02=DATA, $03=ICON, $04=MANIFEST)
+;     +1 reserved      (1B)
+;     +2 size          (2B little-endian, max $FFFF par section v1)
+;     +4 offset        (2B little-endian, relatif au début bundle)
+;     +6 reserved      (2B)
+;   +8+8N section data (concaténé selon offsets)
+BUNDLE_MAGIC_0  = 'O'
+BUNDLE_MAGIC_1  = 'O'
+BUNDLE_MAGIC_2  = 'S'
+BUNDLE_MAGIC_3  = $01
+BUNDLE_VERSION  = $01
+BUNDLE_SEC_CODE = $01
+BUNDLE_SEC_DATA = $02
+BUNDLE_SEC_ICON = $03
+BUNDLE_SEC_MAN  = $04
+BNL_HDR_VER     = 4
+BNL_HDR_NSEC    = 6
+
+; Erreur codes pour validate
+BUNDLE_OK           = $00
+BUNDLE_ERR_MAGIC    = $01
+BUNDLE_ERR_VERSION  = $02
+
+BUNDLE_VALIDATE_RES = $01549C   ; 1 byte : résultat dernier validate
+
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
 ; Caractère ASCII direct ; 0-31 = attribute bytes.
@@ -308,6 +341,16 @@ kernel_entry:
         lda #$AB
         jsr kernel_print_hex8
 
+        ; ── Sprint 2.k : bundle_validate (DÉSACTIVÉ — bug investigué) ──
+        ; Crash mystérieux entre stage 12 et stage 13 lors de
+        ; cmp #BUNDLE_MAGIC_0 + bne. Validate fonctionne dans certaines
+        ; positions de bundle_test mais pas d'autres. Hypothèse : bug
+        ; subtil Phosphoric `lda [dp],Y` quand DP_PTR_BK = $01 et offset
+        ; précis. À investiguer en isolation (test unitaire dédié).
+        ; Reportée OS-2.k.2 ; v0.1 = format spec + routine code only.
+        lda #$00
+        sta BUNDLE_VALIDATE_RES         ; placeholder OK
+
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
 
@@ -350,6 +393,45 @@ kernel_entry:
         ; ── Active interruptions et démarre task A ─────────────────
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_bundle_validate — vérifie format OricOS bundle (Sprint 2.k)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP_PTR (24-bit) → début bundle.
+; Out  : A = 0 (OK), $01 (mauvais magic), $02 (mauvaise version).
+;        Préserve : X. Modifie : A, Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_bundle_validate
+kernel_bundle_validate:
+        ldy #$00
+        lda [DP_PTR],Y
+        cmp #BUNDLE_MAGIC_0
+        bne bv_bad_magic
+        iny
+        lda [DP_PTR],Y
+        cmp #BUNDLE_MAGIC_1
+        bne bv_bad_magic
+        iny
+        lda [DP_PTR],Y
+        cmp #BUNDLE_MAGIC_2
+        bne bv_bad_magic
+        iny
+        lda [DP_PTR],Y
+        cmp #BUNDLE_MAGIC_3
+        bne bv_bad_magic
+        ldy #BNL_HDR_VER
+        lda [DP_PTR],Y
+        cmp #BUNDLE_VERSION
+        bne bv_bad_version
+        lda #BUNDLE_OK
+        rts
+bv_bad_magic:
+        lda #BUNDLE_ERR_MAGIC
+        rts
+bv_bad_version:
+        lda #BUNDLE_ERR_VERSION
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_panic — erreur fatale (Sprint 2.i)
@@ -577,6 +659,25 @@ kernel_print_banner:
 
 banner_str:
         .byte "OricOS v0.7", $0A, $00
+
+; ─── Bundle test (Sprint 2.k.1) ─────────────────────────────────────
+; Format OricOS Object v1 : header + 1 section CODE.
+.export bundle_test
+bundle_test:
+        ; Header (8 bytes)
+        .byte BUNDLE_MAGIC_0, BUNDLE_MAGIC_1, BUNDLE_MAGIC_2, BUNDLE_MAGIC_3
+        .byte BUNDLE_VERSION
+        .byte $00                       ; flags
+        .byte $01                       ; num_sections = 1
+        .byte $00                       ; reserved
+        ; Section[0] entry (8 bytes) : CODE, size=2, offset=16
+        .byte BUNDLE_SEC_CODE
+        .byte $00                       ; reserved
+        .byte $02, $00                  ; size = 2 (LE)
+        .byte $10, $00                  ; offset = 16 (LE)
+        .byte $00, $00                  ; reserved
+        ; Section[0] data : 2 bytes (RTS RTS placeholder)
+        .byte $60, $60
 
 ; ════════════════════════════════════════════════════════════════════
 ;  Driver clavier (Sprint 2.d)

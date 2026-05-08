@@ -5,6 +5,48 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.16.0] - 2026-05-08
+
+### Sprint 2.k.1 — Format bundle apps (ADR-08 v0.1 partiel)
+
+#### Added
+- **Spec format bundle "OOS\x01"** : header 8B (magic 4B + version 1B +
+  flags 1B + num_sections 1B + reserved 1B) + section entries 8B
+  (type, reserved, size 2B, offset 2B, reserved 2B) + section data.
+  Types : CODE ($01), DATA ($02), ICON ($03), MANIFEST ($04).
+- **Constantes** `BUNDLE_MAGIC_*`, `BUNDLE_VERSION`, `BUNDLE_SEC_*`,
+  `BUNDLE_OK`/`BUNDLE_ERR_*`, offsets `BNL_*`.
+- **`kernel_bundle_validate (DP_PTR)`** : code écrit (ldy/lda [dp],Y/
+  cmp/bne/iny/rts). Vérifie magic + version, retourne A=$00 OK ou
+  code erreur.
+- **`bundle_test`** inline dans CODE segment : header + 1 section
+  CODE 2 bytes (RTS RTS placeholder).
+
+#### Known issue (OS-2.k.2 reportée)
+- **Crash mystérieux** quand `kernel_bundle_validate` est appelé au
+  boot du kernel : la routine n'arrive pas à terminer (CPU crash
+  $00:0000). Hypothèse : bug subtil Phosphoric `lda [dp],Y` quand
+  DP_PTR_BK = $01 et offset spécifique. Validate fonctionne à certaines
+  positions, crash à d'autres. Print_string utilise le même opcode
+  sans souci.
+- **Tracé** dans BACKLOG : `PH-bug-dp-indirect-Y-bank1`. À investiguer
+  via test unitaire isolé dans Phosphoric (test_cpu65c816_native.c).
+- **Workaround temporaire** : `kernel_bundle_validate` non appelé
+  au boot ; placeholder `lda #$00; sta BUNDLE_VALIDATE_RES`.
+
+#### Validation
+- 500 tests OK (compteur inchangé — le validate n'est pas testé
+  fonctionnellement).
+- Le code validate reste dans le kernel pour usage futur après fix bug.
+
+#### v0.2 (reportés)
+- Fix crash `[dp],Y` ou contournement via `[dp]` long indirect.
+- `kernel_bundle_find_section (type)` : trouve section par type.
+- `kernel_app_exec (DP_PTR)` : load + exec section CODE en bank dédiée.
+- Test : un bundle test exec écrit char à l'écran via syscall.
+
+---
+
 ## [0.15.0] - 2026-05-08
 
 ### Sprint 2.g.1 — Refactor scheduler vers TCB-based (ADR-14)
