@@ -5,6 +5,18 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-05-08
+
+### Sprint 2.j.1 — Test fonctionnel SD validé
+
+- Test côté Phosphoric `test_oricos_sd` : pipeline complet driver
+  kernel `kernel_sd_read_block` ↔ device SD émulé ↔ fichier image
+  hôte. Image test 512B (pattern A..Z répété) chargée, kernel lit
+  bloc 0 au boot, ASSERT contenu en bank 1 $5D40+.
+- 502 tests OK.
+
+---
+
 ## [0.21.0] - 2026-05-08
 
 ### Sprint 2.j.0 — Driver bloc SD minimal
