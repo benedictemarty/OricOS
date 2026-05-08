@@ -43,6 +43,19 @@ TICK_GOAL       = $0A           ; 10 ticks → STP
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top
 STACK_B_TOP     = $02FF         ; bank 0, task B stack top
 
+; ─── VIA 6522 registers (bank 0 mappés $0300-$030F) ─────────────────
+; Note 6522 : pour démarrer T1, écrire au registre T1C-H ($05). Le
+; registre T1L-L/H ($06/$07) ne fait que poser le latch sans démarrer.
+VIA_T1CL        = $000304       ; T1 counter low (read=ack T1 / write=latch lo)
+VIA_T1CH        = $000305       ; T1 counter high (write load+start)
+VIA_ACR         = $00030B       ; Aux control (T1 mode)
+VIA_IFR         = $00030D       ; Interrupt flag register
+VIA_IER         = $00030E       ; Interrupt enable register
+
+; ─── Période timer T1 (cycles entre IRQ) ────────────────────────────
+T1_PERIOD_LO    = $00           ; $0200 = 512 cycles
+T1_PERIOD_HI    = $02
+
 ; ════════════════════════════════════════════════════════════════════
 ;  CODE — boot + tasks
 ; ════════════════════════════════════════════════════════════════════
@@ -125,8 +138,22 @@ kernel_entry:
         sta TASK_B_S
         sep #$20
 
+        ; ── Configure VIA T1 timer en mode continuous interrupt ────
+        ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
+        lda #$40
+        sta VIA_ACR
+        ; T1 latch low / high. Écrire T1CH démarre le timer en chargeant
+        ; le counter depuis le latch.
+        lda #T1_PERIOD_LO
+        sta VIA_T1CL            ; latch low
+        lda #T1_PERIOD_HI
+        sta VIA_T1CH            ; latch high + start counter
+        ; IER : bit 7 = set, bit 6 = T1 enable. Écrire $C0 enable T1 IRQ.
+        lda #$C0
+        sta VIA_IER
+
         ; ── Active interruptions et démarre task A ─────────────────
-        cli                     ; I=0 → IRQ enabled (NMI sans masque)
+        cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
 
 ; ─── kernel_panic (Sprint 2+) ───────────────────────────────────────
@@ -188,6 +215,9 @@ kernel_irq_handler:
         pha
         phx
         phy
+
+        ; ── Ack VIA T1 IRQ (lecture T1C-L clear T1 IFR) ────────────
+        lda VIA_T1CL
 
         ; ── Increment tick counter ─────────────────────────────────
         lda TICK_COUNTER
