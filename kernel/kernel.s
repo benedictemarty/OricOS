@@ -46,12 +46,33 @@ BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
 BANK_POOL_BASE  = $04            ; premier bank du pool
 BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 
-; ─── Driver console (Sprint 2.c) — Oric 1 screen RAM ────────────────
+; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
 ; Caractère ASCII direct ; 0-31 = attribute bytes.
 SCREEN_BASE     = $00BB80
+SCREEN_END      = $00BFE0       ; 1 past last char ($BB80 + $0460)
 SCREEN_SIZE     = $0460          ; 40 * 28
 SCREEN_FILL     = $20            ; espace ASCII
+SCREEN_COLS     = $28            ; 40
+SCREEN_ROWS     = $1C            ; 28
+SCREEN_LAST_ROW = $00BFB8       ; SCREEN_BASE + 27*40
+
+; Variables console (bank 1)
+CURSOR_ADDR     = $015490       ; 16-bit, addr écran courante
+CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
+
+; Zero page kernel (DP=0)
+; print_string utilise DP_PTR (long indirect [dp],Y → bank 1 strings).
+; print_char utilise DP_PCPTR (long indirect [dp] → bank 0 screen RAM).
+; Séparés pour éviter conflit lors de print_char appelé depuis print_string.
+DP_PTR          = $08            ; DP+$08/$09/$0A : pointer 24-bit
+DP_PCPTR        = $0C            ; DP+$0C/$0D/$0E : pointer 24-bit
+DP_TMP          = $10            ; DP+$10 : char temp
+
+; Note : Phosphoric (golden model 65C816) n'implémente PAS l'opcode $92
+; (STA (dp), DP indirect 16-bit). Trou identifié — à fixer côté
+; Phosphoric. En attendant, on utilise [dp] long indirect ($87) qui
+; est implémenté, avec bank explicite en DP+$0E.
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
@@ -185,9 +206,10 @@ kernel_entry:
         sta TASK_B_S
         sep #$20
 
-        ; ── Sprint 2.c : install charset + clear screen + banner ──
+        ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
         jsr kernel_clear_screen
+        jsr kernel_console_init
         jsr kernel_print_banner
 
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
@@ -280,42 +302,123 @@ clr_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
-;  kernel_print_banner — écrit "OricOS v0.7" à $00BB80 (Sprint 2.c)
+;  Driver console — print_char + print_string (Sprint 2.e.1)
 ; ════════════════════════════════════════════════════════════════════
 ;
-; v0.1 minimal : unrolled, 11 caractères. Une vraie routine
-; print_string générique viendra plus tard.
+; v0.1 minimal :
+;   - kernel_print_char (A = char) : gère LF (\n) et char normal
+;   - kernel_print_string (DP+$08/$09 = ptr 16-bit en bank 1)
+;   - kernel_print_banner réécrit via print_string
 ;
+; Non-implémenté v0.1 (reporté OS-2.e.2) : CR (\r), scroll up,
+; attribut couleur, gestion de plusieurs INKs simultanés.
+;
+; Pré-cond toutes routines : mode N M=X=1, DBR=0.
 ; ════════════════════════════════════════════════════════════════════
+
+; ─── kernel_console_init : init cursor + INK byte première ligne ───
+.export kernel_console_init
+kernel_console_init:
+        rep #$20
+        lda #SCREEN_BASE+1       ; cursor à offset 1 (après attribute byte)
+        sta CURSOR_ADDR
+        sep #$20
+        lda #$01                 ; CURSOR_X = 1 (col 1, après attribute)
+        sta CURSOR_X
+        ; Écrit attribute byte INK 7 (blanc) à $BB80
+        lda #$07
+        sta SCREEN_BASE
+        rts
+
+; ─── kernel_print_char : args A 8-bit = char ASCII ─────────────────
+; Gère LF (\n = $0A) et char normal. Préserve : Y. Modifie : A, X.
+.export kernel_print_char
+kernel_print_char:
+        sta DP_TMP               ; sauve char
+        cmp #$0A
+        beq pc_lf
+        ; Char normal : store at CURSOR_ADDR (bank 0)
+        ; Setup pointer 24-bit DP_PCPTR : low/high = CURSOR_ADDR, bank = $00
+        rep #$20
+        lda CURSOR_ADDR
+        sta DP_PCPTR             ; DP+$0C/$0D = low/high
+        sep #$20
+        lda #$00
+        sta DP_PCPTR+2           ; DP+$0E = bank 0 (screen RAM)
+        lda DP_TMP
+        sta [DP_PCPTR]           ; opcode $87 — STA dp indirect long, écrit bank0:CURSOR_ADDR
+        ; Advance cursor
+        rep #$20
+        lda CURSOR_ADDR
+        inc a
+        sta CURSOR_ADDR
+        sep #$20
+        lda CURSOR_X
+        inc a
+        sta CURSOR_X
+        cmp #SCREEN_COLS         ; 40
+        bcc pc_done
+        ; CURSOR_X = 40 → reset (CURSOR_ADDR déjà au début ligne suivante)
+        lda #$00
+        sta CURSOR_X
+        bra pc_check_end
+pc_lf:
+        ; CURSOR_ADDR += (40 - CURSOR_X). CURSOR_X = 0.
+        sec
+        lda #SCREEN_COLS
+        sbc CURSOR_X             ; A = 40 - CURSOR_X (8-bit)
+        rep #$20
+        and #$00FF               ; zero-extend high
+        clc
+        adc CURSOR_ADDR
+        sta CURSOR_ADDR
+        sep #$20
+        lda #$00
+        sta CURSOR_X
+pc_check_end:
+        ; Si CURSOR_ADDR >= SCREEN_END, reste à la dernière ligne
+        ; (scroll non implémenté v0.1 — clamp simple).
+        rep #$20
+        lda CURSOR_ADDR
+        cmp #SCREEN_END
+        sep #$20
+        bcc pc_done
+        rep #$20
+        lda #SCREEN_LAST_ROW     ; clamp à dernière ligne (start)
+        sta CURSOR_ADDR
+        sep #$20
+pc_done:
+        rts
+
+; ─── kernel_print_string : args DP+$08/$09 = ptr 16-bit en bank 1 ──
+; String null-terminée. Préserve : X. Modifie : A, Y.
+.export kernel_print_string
+kernel_print_string:
+        ldy #$00
+ps_loop:
+        lda [DP_PTR],Y           ; opcode $B7 — DP indirect long Y
+        beq ps_done
+        jsr kernel_print_char
+        iny
+        bra ps_loop
+ps_done:
+        rts
+
+; ─── kernel_print_banner : utilise print_string ────────────────────
 .export kernel_print_banner
 kernel_print_banner:
-        ; Oric 1 mode TEXT : attribute byte $07 (INK 7 = blanc) en début
-        ; de ligne pour rendre le texte visible.
-        lda #$07
-        sta SCREEN_BASE+0
-        lda #'O'
-        sta SCREEN_BASE+1
-        lda #'r'
-        sta SCREEN_BASE+2
-        lda #'i'
-        sta SCREEN_BASE+3
-        lda #'c'
-        sta SCREEN_BASE+4
-        lda #'O'
-        sta SCREEN_BASE+5
-        lda #'S'
-        sta SCREEN_BASE+6
-        lda #' '
-        sta SCREEN_BASE+7
-        lda #'v'
-        sta SCREEN_BASE+8
-        lda #'0'
-        sta SCREEN_BASE+9
-        lda #'.'
-        sta SCREEN_BASE+10
-        lda #'7'
-        sta SCREEN_BASE+11
+        ; Setup DP_PTR (24-bit long indirect) → banner_str en bank 1
+        lda #$01
+        sta DP_PTR+2             ; DP+$0A = bank 1
+        lda #<banner_str
+        sta DP_PTR
+        lda #>banner_str
+        sta DP_PTR+1
+        jsr kernel_print_string
         rts
+
+banner_str:
+        .byte "OricOS v0.7", $0A, $00
 
 ; ════════════════════════════════════════════════════════════════════
 ;  Driver clavier (Sprint 2.d)

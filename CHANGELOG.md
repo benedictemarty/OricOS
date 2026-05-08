@@ -5,6 +5,51 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-05-08
+
+### Sprint 2.e.1 — Driver console générique (print_char / print_string)
+
+#### Added
+- **`kernel_console_init`** : `CURSOR_ADDR=$BB81`, `CURSOR_X=1` (col 1
+  après attribute byte INK $07).
+- **`kernel_print_char (A=char)`** : gère char normal et LF (`$0A`).
+  Stocke le char à `bank0:CURSOR_ADDR` via `STA [DP_PCPTR]` (opcode
+  `$87` long indirect, pointer 24-bit en DP+$0C/$0D/$0E avec bank=$00).
+  Avance `CURSOR_ADDR` et `CURSOR_X`. Wrap fin de ligne (CURSOR_X=40
+  → reset à 0). Clamp si `CURSOR_ADDR >= $BFE0` (scroll v0.2).
+- **`kernel_print_string (DP_PTR = ptr 24-bit)`** : lit string null-
+  terminée via `LDA [DP_PTR],Y` (opcode `$B7`), boucle `print_char`.
+- **`kernel_print_banner`** réécrit via `print_string` (banner_str =
+  "OricOS v0.7\n\0" en CODE segment).
+- **2 pointers DP séparés** : `DP_PTR` ($08-$0A) pour print_string
+  (bank 1 strings) et `DP_PCPTR` ($0C-$0E) pour print_char (bank 0
+  screen RAM). Évite la collision lors de print_string → print_char.
+
+#### Diagnostic important — bug Phosphoric découvert
+- **Opcode `$92` (STA (dp), DP indirect 16-bit) NON IMPLÉMENTÉ dans
+  Phosphoric** + 7 autres opcodes DP indirect 65C816 manquants ($12,
+  $32, $52, $72, $B2, $D2, $F2). Le decoder traite `$92` comme NOP
+  size=1 (table opcode 6502), donc l'opérande est ré-interprété comme
+  opcode → corruption stack → crash.
+- Contournement OS-2.e.1 : utiliser `STA [dp]` (long indirect, $87,
+  implémenté) avec bank explicite en DP+$0E.
+- Tracé en dette technique workspace (`PH-fix-dp-indirect`).
+
+#### Validation
+- 494 tests OK (compteur inchangé).
+- Démo SDL2 (`oric1-emu --kernel build/kernel.bin`) affiche
+  "OricOS v0.7" en blanc à $BB81+ (banner via print_string).
+- Screenshot test_oricos_sprint2a vérifie attribute byte $07 +
+  banner "OricOS v0.7" + clear screen comme avant.
+
+#### v0.2 (reportés)
+- Carriage return (`$0D`).
+- Scroll up.
+- Attribut couleur multiple par ligne.
+- Cursor blink visuel.
+
+---
+
 ## [0.9.0] - 2026-05-08
 
 ### Sprint 2.d.1 — Driver clavier matrice (scan via PSG R14)
