@@ -5,6 +5,52 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.28.0] - 2026-05-09
+
+### Sprint 2.l v0.2 — App loader multi-cluster depuis SD ✨
+
+#### Added
+- **Boot kernel intégré** : ouvre MULTI.BIN (bundle 527B, 2 clusters)
+  via `kernel_fat_open`, charge le fichier complet vers $01:8000 via
+  `kernel_fat_read_file`, puis exécute via `kernel_app_exec`.
+- **App MULTI.BIN** : bundle dont la section CODE est à offset 520
+  (= dans le 2e cluster). Exerce le pipeline cross-cluster :
+  - Header bundle dans cluster 6 (LBA 164).
+  - Code app à offset 520 = dans cluster 7 (LBA 165).
+  - `kernel_app_exec` calcule `DP_SRC = DP_PTR + offset` (16-bit add)
+    puis copie 7 octets vers `$BANK:0200`.
+- L'app exécute `ldx #'X' ; lda #1 ; cop #$AA ; rtl` → 'X' à $BBAD.
+
+#### Validation
+- 503 tests OK (`kernel_app_exec` v0.1 supporte déjà bundle multi-cluster
+  en RAM ; aucune modification de l'API).
+- Image SD test : 166 secteurs (FAT étendue avec FAT[6]=7, FAT[7]=EOC ;
+  3e entry root dir MULTI.BIN cluster=6 size=527).
+- ASSERT `mem[$BBAD] = 'X'` après boot kernel — confirme exec depuis
+  bundle multi-cluster.
+- Démo SDL2 attendue : "OricOS v0.7" + "YABZZX" (5 chars : Y syscall +
+  AB hex + 2 Z = 2 apps single-cluster + X = app multi-cluster).
+
+#### Importance architecturale
+**OricOS peut désormais charger ET exécuter une app de taille arbitraire
+depuis FAT32 SD**. C'est le pipeline complet :
+1. fat_open (lookup 8.3)
+2. fat_read_file (multi-cluster)
+3. app_exec (validate + alloc bank + copy + JSL)
+
+Aucune limite de taille pour la section CODE en RAM (l'offset 32-bit du
+bundle permet section CODE > 64 KiB ; seule la limite size 8-bit dans
+app_exec v0.1 borne le code copié à 256 octets — à étendre v0.3 si
+besoin).
+
+#### Reportés v0.3 / Reportés OS-2.l v0.3
+- Section CODE > 256 octets (passage size 16-bit dans la copie).
+- Sections multiples (DATA, ICON) traitées par app_exec.
+- Free bank au RTS de l'app (resource tracking).
+- Sandbox / privilege check.
+
+---
+
 ## [0.27.0] - 2026-05-08
 
 ### Sprint 2.j v0.3 — kernel_fat_read_file (multi-cluster) ✨

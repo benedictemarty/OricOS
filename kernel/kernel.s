@@ -589,6 +589,53 @@ skip_fat_read:
         jsr kernel_fat_read_file
 skip_big_read:
 
+        ; ── Sprint 2.l v0.2 : app multi-cluster depuis SD ────────────
+        ; Open MULTI.BIN (bundle 527B, 2 clusters), lit via fat_read_file
+        ; vers $01:8000, puis exec via kernel_app_exec. App écrit 'X' à
+        ; $BBAD (3e char après les 2 'Z' précédents). Valide qu'app_exec
+        ; supporte un bundle multi-cluster avec section CODE à offset
+        ; > 512 (offset = 520 dans cet exemple).
+        lda #'M'
+        sta $40
+        lda #'U'
+        sta $41
+        lda #'L'
+        sta $42
+        lda #'T'
+        sta $43
+        lda #'I'
+        sta $44
+        lda #' '
+        sta $45
+        sta $46
+        sta $47
+        lda #'B'
+        sta $48
+        lda #'I'
+        sta $49
+        lda #'N'
+        sta $4A
+        jsr kernel_fat_open
+        lda FS_OPEN_RESULT
+        bne skip_multi_exec
+        ; DP_PCPTR = $01:8000 (dest fichier MULTI.BIN)
+        lda #$00
+        sta DP_PCPTR
+        lda #$80
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_fat_read_file
+        ; DP_PTR = $01:8000 (bundle MULTI loaded), exec.
+        lda #$00
+        sta DP_PTR
+        lda #$80
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_exec
+skip_multi_exec:
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
