@@ -212,6 +212,12 @@ kernel_entry:
         jsr kernel_console_init
         jsr kernel_print_banner
 
+        ; ── Sprint 2.f : test COP syscall (ADR-13) ─────────────────
+        ; SYS_PRINT_CHAR ($01) : X = char.
+        ldx #'Y'
+        lda #$01
+        cop #$AA                ; signature OricOS
+
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
 
@@ -556,6 +562,34 @@ task_b_entry:
 
 .export kernel_nmi_handler
 kernel_nmi_handler:
+        rti
+
+; ════════════════════════════════════════════════════════════════════
+;  COP_HANDLER — syscall dispatcher (bank 1 $5700, ADR-13)
+; ════════════════════════════════════════════════════════════════════
+;
+; Convention v0.1 (ADR-13 minimal) : `cop #$AA` (signature OricOS).
+; Le numéro de syscall est passé en A. Args en X/Y selon syscall.
+;
+; v0.1 supporte un seul syscall hardcoded :
+;   SYS_PRINT_CHAR ($01) : A=$01 → X = char (oui, A non utilisable car
+;     contient le numéro). Convention v0.1bis : si A=$01, X = char.
+;
+; Plus tard : table de pointers en bank 1 indexée par A*2.
+;
+; ════════════════════════════════════════════════════════════════════
+        .segment "COP_HANDLER"
+
+.export kernel_cop_handler
+kernel_cop_handler:
+        sep #$30                ; sécurité M=X=1
+        cmp #$01                ; SYS_PRINT_CHAR ?
+        bne cop_unknown
+        ; SYS_PRINT_CHAR : char est en X (8-bit), passé via X.
+        txa                     ; A = char
+        jsr kernel_print_char
+cop_unknown:
+        ; v0.1 : ignore syscalls inconnus
         rti
 
 ; ════════════════════════════════════════════════════════════════════

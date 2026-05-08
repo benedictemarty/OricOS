@@ -5,6 +5,39 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-05-08
+
+### Sprint 2.f.1 — Mécanisme syscall COP (ADR-13 ratifiée)
+
+#### Added
+- **ADR-13 ratifiée** : OricOS expose ses services via `cop #$AA`
+  (signature OricOS magic). Numéro de syscall en `A`, args en `X`/`Y`.
+  Référence : GS/OS sur Apple IIgs.
+- **Segment `COP_HANDLER`** dans `kernel.cfg` à `$5700` (bank 1).
+- **`kernel_cop_handler`** (v0.1 minimal, dispatch hardcoded) :
+  - `A=$01` (SYS_PRINT_CHAR) : `X` = char → call `kernel_print_char`.
+  - Autres syscalls : ignored (rti immediat).
+  - v0.2 : table de pointers indexée par A*2 (256 syscalls max).
+
+#### Validation
+- Test au boot kernel : `ldx #'Y'; lda #$01; cop #$AA` →
+  test vérifie `mem[$BBA8] = 'Y'`.
+- 494 tests OK.
+- Démo SDL2 : "OricOS v0.7" sur ligne 1 + "Y" sur ligne 2 (résultat
+  du syscall).
+
+#### Note
+- Phosphoric supporte déjà l'opcode COP en mode N (push PB+PC+P,
+  clear PBR, vector $00FFE4). Trampoline bank 0 $0150 = JML $015700
+  installé par main.c (`--kernel`) et par `test_oricos_boot.c`.
+
+#### v0.2 (reportés)
+- Table de dispatch (à la place du `cmp #$01`).
+- Plus de syscalls (SYS_PRINT_STRING, SYS_KBD_GET, SYS_BANK_ALLOC).
+- ABI versioning (utiliser le byte signature COP comme version).
+
+---
+
 ## [0.10.0] - 2026-05-08
 
 ### Sprint 2.e.1 — Driver console générique (print_char / print_string)
