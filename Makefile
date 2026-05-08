@@ -17,14 +17,22 @@ KERNEL_MAP  = $(BUILD)/kernel.map
 KERNEL_SRC  = kernel/kernel.s
 KERNEL_CFG  = kernel/kernel.cfg
 
-.PHONY: all clean info
+APPS        = hello
+APP_BUNDLES = $(foreach a,$(APPS),apps/$(a)/build/$(a).oosobj)
 
-all: $(KERNEL_BIN)
+.PHONY: all clean info apps $(APPS)
+
+all: apps $(KERNEL_BIN)
+
+apps: $(APPS)
+
+$(APPS):
+	$(MAKE) -C apps/$@
 
 $(BUILD):
 	@mkdir -p $(BUILD)
 
-$(KERNEL_O): $(KERNEL_SRC) | $(BUILD)
+$(KERNEL_O): $(KERNEL_SRC) $(APP_BUNDLES) | $(BUILD)
 	$(AS) $(ASFLAGS) -l $(KERNEL_LST) -o $@ $<
 
 $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)
@@ -34,6 +42,7 @@ $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)
 
 clean:
 	rm -rf $(BUILD)
+	@for a in $(APPS); do $(MAKE) -C apps/$$a clean; done
 
 info:
 	@echo "OricOS build info:"

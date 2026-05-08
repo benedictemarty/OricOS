@@ -5,6 +5,51 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.20.0] - 2026-05-08
+
+### Sprint 2.m.1 — Première app asm "hello" standalone ✨
+
+#### Added
+- **`apps/hello/hello.s`** : source asm 65C816 mode N de la première
+  app standalone d'OricOS. Code position-independent : `ldx #'Z' ;
+  lda #$01 ; cop #$AA ; rtl`. Charge à `$BANK_APP:$0200`.
+- **`apps/hello/hello.cfg`** : ld65 config flat binary, segment CODE
+  loaded à `$0200`.
+- **`apps/hello/Makefile`** : pipeline build app : `ca65` → `ld65` →
+  `oricos-bundle.py` → `.oosobj`.
+- **`tools/oricos-bundle.py`** : script Python qui wrappe un binaire
+  flat dans un bundle OricOS Object v1 (header 8B + section CODE
+  entry 8B + data). Usage : `oricos-bundle.py input.bin output.oosobj`.
+- **`Makefile` racine** étendu : variable `APPS = hello`,
+  build récursif des apps avant le kernel, dependency
+  `$(KERNEL_O): ... $(APP_BUNDLES)` pour rebuild kernel quand un
+  bundle change. `make clean` aussi récursif.
+- **`kernel.s`** : `bundle_test` désormais via `.incbin
+  "../apps/hello/build/hello.oosobj"` au lieu d'inline `.byte`. Le
+  kernel embarque le bundle produit par le pipeline app externe.
+
+#### Validation
+- 501 tests OK (compteur inchangé — le test 'Z' à $BBAB passe avec
+  la nouvelle source).
+- Bundle généré : 23 bytes (8 header + 8 section entry + 7 code).
+- Pipeline build complet : source asm app → binaire flat → bundle
+  .oosobj → embedded dans kernel.bin → loaded par kernel_app_exec
+  → exec en bank dédiée → syscall print.
+
+#### Importance
+- C'est le **premier exécutable userland OricOS** dont la source vit
+  hors du kernel. Démontre la viabilité du pipeline d'apps tierces.
+- Sprint 4 (userland C llvm-mos) reposera sur le même pipeline mais
+  avec compilateur C → ld65 → oricos-bundle.
+
+#### v0.2 (reportés)
+- App avec sections multiples (CODE + DATA + ICON).
+- App avec manifest (nom, version, auteur, args).
+- 2e app de test (graphics demo, calculator).
+- llvm-mos toolchain Sprint 4.
+
+---
+
 ## [0.19.0] - 2026-05-08
 
 ### Sprint 2.l.1 — kernel_app_exec : LOADER COMPLET ✨

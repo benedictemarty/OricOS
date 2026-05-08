@@ -3,6 +3,8 @@ build/*.o
 build/*.bin
 build/*.map
 build/*.lst
+build/*.oosobj
+apps/*/build/
 *.o
 
 # Editor / OS

@@ -830,30 +830,14 @@ kernel_print_banner:
 banner_str:
         .byte "OricOS v0.7", $0A, $00
 
-; ─── Bundle test (Sprint 2.k+l) ─────────────────────────────────────
-; Format OricOS Object v1 : header + 1 section CODE.
-; Code app : ldx #'Z' ; lda #$01 ; cop #$AA ; rtl
-;            (= SYS_PRINT_CHAR avec X='Z' puis return long)
-; 7 bytes total.
+; ─── Bundle hello (Sprint 2.m.1) ────────────────────────────────────
+; Première app standalone OricOS, source asm dans `apps/hello/hello.s`,
+; buildée par ld65 + tool oricos-bundle.py → format .oosobj.
+; Embarquée ici via .incbin pour démontrer le pipeline build d'apps
+; externes au kernel.
 .export bundle_test
 bundle_test:
-        ; Header (8 bytes)
-        .byte BUNDLE_MAGIC_0, BUNDLE_MAGIC_1, BUNDLE_MAGIC_2, BUNDLE_MAGIC_3
-        .byte BUNDLE_VERSION
-        .byte $00                       ; flags
-        .byte $01                       ; num_sections = 1
-        .byte $00                       ; reserved
-        ; Section[0] entry (8 bytes) : CODE, size=7, offset=16
-        .byte BUNDLE_SEC_CODE
-        .byte $00                       ; reserved
-        .byte $07, $00                  ; size = 7 (LE)
-        .byte $10, $00                  ; offset = 16 (LE)
-        .byte $00, $00                  ; reserved
-        ; Section[0] data (offset 16 from bundle start) : app code
-        .byte $A2, 'Z'                  ; LDX #'Z'
-        .byte $A9, $01                  ; LDA #$01 (SYS_PRINT_CHAR)
-        .byte $02, $AA                  ; COP #$AA
-        .byte $6B                       ; RTL
+        .incbin "../apps/hello/build/hello.oosobj"
 
 ; ════════════════════════════════════════════════════════════════════
 ;  Driver clavier (Sprint 2.d)
