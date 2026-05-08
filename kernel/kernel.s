@@ -40,6 +40,12 @@ TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
 TICK_GOAL       = $0A           ; 10 ticks → STP
 
+; ─── Bank allocator (Sprint 2.b) ────────────────────────────────────
+BANK_NEXT       = $015450       ; prochain bank libre (uint8)
+BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
+BANK_POOL_BASE  = $04            ; premier bank du pool
+BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
+
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top
 STACK_B_TOP     = $02FF         ; bank 0, task B stack top
 
@@ -138,6 +144,18 @@ kernel_entry:
         sta TASK_B_S
         sep #$20
 
+        ; ── Sprint 2.b : init bank allocator ───────────────────────
+        lda #BANK_POOL_BASE
+        sta BANK_NEXT
+
+        ; Démo : alloue 3 banks, stocke à BANK_DEMO+0..2.
+        jsr kernel_alloc_bank
+        sta BANK_DEMO+0
+        jsr kernel_alloc_bank
+        sta BANK_DEMO+1
+        jsr kernel_alloc_bank
+        sta BANK_DEMO+2
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -161,6 +179,33 @@ kernel_entry:
 kernel_panic:
         stp
         bra *
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_alloc_bank — allocateur de bank simple (Sprint 2.b)
+; ════════════════════════════════════════════════════════════════════
+;
+; Convention : retourne le numéro de bank dans A (8-bit). Retourne 0
+; si le pool est épuisé. Pas de free list dans cette version v0.1 —
+; allocation incrémentale stricte. La libération viendra avec un
+; allocator bitmap en Sprint 2.b/v2.
+;
+; Pré-conditions : appelé en mode N M=X=1, DBR=0.
+; Modifie : A. Préserve X, Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_alloc_bank
+kernel_alloc_bank:
+        lda BANK_NEXT
+        cmp #BANK_POOL_END
+        bcs alloc_none
+        ; Réserve le bank courant et avance le compteur.
+        pha                     ; sauve la valeur à retourner
+        inc a                   ; A = current + 1
+        sta BANK_NEXT           ; BANK_NEXT advance
+        pla                     ; A = ancienne valeur (le bank alloué)
+        rts
+alloc_none:
+        lda #$00                ; convention : 0 = no free
+        rts
 
 ; ─── task_a_entry : boucle qui incrémente TASK_A_CTR ────────────────
 .export task_a_entry
