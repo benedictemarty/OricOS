@@ -554,6 +554,41 @@ kernel_entry:
         jsr kernel_fat_next_cluster
 skip_fat_read:
 
+        ; ── Sprint 2.j v0.3 : fat_read_file (multi-cluster) ──────────
+        ; Open "BIG     BIN" puis lit le fichier complet (2 clusters)
+        ; vers $01:7000. ASSERT cluster 4 (LBA 162) à $01:7000..$01:71FF
+        ; (pattern $AA), cluster 5 (LBA 163) à $01:7200..$01:73FF ($55).
+        lda #'B'
+        sta $40
+        lda #'I'
+        sta $41
+        lda #'G'
+        sta $42
+        lda #' '
+        sta $43
+        sta $44
+        sta $45
+        sta $46
+        sta $47
+        lda #'B'
+        sta $48
+        lda #'I'
+        sta $49
+        lda #'N'
+        sta $4A
+        jsr kernel_fat_open
+        lda FS_OPEN_RESULT
+        bne skip_big_read
+        ; DP_PCPTR = $01:7000 (dest fichier complet)
+        lda #$00
+        sta DP_PCPTR
+        lda #$70
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_fat_read_file
+skip_big_read:
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -908,6 +943,118 @@ kernel_fat_next_cluster:
         lda [DP_ENTRY],y
         and #$0F                        ; FAT32 = 28 bits effectifs
         sta FS_NEXT_CLUSTER+3
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fat_read_file — lit fichier complet via cluster chain (v0.3)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : FS_FOUND_CLUSTER (4B) = first cluster (résultat fat_open).
+;        DP_PCPTR (24-bit)     = destination (sera incrémentée).
+; Effets : lit cluster par cluster en suivant la chaîne FAT32 jusqu'à
+;          EOC (>= $0FFFFFF8). Chaque cluster (= 1 secteur en v0.3,
+;          SPC=1) est copié vers DP_PCPTR puis DP_PCPTR avance de 512.
+;          FS_FOUND_CLUSTER consommé/écrasé (vaut EOC à la fin).
+; v0.3 : SPC=1, fichier < 64 KiB (DP_PCPTR low+mid 16-bit, pas de
+;        propagation vers bank). Pour fichier > 64K, voir v0.4.
+; Modifie : A, X, Y, FS_BUFFER (transitoirement), FS_FOUND_CLUSTER,
+;           FS_QUERY_CLUSTER, FS_NEXT_CLUSTER, DP_PCPTR, $20-$21,
+;           $25-$27, $30-$32, DP_ENTRY.
+; Pré-cond : kernel_fat_init OK + fat_open a renseigné FS_FOUND_CLUSTER.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fat_read_file
+kernel_fat_read_file:
+        ; Sauvegarde FS_FOUND_CLUSTER initial en zp tmp $28-$2B
+        ; (read_file consomme FS_FOUND_CLUSTER en interne mais le restaure
+        ;  à la sortie, pour que l'état "fichier ouvert" reste cohérent).
+        lda FS_FOUND_CLUSTER
+        sta $28
+        lda FS_FOUND_CLUSTER+1
+        sta $29
+        lda FS_FOUND_CLUSTER+2
+        sta $2A
+        lda FS_FOUND_CLUSTER+3
+        sta $2B
+rf_loop:
+        ; Test EOC : FS_FOUND_CLUSTER >= $0FFFFFF8 ?
+        lda FS_FOUND_CLUSTER+3
+        and #$0F                        ; FAT32 = 28 bits
+        cmp #$0F
+        bne rf_not_eoc
+        lda FS_FOUND_CLUSTER+2
+        cmp #$FF
+        bne rf_not_eoc
+        lda FS_FOUND_CLUSTER+1
+        cmp #$FF
+        bne rf_not_eoc
+        lda FS_FOUND_CLUSTER
+        cmp #$F8
+        bcc rf_not_eoc                  ; A < $F8 → pas EOC
+        jmp rf_done                     ; cluster >= $0FFFFFF8 → EOC
+
+rf_not_eoc:
+        ; Lit cluster courant (FS_FOUND_CLUSTER) vers DP_PCPTR
+        jsr kernel_fat_read_cluster
+
+        ; Avance DP_PCPTR += 512 (= $0200)
+        rep #$20
+        lda DP_PCPTR
+        clc
+        adc #$0200
+        sta DP_PCPTR
+        sep #$20
+        ; (overflow vers DP_PCPTR+2 ignoré : v0.3 fichier < 64K)
+
+        ; Sauvegarde DP_PCPTR avant next_cluster (qui écrase DP_PCPTR)
+        lda DP_PCPTR
+        sta $25
+        lda DP_PCPTR+1
+        sta $26
+        lda DP_PCPTR+2
+        sta $27
+
+        ; FS_QUERY_CLUSTER = FS_FOUND_CLUSTER (input pour next_cluster)
+        lda FS_FOUND_CLUSTER
+        sta FS_QUERY_CLUSTER
+        lda FS_FOUND_CLUSTER+1
+        sta FS_QUERY_CLUSTER+1
+        lda FS_FOUND_CLUSTER+2
+        sta FS_QUERY_CLUSTER+2
+        lda FS_FOUND_CLUSTER+3
+        sta FS_QUERY_CLUSTER+3
+
+        jsr kernel_fat_next_cluster
+
+        ; Restaure DP_PCPTR (next_cluster a réutilisé DP_PCPTR pour FAT)
+        lda $25
+        sta DP_PCPTR
+        lda $26
+        sta DP_PCPTR+1
+        lda $27
+        sta DP_PCPTR+2
+
+        ; FS_FOUND_CLUSTER = FS_NEXT_CLUSTER (avance dans la chaîne)
+        lda FS_NEXT_CLUSTER
+        sta FS_FOUND_CLUSTER
+        lda FS_NEXT_CLUSTER+1
+        sta FS_FOUND_CLUSTER+1
+        lda FS_NEXT_CLUSTER+2
+        sta FS_FOUND_CLUSTER+2
+        lda FS_NEXT_CLUSTER+3
+        sta FS_FOUND_CLUSTER+3
+
+        jmp rf_loop                     ; jmp (pas bra : > 127 bytes)
+
+rf_done:
+        ; Restaure FS_FOUND_CLUSTER initial (état "fichier ouvert" cohérent).
+        lda $28
+        sta FS_FOUND_CLUSTER
+        lda $29
+        sta FS_FOUND_CLUSTER+1
+        lda $2A
+        sta FS_FOUND_CLUSTER+2
+        lda $2B
+        sta FS_FOUND_CLUSTER+3
         rts
 
 ; ════════════════════════════════════════════════════════════════════

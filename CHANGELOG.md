@@ -5,6 +5,49 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.27.0] - 2026-05-08
+
+### Sprint 2.j v0.3 — kernel_fat_read_file (multi-cluster) ✨
+
+#### Added
+- **`kernel_fat_read_file`** : lit un fichier complet en suivant la
+  chaîne FAT32 jusqu'à EOC. Boucle `read_cluster` + `next_cluster`,
+  avance `DP_PCPTR` de 512 octets entre chaque cluster.
+- API : input `FS_FOUND_CLUSTER` (4B, first cluster du fichier),
+  `DP_PCPTR` (24-bit, destination). Préserve `FS_FOUND_CLUSTER` à la
+  sortie (sauvegarde/restauration via zp tmp $28-$2B).
+- Sortie sur EOC (cluster >= $0FFFFFF8) : test 4 bytes du cluster avec
+  AND $0F sur byte 3 (FAT32 28 bits).
+- Boot kernel intégré : ouvre BIG.BIN (1024 octets, 2 clusters) puis
+  lit le fichier vers $01:7000. Cluster 4 (LBA 162, pattern $AA) +
+  cluster 5 (LBA 163, pattern $55) = 1024 octets contigus en mémoire.
+
+#### Validation
+- 503 tests OK.
+- Image SD test étendue : 164 secteurs (boot + zéros + FAT + root dir
+  avec 2 entries + 3 clusters de données).
+- ASSERTs supplémentaires :
+  - `mem[$01:7000]` = $AA (début cluster 4)
+  - `mem[$01:71FF]` = $AA (fin cluster 4, 512 octets exacts)
+  - `mem[$01:7200]` = $55 (début cluster 5, suivi de la chaîne FAT[4]→5)
+  - `mem[$01:73FF]` = $55 (fin cluster 5)
+
+#### Reportés v0.4
+- Fichiers > 64 KiB (DP_PCPTR low+mid 16-bit, propagation vers bank).
+- BPS != 512.
+- Cluster >= 16384 (FAT spread sur plusieurs secteurs).
+- Subdirectories.
+
+#### Importance architecturale
+**OricOS peut désormais charger un fichier de taille arbitraire**
+(jusqu'à 64 KiB en v0.3) depuis FAT32 SD. C'est le building block
+final pour exécuter des apps réelles : un app loader complet pourra
+charger un bundle multi-cluster, alloc autant de banks que nécessaire,
+et exécuter. La granularité 1 cluster = 1 secteur (SPC=1) est typique
+en FAT32 sur petites cartes SD.
+
+---
+
 ## [0.26.0] - 2026-05-08
 
 ### Sprint 2.j v0.2 — kernel_fat_next_cluster (cluster chain) ✨
