@@ -46,6 +46,13 @@ BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
 BANK_POOL_BASE  = $04            ; premier bank du pool
 BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 
+; ─── Driver console (Sprint 2.c) — Oric 1 screen RAM ────────────────
+; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
+; Caractère ASCII direct ; 0-31 = attribute bytes.
+SCREEN_BASE     = $00BB80
+SCREEN_SIZE     = $0460          ; 40 * 28
+SCREEN_FILL     = $20            ; espace ASCII
+
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top
 STACK_B_TOP     = $02FF         ; bank 0, task B stack top
 
@@ -103,7 +110,7 @@ kernel_entry:
         sta VERSION_BASE+1
         lda #'.'
         sta VERSION_BASE+2
-        lda #'3'
+        lda #'7'
         sta VERSION_BASE+3
         lda #$00
         sta VERSION_BASE+4
@@ -144,6 +151,10 @@ kernel_entry:
         sta TASK_B_S
         sep #$20
 
+        ; ── Sprint 2.c : clear screen + print banner ───────────────
+        jsr kernel_clear_screen
+        jsr kernel_print_banner
+
         ; ── Sprint 2.b : init bank allocator ───────────────────────
         lda #BANK_POOL_BASE
         sta BANK_NEXT
@@ -179,6 +190,63 @@ kernel_entry:
 kernel_panic:
         stp
         bra *
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_clear_screen — remplit screen RAM Oric 1 d'espaces (Sprint 2.c)
+; ════════════════════════════════════════════════════════════════════
+;
+; Boucle sur 1120 octets ($BB80-$BFE7) en bank 0. Utilise X 16-bit
+; pour parcourir l'espace complet (>256 octets).
+;
+; ════════════════════════════════════════════════════════════════════
+.export kernel_clear_screen
+kernel_clear_screen:
+        rep #$10                ; X 16-bit
+        ldx #$0000
+clr_loop:
+        cpx #SCREEN_SIZE
+        bcs clr_done
+        lda #SCREEN_FILL
+        sta SCREEN_BASE,X       ; long $lll,X  → $9F opcode
+        inx
+        bra clr_loop
+clr_done:
+        sep #$10                ; X 8-bit retour
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_print_banner — écrit "OricOS v0.7" à $00BB80 (Sprint 2.c)
+; ════════════════════════════════════════════════════════════════════
+;
+; v0.1 minimal : unrolled, 11 caractères. Une vraie routine
+; print_string générique viendra plus tard.
+;
+; ════════════════════════════════════════════════════════════════════
+.export kernel_print_banner
+kernel_print_banner:
+        lda #'O'
+        sta SCREEN_BASE+0
+        lda #'r'
+        sta SCREEN_BASE+1
+        lda #'i'
+        sta SCREEN_BASE+2
+        lda #'c'
+        sta SCREEN_BASE+3
+        lda #'O'
+        sta SCREEN_BASE+4
+        lda #'S'
+        sta SCREEN_BASE+5
+        lda #' '
+        sta SCREEN_BASE+6
+        lda #'v'
+        sta SCREEN_BASE+7
+        lda #'0'
+        sta SCREEN_BASE+8
+        lda #'.'
+        sta SCREEN_BASE+9
+        lda #'7'
+        sta SCREEN_BASE+10
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_alloc_bank — allocateur de bank simple (Sprint 2.b)
