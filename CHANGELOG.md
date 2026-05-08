@@ -5,6 +5,31 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2026-05-08
+
+### Sprint 2.h.1 — Bank allocator avec free (LIFO list)
+
+#### Added
+- **Free list LIFO 16 entries** : `BANK_FREE_LIST` ($0154A0, 16 bytes)
+  + `BANK_FREE_TOP` ($0154B0, count 0..16).
+- **`kernel_alloc_bank` étendu** : pop free list si non vide, sinon
+  bump (ancien comportement). Conserve la sémantique "0 = épuisé".
+- **`kernel_free_bank`** (nouvelle routine) : push bank num sur free
+  list, drop silencieux si pleine.
+
+#### Validation
+- Test au boot : alloc 3 ($04, $05, $06), free $05, alloc → doit
+  retourner $05 (LIFO), pas $07 (bump). Stocké à `BANK_DEMO+3`.
+- ASSERT côté test : `mem[$015463] = $05`.
+- 498 tests OK.
+
+#### v0.2 (reportés)
+- Bitmap allocator (256 bits = 32 bytes) pour fragmentation arbitraire.
+- Réservation explicite de banks (mark-as-used).
+- Compteur de banks libres exposé via syscall (SYS_BANK_COUNT_FREE).
+
+---
+
 ## [0.12.0] - 2026-05-08
 
 ### Cleanup — basculer vers opcodes natifs après fixes Phosphoric

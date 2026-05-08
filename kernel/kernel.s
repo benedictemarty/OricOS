@@ -40,11 +40,15 @@ TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
 TICK_GOAL       = $0A           ; 10 ticks → STP
 
-; ─── Bank allocator (Sprint 2.b) ────────────────────────────────────
-BANK_NEXT       = $015450       ; prochain bank libre (uint8)
+; ─── Bank allocator (Sprint 2.b/2.h) ────────────────────────────────
+BANK_NEXT       = $015450       ; prochain bank libre via bump (uint8)
 BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
 BANK_POOL_BASE  = $04            ; premier bank du pool
 BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
+
+; Sprint 2.h : free list LIFO 16 entries. alloc pop d'abord, sinon bump.
+BANK_FREE_LIST  = $0154A0       ; 16 bytes stack (banks libérés)
+BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
 
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
@@ -220,17 +224,27 @@ kernel_entry:
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
 
-        ; ── Sprint 2.b : init bank allocator ───────────────────────
+        ; ── Sprint 2.b/2.h : init bank allocator (bump + free list) ──
         lda #BANK_POOL_BASE
         sta BANK_NEXT
+        lda #$00
+        sta BANK_FREE_TOP
 
         ; Démo : alloue 3 banks, stocke à BANK_DEMO+0..2.
         jsr kernel_alloc_bank
-        sta BANK_DEMO+0
+        sta BANK_DEMO+0         ; = $04
         jsr kernel_alloc_bank
-        sta BANK_DEMO+1
+        sta BANK_DEMO+1         ; = $05
         jsr kernel_alloc_bank
-        sta BANK_DEMO+2
+        sta BANK_DEMO+2         ; = $06
+
+        ; Sprint 2.h : test free list LIFO. Free le 2e bank ($05),
+        ; puis alloc. Le prochain alloc doit retourner $05 (LIFO),
+        ; pas $07 (bump). On stocke à BANK_DEMO+3 pour vérification.
+        lda BANK_DEMO+1         ; $05
+        jsr kernel_free_bank
+        jsr kernel_alloc_bank
+        sta BANK_DEMO+3         ; doit être $05 (free list pop)
 
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
@@ -505,31 +519,58 @@ kbd_scan_loop:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
-;  kernel_alloc_bank — allocateur de bank simple (Sprint 2.b)
+;  kernel_alloc_bank / kernel_free_bank (Sprint 2.b/2.h)
 ; ════════════════════════════════════════════════════════════════════
 ;
-; Convention : retourne le numéro de bank dans A (8-bit). Retourne 0
-; si le pool est épuisé. Pas de free list dans cette version v0.1 —
-; allocation incrémentale stricte. La libération viendra avec un
-; allocator bitmap en Sprint 2.b/v2.
+; alloc : pop free list si non vide, sinon bump BANK_NEXT.
+; free  : push sur free list (drop silencieux si pleine).
+;
+; Convention :
+;   alloc : retourne A = bank num, ou 0 si épuisé.
+;   free  : A = bank num à libérer. Préserve X, Y.
 ;
 ; Pré-conditions : appelé en mode N M=X=1, DBR=0.
-; Modifie : A. Préserve X, Y.
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_alloc_bank
 kernel_alloc_bank:
+        ; Try free list first (LIFO pop)
+        lda BANK_FREE_TOP
+        beq alloc_bump          ; vide → bump
+        dec a
+        sta BANK_FREE_TOP
+        tax
+        lda BANK_FREE_LIST,X    ; A = bank libéré
+        rts
+alloc_bump:
         lda BANK_NEXT
         cmp #BANK_POOL_END
         bcs alloc_none
-        ; Réserve le bank courant et avance le compteur.
-        pha                     ; sauve la valeur à retourner
-        inc a                   ; A = current + 1
-        sta BANK_NEXT           ; BANK_NEXT advance
-        pla                     ; A = ancienne valeur (le bank alloué)
+        pha                     ; sauve valeur à retourner
+        inc a
+        sta BANK_NEXT
+        pla
         rts
 alloc_none:
-        lda #$00                ; convention : 0 = no free
+        lda #$00                ; pool épuisé
         rts
+
+.export kernel_free_bank
+kernel_free_bank:
+        ; A = bank à libérer. Push sur free list si possible.
+        pha                     ; sauve bank num
+        lda BANK_FREE_TOP
+        cmp #$10                ; full ?
+        bcs free_drop
+        tax
+        pla                     ; A = bank num
+        sta BANK_FREE_LIST,X    ; push at TOP
+        inx
+        txa
+        sta BANK_FREE_TOP       ; TOP++
+        rts
+free_drop:
+        pla                     ; pop sauve
+        rts                     ; silently drop si plein
 
 ; ─── task_a_entry : boucle qui incrémente TASK_A_CTR ────────────────
 .export task_a_entry
