@@ -50,6 +50,9 @@ BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 BANK_FREE_LIST  = $0154A0       ; 16 bytes stack (banks libérés)
 BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
 
+; ─── Modèle erreur kernel (Sprint 2.i) ──────────────────────────────
+PANIC_CODE      = $015495       ; 1 byte : dernier code panic (0 = OK)
+
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
 ; Caractère ASCII direct ; 0-31 = attribute bytes.
@@ -221,6 +224,10 @@ kernel_entry:
         lda #$01
         cop #$AA                ; signature OricOS
 
+        ; ── Sprint 2.i : test print_hex8 ───────────────────────────
+        lda #$AB
+        jsr kernel_print_hex8
+
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
 
@@ -264,11 +271,65 @@ kernel_entry:
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
 
-; ─── kernel_panic (Sprint 2+) ───────────────────────────────────────
+; ════════════════════════════════════════════════════════════════════
+;  kernel_panic — erreur fatale (Sprint 2.i)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : A = code panic (8-bit). Stocké dans PANIC_CODE pour inspection.
+; Affiche "PANIC <hex>" à l'écran via print_string + print_hex8, puis STP.
+; Pré-cond : mode N M=X=1, DBR=0, console initialisée (CURSOR_ADDR
+; valide en bank 0 screen RAM).
+; ════════════════════════════════════════════════════════════════════
 .export kernel_panic
 kernel_panic:
+        sta PANIC_CODE
+        pha                     ; sauve code
+        ; Setup DP_PTR pour panic_msg en bank 1
+        lda #$01
+        sta DP_PTR+2
+        lda #<panic_msg
+        sta DP_PTR
+        lda #>panic_msg
+        sta DP_PTR+1
+        jsr kernel_print_string
+        pla                     ; restore code
+        jsr kernel_print_hex8
         stp
         bra *
+
+panic_msg:
+        .byte "PANIC ", $00
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_print_hex8 / kernel_print_nibble (Sprint 2.i)
+; ════════════════════════════════════════════════════════════════════
+;
+; print_hex8 : args A = byte → écrit 2 chars hex via print_char.
+; print_nibble : args A 0..15 → écrit 1 char hex.
+; Préserve : Y. Modifie : A, X.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_print_hex8
+kernel_print_hex8:
+        pha                     ; save byte
+        lsr a
+        lsr a
+        lsr a
+        lsr a                   ; high nibble (0..15)
+        jsr kernel_print_nibble
+        pla                     ; restore
+        and #$0F                ; low nibble
+        ; tail-call print_nibble (sa rts retourne au caller de print_hex8)
+
+.export kernel_print_nibble
+kernel_print_nibble:
+        cmp #$0A
+        bcc nib_digit
+        clc
+        adc #$07                ; 'A'-'0'-10 = 7 → 'A'..'F'
+nib_digit:
+        clc
+        adc #'0'
+        jmp kernel_print_char   ; tail-call
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_install_charset — copie 1024 oct. fonte $015800 → $00B400

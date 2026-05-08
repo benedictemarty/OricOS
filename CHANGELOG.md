@@ -5,6 +5,36 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-05-08
+
+### Sprint 2.i.1 — Modèle erreur kernel (panic + print_hex8)
+
+#### Added
+- **`kernel_panic` (A=code)** : stocke le code dans `PANIC_CODE`
+  ($015495), affiche "PANIC <hex>" via `print_string`+`print_hex8`,
+  puis STP. Remplace l'ancien `kernel_panic` stub (juste STP).
+- **`kernel_print_hex8` (A=byte)** : écrit 2 chars hex (high/low nibble).
+  Tail-call vers `kernel_print_nibble`.
+- **`kernel_print_nibble` (A=0..15)** : écrit 1 char hex `0-9`/`A-F`,
+  tail-call vers `kernel_print_char`.
+- **`panic_msg`** : string "PANIC " ($00-terminée) en CODE segment.
+- **Test au boot** : `lda #$AB; jsr kernel_print_hex8` après le syscall
+  COP. Vérifie que `mem[$BBA9]='A'`, `mem[$BBAA]='B'`. Démo SDL2
+  affiche "YAB" sur ligne 2.
+
+#### Validation
+- 498 tests OK.
+
+#### v0.2 (reportés)
+- **Log ring buffer** (256 bytes en bank 1) : `kernel_log_byte`,
+  `kernel_log_str`. Lectur via syscall.
+- **SYS_PANIC syscall** ($02) : userland peut déclencher panic via COP.
+- **Stack trace** : trace les RTS jusqu'à kernel_entry au moment du panic.
+- **Codes panic standardisés** : enum `PANIC_NULL_PTR`, `PANIC_STACK_OVF`,
+  `PANIC_INVALID_SYSCALL`, `PANIC_BANK_EXHAUSTED`, etc.
+
+---
+
 ## [0.13.0] - 2026-05-08
 
 ### Sprint 2.h.1 — Bank allocator avec free (LIFO list)
