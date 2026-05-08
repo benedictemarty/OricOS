@@ -5,6 +5,40 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.22.0] - 2026-05-08
+
+### Sprint 2.j.2 — kernel_fat_init (signature FAT32)
+
+#### Added
+- **`kernel_fat_init`** : lit boot sector (LBA 0) via `kernel_sd_read_block`,
+  vérifie signature `"FAT32"` à offset $52 du boot sector. Retourne via
+  `FS_INIT_RESULT` ($016160) : $00 OK ou $01 BAD.
+- **Constantes `FS_BUFFER` ($015F60), `FS_INIT_RESULT` ($016160),
+  `FS_FAT32_SIG = $52`**.
+- Buffer FS distinct du buffer test sd_read_block ($015D40) — préserve
+  les ASSERT pattern A..Z du Sprint 2.j.1.
+- Test au boot : `kernel_fat_init` après `kernel_sd_read_block`.
+
+#### Validation
+- 503 tests OK (502 → +1).
+- Test `test_oricos_fat_init_validates_fat32_signature` : image FAT32
+  minimale, ASSERT mem[$015F60+$52..+$56] = "FAT32" et
+  mem[$016160] = $00.
+- Test sd_read_block étendu : sur image pattern A..Z (pas de signature),
+  ASSERT mem[$016160] = $01 (BAD).
+
+#### v0.1+ (reportés OS-2.j.3+)
+- **OS-2.j.3** : parser complet boot sector (bytes_per_sector,
+  sectors_per_cluster, reserved_sectors, num_fats, sectors_per_fat,
+  root_cluster) → calcul `first_data_sector`.
+- **OS-2.j.4** : `kernel_fat_open(filename)` lecture root dir + lookup
+  fichier 8.3.
+- **OS-2.j.5** : `kernel_fat_read(file, dest, size)` traverse FAT chain.
+- **OS-2.j.6** : intégration loader (charger app depuis SD au lieu de
+  `.incbin`).
+
+---
+
 ## [Unreleased] - 2026-05-08
 
 ### Sprint 2.j.1 — Test fonctionnel SD validé

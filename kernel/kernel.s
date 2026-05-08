@@ -188,6 +188,13 @@ VIA_PCR         = $00030C       ; Periph control (CA2/CB2 = BC1/BDIR PSG)
 VIA_IFR         = $00030D       ; Interrupt flag register
 VIA_IER         = $00030E       ; Interrupt enable register
 
+; ─── FAT32 (Sprint 2.j.2 Oric 2) — buffer + résultat ──────────────
+; Buffer 512B en bank 1 zone fill (après CHARSET). Distinct du buffer
+; sd_read_block test ($015D40) pour ne pas écraser le pattern testé.
+FS_BUFFER       = $015F60       ; 512 octets
+FS_INIT_RESULT  = $016160       ; 1 octet : 0=OK, 1=BAD
+FS_FAT32_SIG    = $52            ; offset signature "FAT32   " dans boot sector
+
 ; ─── SD device (Sprint 2.j Oric 2) — bloc 512 bytes via I/O ────────
 ; Mappé à $0320-$0327 dans bank 0 :
 ;   $0320  SD_LBA_LO   (R/W)
@@ -434,6 +441,11 @@ kernel_entry:
         jsr kernel_sd_read_block
         ; Sans SD image : 512 zéros copiés. Avec image : contenu bloc 0.
 
+        ; ── Sprint 2.j.2 : kernel_fat_init (signature FAT32) ──────
+        ; Lit boot sector dans FS_BUFFER, valide signature.
+        ; Buffer FS distinct ($5F60) → préserve test 2.j.1 à $5D40.
+        jsr kernel_fat_init
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -451,6 +463,53 @@ kernel_entry:
         ; ── Active interruptions et démarre task A ─────────────────
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fat_init — vérifie signature FAT32 du boot sector (Sprint 2.j.2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Effets : lit bloc 0 (boot sector) dans FS_BUFFER, vérifie signature
+;          "FAT32" à offset $52. FS_INIT_RESULT = $00 (OK) ou $01 (BAD).
+; Modifie : A, X, Y, FS_BUFFER, FS_INIT_RESULT, $30/$31, DP_PCPTR.
+; Pré-cond : SD device présent et image chargée.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fat_init
+kernel_fat_init:
+        ; Lit LBA 0 dans FS_BUFFER
+        lda #$00
+        sta $30
+        sta $31
+        lda #<FS_BUFFER
+        sta DP_PCPTR
+        lda #>FS_BUFFER
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_sd_read_block
+
+        ; Vérifie "FAT32" à FS_BUFFER+$52..+$56
+        lda FS_BUFFER + FS_FAT32_SIG + 0
+        cmp #'F'
+        bne fat_init_bad
+        lda FS_BUFFER + FS_FAT32_SIG + 1
+        cmp #'A'
+        bne fat_init_bad
+        lda FS_BUFFER + FS_FAT32_SIG + 2
+        cmp #'T'
+        bne fat_init_bad
+        lda FS_BUFFER + FS_FAT32_SIG + 3
+        cmp #'3'
+        bne fat_init_bad
+        lda FS_BUFFER + FS_FAT32_SIG + 4
+        cmp #'2'
+        bne fat_init_bad
+        lda #$00
+        sta FS_INIT_RESULT
+        rts
+fat_init_bad:
+        lda #$01
+        sta FS_INIT_RESULT
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_sd_read_block — lit 1 bloc 512 octets (Sprint 2.j.0)
