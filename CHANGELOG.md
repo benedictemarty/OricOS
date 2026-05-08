@@ -5,6 +5,53 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.25.0] - 2026-05-08
+
+### Sprint 2.j.5/6 — App chargée depuis SD via FAT32 ✨
+
+#### Added
+- **`kernel_fat_read_cluster`** : lit 1 cluster (v0.1, SPC=1 = 1 secteur)
+  vers `DP_PCPTR`. LBA = `FS_FDS + (FS_FOUND_CLUSTER - 2)`. Modifie A,
+  X, Y, $30/$31, FS_BUFFER (transitoirement).
+- **Boot kernel intégré** : après `fat_open` OK, lit le cluster du
+  bundle vers `$01:6200` puis appelle `kernel_app_exec` avec ce bundle.
+  L'app exécutée depuis SD écrit un 'Z' supplémentaire après le 'Z'
+  du bundle inline.
+
+#### Validation
+- 503 tests OK.
+- Image FAT32 test étendue : 162 secteurs (boot + zéros + root dir +
+  cluster 3 = bundle hello).
+- Test ASSERT après boot kernel :
+  - `mem[$01:6200..]` contient le bundle ("OOS\\x01...A2 Z..6B").
+  - `mem[$BBAB] = 'Z'` (bundle inline).
+  - `mem[$BBAC] = 'Z'` (bundle chargé depuis SD).
+- Démo SDL2 visible : "OricOS v0.7" + "YABZZ" (Y syscall + AB hex +
+  **deux Z** — premier de l'app inline, second de l'app SD).
+
+#### Importance architecturale
+**Le pipeline complet est fonctionnel** :
+1. Boot kernel.
+2. SD device émulé (Phosphoric I/O $0320-$0327).
+3. `kernel_sd_read_block` ↔ image hôte.
+4. `kernel_fat_init` valide FAT32 + parse champs.
+5. `kernel_fat_open` localise fichier 8.3 dans root dir.
+6. `kernel_fat_read_cluster` charge le contenu en mémoire.
+7. `kernel_app_exec` valide bundle + alloc bank + copy code + JSL.
+8. App exécute en bank dédiée + syscall vers kernel.
+
+**OricOS peut désormais charger et exécuter une app depuis FAT32 SD**
+sans qu'elle soit embedded dans le kernel.
+
+#### v0.2 (reportés)
+- Cluster chain traversal (fichier > 1 cluster).
+- Fichier > 32 MiB (LBA 32-bit).
+- Subdirectories.
+- Lectures partielles (offset + size).
+- Cache de blocs.
+
+---
+
 ## [0.24.0] - 2026-05-08
 
 ### Sprint 2.j.4 — kernel_fat_open (root dir lookup 8.3)

@@ -511,6 +511,32 @@ kernel_entry:
         ; Avec image + entry "HELLO   BIN" : FS_OPEN_RESULT = $00,
         ; FS_FOUND_CLUSTER + FS_FOUND_SIZE renseignés.
 
+        ; ── Sprint 2.j.5 : kernel_fat_read_cluster du cluster trouvé ──
+        ; Si fat_open OK, lit le 1er cluster du fichier vers $01:6200.
+        lda FS_OPEN_RESULT
+        bne skip_fat_read
+        lda #$00
+        sta DP_PCPTR
+        lda #$62
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_fat_read_cluster
+
+        ; ── Sprint 2.j.6 : exec app depuis bundle chargé via SD ───
+        ; DP_PTR = $01:6200 (bundle SD-loaded). kernel_app_exec validera,
+        ; trouvera la section CODE, allouera une bank et l'exécutera.
+        ; L'app écrira un autre 'Z' à $BBAC (CURSOR_ADDR avancé après
+        ; le premier 'Z' du bundle_test inline).
+        lda #$00
+        sta DP_PTR
+        lda #$62
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_exec
+skip_fat_read:
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -762,6 +788,33 @@ fop_next_entry:
 fop_not_found:
         lda #$01
         sta FS_OPEN_RESULT
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fat_read_cluster — lit 1 cluster vers dest (Sprint 2.j.5)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP_PCPTR (= $0C-$0E) = pointer 24-bit destination (déjà setup).
+;        FS_FOUND_CLUSTER = cluster à lire (4B).
+; Effets : copie 1 secteur (SPC * BPS = 512 octets en v0.1) vers dest.
+; v0.1 : assume SPC=1, FS_FDS et cluster < 65536 (16-bit arithm).
+;        Pour cluster chain réelle, voir OS-2.j.5b/v0.2.
+; Modifie : A, X, Y, $30/$31, FS_BUFFER (transitoirement).
+; Pré-cond : kernel_fat_open a renseigné FS_FOUND_CLUSTER.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fat_read_cluster
+kernel_fat_read_cluster:
+        ; LBA = FS_FDS + (FS_FOUND_CLUSTER - 2) * FS_SPC
+        ; v0.1 simplifié : SPC=1 → LBA = FS_FDS + cluster - 2.
+        rep #$20
+        lda FS_FOUND_CLUSTER
+        sec
+        sbc #$0002
+        clc
+        adc FS_FDS
+        sta $30                         ; LBA pour sd_read_block
+        sep #$20
+        jsr kernel_sd_read_block
         rts
 
 ; ════════════════════════════════════════════════════════════════════
