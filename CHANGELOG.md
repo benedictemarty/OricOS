@@ -5,6 +5,30 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.17.0] - 2026-05-08
+
+### Sprint 2.k.1 finalisé — bug Phosphoric corrigé, validate fonctionnel
+
+#### Fixed (côté Phosphoric, PH-bug-dp-indirect-Y-bank1)
+- Bug majeur 65C816 mode N : COP/BRK/IRQ/NMI/PHP/PLP/RTI manipulaient
+  P avec masque mode E qui en mode N corrompait les flags X/M (index
+  width / accumulator width).
+- Manifestation OricOS : `cop #$AA` syscall corrompait X (passait à
+  16-bit) au RTI → `ldy #$00` du caller consommait 2 bytes d'imm →
+  crash $00:0000.
+
+#### Changed (OricOS)
+- `kernel_bundle_validate` ré-activé au boot. Validate OK confirmé
+  pour `bundle_test` inline. ASSERT côté Phosphoric : `mem[$01549C]=$00`.
+- Tous les `[dp],Y` long indirects et opérations dépendantes de X/M
+  fonctionnent désormais après COP/IRQ/NMI.
+
+#### Tests
+- 501 tests OK.
+- Démo SDL2 toujours fonctionnelle.
+
+---
+
 ## [0.16.0] - 2026-05-08
 
 ### Sprint 2.k.1 — Format bundle apps (ADR-08 v0.1 partiel)

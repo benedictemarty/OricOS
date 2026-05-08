@@ -341,15 +341,15 @@ kernel_entry:
         lda #$AB
         jsr kernel_print_hex8
 
-        ; ── Sprint 2.k : bundle_validate (DÉSACTIVÉ — bug investigué) ──
-        ; Crash mystérieux entre stage 12 et stage 13 lors de
-        ; cmp #BUNDLE_MAGIC_0 + bne. Validate fonctionne dans certaines
-        ; positions de bundle_test mais pas d'autres. Hypothèse : bug
-        ; subtil Phosphoric `lda [dp],Y` quand DP_PTR_BK = $01 et offset
-        ; précis. À investiguer en isolation (test unitaire dédié).
-        ; Reportée OS-2.k.2 ; v0.1 = format spec + routine code only.
-        lda #$00
-        sta BUNDLE_VALIDATE_RES         ; placeholder OK
+        ; ── Sprint 2.k : bundle_validate (ré-activé après fix bug) ──
+        lda #$01
+        sta DP_PTR+2
+        lda #<bundle_test
+        sta DP_PTR
+        lda #>bundle_test
+        sta DP_PTR+1
+        jsr kernel_bundle_validate
+        sta BUNDLE_VALIDATE_RES
 
         ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
         jsr kernel_kbd_init
