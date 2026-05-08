@@ -33,12 +33,48 @@
 TICK_COUNTER    = $015400
 SENTINEL_BASE   = $015000
 VERSION_BASE    = $015010
-TASK_CUR        = $015432
-TASK_A_S        = $015434
-TASK_B_S        = $015436
+TASK_CUR        = $015432       ; PID actuellement RUNNING (1..16)
 TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
 TICK_GOAL       = $0A           ; 10 ticks → STP
+
+; ─── ADR-14 : Table TCB (Sprint 2.g) ────────────────────────────────
+; 16 TCBs × 20 bytes = 320 octets en bank 1 à $5C00.
+; Bitmap free 2 octets à $5B00 (16 bits).
+TCB_TABLE_BASE  = $015C00
+TCB_BITMAP      = $015B00       ; 2 bytes : bit set = slot occupé
+TCB_SIZE        = 20            ; bytes par TCB
+TCB_MAX         = 16            ; tasks max
+
+; Offsets dans un TCB
+TCB_PID         = 0
+TCB_STATE       = 1
+TCB_PRIO        = 2
+TCB_PARENT      = 3
+TCB_S_LO        = 4
+TCB_S_HI        = 5
+TCB_PC_LO       = 6
+TCB_PC_HI       = 7
+TCB_PB          = 8
+TCB_DB          = 9
+TCB_STACK_BANK  = 10
+TCB_FLAGS       = 11
+TCB_NAME        = 12            ; 8 bytes
+
+; Task states
+TASK_STATE_DEAD     = 0
+TASK_STATE_READY    = 1
+TASK_STATE_RUNNING  = 2
+TASK_STATE_BLOCKED  = 3
+TASK_STATE_ZOMBIE   = 4
+
+; v0.1 : alias pour les 2 premiers TCBs (task A=PID1, task B=PID2)
+TCB_1           = TCB_TABLE_BASE                ; $015C00
+TCB_2           = TCB_TABLE_BASE + TCB_SIZE     ; $015C14
+TCB_1_S         = TCB_1 + TCB_S_LO              ; $015C04 (16-bit)
+TCB_2_S         = TCB_2 + TCB_S_LO              ; $015C18
+TCB_1_STATE     = TCB_1 + TCB_STATE
+TCB_2_STATE     = TCB_2 + TCB_STATE
 
 ; ─── Bank allocator (Sprint 2.b/2.h) ────────────────────────────────
 BANK_NEXT       = $015450       ; prochain bank libre via bump (uint8)
@@ -181,7 +217,51 @@ kernel_entry:
         sta TICK_COUNTER
         sta TASK_A_CTR
         sta TASK_B_CTR
-        sta TASK_CUR            ; current = 0 (task A)
+        ; ADR-14 : init TCB table + bitmap (16 slots).
+        ; Bitmap : bits 0,1,2 set ($07) — slot 0 invalid + TCB_1 + TCB_2.
+        lda #$07
+        sta TCB_BITMAP
+        lda #$00
+        sta TCB_BITMAP+1
+        ; TCB_1 (task A, current/RUNNING).
+        lda #$01
+        sta TCB_1+TCB_PID
+        lda #TASK_STATE_RUNNING
+        sta TCB_1+TCB_STATE
+        lda #$00
+        sta TCB_1+TCB_PRIO
+        sta TCB_1+TCB_PARENT
+        sta TCB_1+TCB_S_LO      ; saved_S sera mis à jour au 1er IRQ
+        sta TCB_1+TCB_S_HI
+        sta TCB_1+TCB_DB
+        sta TCB_1+TCB_STACK_BANK
+        sta TCB_1+TCB_FLAGS
+        lda #<task_a_entry
+        sta TCB_1+TCB_PC_LO
+        lda #>task_a_entry
+        sta TCB_1+TCB_PC_HI
+        lda #$01
+        sta TCB_1+TCB_PB
+        ; TCB_2 (task B, READY).
+        lda #$02
+        sta TCB_2+TCB_PID
+        lda #TASK_STATE_READY
+        sta TCB_2+TCB_STATE
+        lda #$00
+        sta TCB_2+TCB_PRIO
+        sta TCB_2+TCB_PARENT
+        sta TCB_2+TCB_DB
+        sta TCB_2+TCB_STACK_BANK
+        sta TCB_2+TCB_FLAGS
+        lda #<task_b_entry
+        sta TCB_2+TCB_PC_LO
+        lda #>task_b_entry
+        sta TCB_2+TCB_PC_HI
+        lda #$01
+        sta TCB_2+TCB_PB
+        ; CUR_PID = 1 (task A).
+        lda #$01
+        sta TASK_CUR
 
         ; ── Pré-init stack task B avec frame d'interrupt fake ──────
         ; Layout (mode N : hw push 4 bytes, handler push 3 bytes) :
@@ -206,10 +286,10 @@ kernel_entry:
         lda #$01
         sta $0002FB             ; PB
 
-        ; task_b_S = $02F4 (16-bit store)
+        ; TCB_2.saved_S = $02F4 (frame fake task B).
         rep #$20
         lda #$02F4
-        sta TASK_B_S
+        sta TCB_2_S
         sep #$20
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
@@ -732,29 +812,40 @@ kernel_irq_handler:
         bra *
 
 do_switch:
-        ; ── Sauve S courant dans task_X_S, charge l'autre ──────────
+        ; ── ADR-14 : sauve S dans TCB[CUR].saved_S, charge TCB[NEXT] ──
+        ; v0.1 : 2 tasks fixes. CUR ∈ {1, 2}. NEXT = 3 - CUR.
         lda TASK_CUR
-        bne switch_to_a
+        cmp #$01                ; CUR == 1 (task A) ?
+        bne switch_from_2
 
-        ; current = 0 (A) → sauve dans TASK_A_S, charge TASK_B_S
+        ; CUR=1 → save TCB_1, load TCB_2
         rep #$20
-        tsc                     ; C = S (16-bit)
-        sta TASK_A_S
-        lda TASK_B_S
-        tcs                     ; S = C
+        tsc
+        sta TCB_1_S
+        lda TCB_2_S
+        tcs
         sep #$20
-        lda #$01
+        lda #TASK_STATE_READY
+        sta TCB_1_STATE
+        lda #TASK_STATE_RUNNING
+        sta TCB_2_STATE
+        lda #$02
         sta TASK_CUR
         bra restore_and_return
 
-switch_to_a:
+switch_from_2:
+        ; CUR=2 → save TCB_2, load TCB_1
         rep #$20
         tsc
-        sta TASK_B_S
-        lda TASK_A_S
+        sta TCB_2_S
+        lda TCB_1_S
         tcs
         sep #$20
-        lda #$00
+        lda #TASK_STATE_READY
+        sta TCB_2_STATE
+        lda #TASK_STATE_RUNNING
+        sta TCB_1_STATE
+        lda #$01
         sta TASK_CUR
 
 restore_and_return:

@@ -5,6 +5,45 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-05-08
+
+### Sprint 2.g.1 — Refactor scheduler vers TCB-based (ADR-14)
+
+#### Added
+- **ADR-14 ratifiée** : table fixe 16 TCBs en bank 1 $5C00 + bitmap free
+  16 bits à $5B00. Layout TCB 20 octets (PID, STATE, PRIO, PARENT,
+  saved_S, entry_pc, code_bank, data_bank, stack_bank, flags, name 8B).
+- **Constantes TCB_*** : offsets champs, états (DEAD/READY/RUNNING/
+  BLOCKED/ZOMBIE), alias TCB_1/TCB_2/TCB_1_S/TCB_2_S pour les 2
+  premiers slots.
+- **Init au boot** : bitmap `$07` (slot 0 invalide + TCB_1 + TCB_2).
+  TCB_1 init RUNNING (task A), TCB_2 init READY (task B). Champs
+  PID/STATE/PRIO/PARENT/PC/PB/DB tous initialisés. saved_S task B = $02F4.
+
+#### Changed
+- **`TASK_CUR`** sémantique : 0/1 → 1/2 (PID 1=task A, 2=task B).
+- **Scheduler `do_switch`** refactor : sauve dans `TCB_1_S`/`TCB_2_S`
+  au lieu de `TASK_A_S`/`TASK_B_S`. Met à jour les `STATE` des TCBs
+  (READY ↔ RUNNING) à chaque swap.
+- **Symboles `TASK_A_S`/`TASK_B_S`** retirés (remplacés par
+  TCB_1_S/TCB_2_S).
+
+#### Validation
+- Test 2.a `test_oricos_sprint2a_via_t1_timer_drives_scheduler` : PASS.
+- Test visuel `test_oricos_visual_matches_golden` : PASS pixel-identique
+  au golden — preuve que le comportement est strictement préservé.
+- 501 tests OK (compteur inchangé).
+
+#### v0.2 (reportés)
+- `kernel_task_create` dynamique (alloc PID via bitmap scan, init TCB
+  depuis args, alloc stack page).
+- `kernel_task_destroy` (set STATE=DEAD, clear bitmap bit).
+- `kernel_task_yield` syscall.
+- Scheduler avec priorité réelle (skip basse-prio si haute-prio READY).
+- N tasks > 2 dans le test.
+
+---
+
 ## [0.14.0] - 2026-05-08
 
 ### Sprint 2.i.1 — Modèle erreur kernel (panic + print_hex8)
