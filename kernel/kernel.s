@@ -188,6 +188,21 @@ VIA_PCR         = $00030C       ; Periph control (CA2/CB2 = BC1/BDIR PSG)
 VIA_IFR         = $00030D       ; Interrupt flag register
 VIA_IER         = $00030E       ; Interrupt enable register
 
+; ─── SD device (Sprint 2.j Oric 2) — bloc 512 bytes via I/O ────────
+; Mappé à $0320-$0327 dans bank 0 :
+;   $0320  SD_LBA_LO   (R/W)
+;   $0321  SD_LBA_MID  (R/W)
+;   $0322  SD_LBA_HI   (R/W)
+;   $0323  SD_CTRL     (R/W) — bit 0 = read trigger, bit 7 = busy
+;   $0324  SD_DATA     (R)   — auto-increment lecture buffer
+SD_LBA_LO       = $000320
+SD_LBA_MID      = $000321
+SD_LBA_HI       = $000322
+SD_CTRL         = $000323
+SD_DATA         = $000324
+SD_CTRL_READ    = $01
+SD_CTRL_BUSY    = $80
+
 ; ─── Driver clavier (Sprint 2.d) ────────────────────────────────────
 ; Matrice 8x8, scan via VIA ORB[0:2] (col select) + PSG R14 (rows).
 ; PSG bus : VIA CA2 = BC1, VIA CB2 = BDIR.
@@ -405,6 +420,20 @@ kernel_entry:
         jsr kernel_app_exec
         ; App exec : 'Z' écrit à $BBAB.
 
+        ; ── Sprint 2.j.0 : test kernel_sd_read_block ──────────────
+        ; LBA = 0 (premier bloc), dest = $01:5D40 (zone libre bank 1).
+        lda #$00
+        sta $30                         ; LBA_LO
+        sta $31                         ; LBA_HI (pour le moment 16-bit)
+        lda #$40
+        sta DP_PCPTR
+        lda #$5D
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_sd_read_block
+        ; Sans SD image : 512 zéros copiés. Avec image : contenu bloc 0.
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40
@@ -422,6 +451,53 @@ kernel_entry:
         ; ── Active interruptions et démarre task A ─────────────────
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_sd_read_block — lit 1 bloc 512 octets (Sprint 2.j.0)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : LBA dans X 16-bit (low 16 bits — v0.1 supporte 16M blocs).
+;        DP_PCPTR ($0C-$0E) = pointer 24-bit destination.
+; Effets : copie 512 octets du bloc LBA vers [DP_PCPTR..+511].
+; Modifie : A, X, Y. Préserve : nothing.
+; Pré-cond : mode N M=1 X=1, DBR=0, SD device présent.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_sd_read_block
+kernel_sd_read_block:
+        ; LBA en X 16-bit (mais on est en X=1 8-bit). Utiliser DP zp tmp.
+        ; Convention v0.1 : caller stocke LBA 16-bit en $30/$31, bit 16-23 = 0.
+        ; (extension future : 24-bit en $32 si besoin de SD > 32 MiB).
+        lda $30
+        sta SD_LBA_LO
+        lda $31
+        sta SD_LBA_MID
+        lda #$00
+        sta SD_LBA_HI
+
+        ; Trigger read (synchrone, busy=0 immédiat dans Phosphoric stub)
+        lda #SD_CTRL_READ
+        sta SD_CTRL
+
+        ; Wait busy clear (pour cibles asynchrones futures)
+sd_wait:
+        lda SD_CTRL
+        and #SD_CTRL_BUSY
+        bne sd_wait
+
+        ; Copy 512 bytes from SD_DATA to [DP_PCPTR],Y
+        ; Y 16-bit pour parcourir 512 bytes.
+        rep #$10                ; X 16-bit (Y aussi)
+        ldy #$0000
+sd_copy:
+        cpy #$0200              ; 512
+        bcs sd_done
+        lda SD_DATA             ; auto-increment côté device
+        sta [DP_PCPTR],Y
+        iny
+        bra sd_copy
+sd_done:
+        sep #$10
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_bundle_find_code — trouve la section CODE (Sprint 2.l)

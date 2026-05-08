@@ -5,6 +5,36 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.21.0] - 2026-05-08
+
+### Sprint 2.j.0 — Driver bloc SD minimal
+
+#### Added
+- **`kernel_sd_read_block`** : lecture d'un bloc 512 octets via le device
+  SD émulé (mappé à `$0320-$0327` en bank 0).
+- **Convention v0.1** : LBA 16-bit en zero page `$30`/`$31`, destination
+  via `DP_PCPTR` (24-bit pointer en `$0C-$0E`). Bit 16-23 du LBA ignoré
+  (max 32 MiB en v0.1, à étendre).
+- **Constantes SD_LBA_LO/MID/HI/CTRL/DATA** + `SD_CTRL_READ`/`SD_CTRL_BUSY`.
+- Test au boot : `kernel_sd_read_block(LBA=0, dest=$01:5D40)`. Sans
+  image SD : copie 512 zéros (no-op fonctionnel). Avec image : lit
+  bloc 0.
+
+#### Validation
+- 501 tests OK (pas de régression).
+- Sans crash quand sd_read_block appelé sans image SD active.
+- Test fonctionnel avec image réelle reporté OS-2.j.1.
+
+#### v0.1+ (reportés)
+- **OS-2.j.1** : test fonctionnel avec image SD réelle (FAT32 ou raw).
+- **OS-2.j.2** : parser FAT32 boot sector + root dir lookup.
+- **OS-2.j.3** : `kernel_fat_open(filename)` lecture fichier.
+- **OS-2.j.4** : intégration loader (charger app depuis SD au lieu de
+  `.incbin` dans kernel.bin).
+- LBA 24-bit (8 GiB), écriture, asynchrone busy.
+
+---
+
 ## [0.20.0] - 2026-05-08
 
 ### Sprint 2.m.1 — Première app asm "hello" standalone ✨
