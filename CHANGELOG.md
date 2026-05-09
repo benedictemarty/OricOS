@@ -5,6 +5,69 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.38.0] - 2026-05-09
+
+### Sprint GPU-3 v0.3 — kernel_gfx_text + démo "OS" titlebar ✨✨
+
+#### Added
+- **`kernel_gfx_text`** : 5e helper kernel utilisant GPU TEXT.
+  Args ZP : GFX_BASE, GFX_FONT_LO/MID/HI ($79-$7B), GFX_STR_LO/MID/HI
+  ($7C-$7E), GFX_ARG2_LO=x, GFX_ARG2_MID=y, GFX_COLOR.
+- **API kernel_gfx_* 100% complète** (5/5 commandes) :
+  - kernel_gfx_clear ✅
+  - kernel_gfx_fill_rect ✅
+  - kernel_gfx_blit ✅
+  - kernel_gfx_line ✅
+  - **kernel_gfx_text ✅** (NEW)
+- Mini-fonte 8×8 embedded en bank 1 : `mini_font_O` + `mini_font_S`.
+- String embedded : `mini_text_OS` ('O', 'S', 0).
+
+#### Boot kernel intégré (démo titre)
+1. **Pré-charger** bitmap 'O' à SDRAM[$001278] (= font + 'O'×8) via
+   `kernel_vram_write_block` (3 octets sources → 8 octets dest).
+2. **Pré-charger** bitmap 'S' à SDRAM[$001298].
+3. **Pré-charger** string "OS\\0" à SDRAM[$002000].
+4. **TEXT(base=$00C000, font=$001000, str=$002000, x=24, y=11,
+   color=15)** : écrit "OS" en blanc sur la titlebar bleue de window 1.
+
+#### Validation
+- 541 tests OK (inchangé en compte ; nouveaux ASSERTs ajoutés au test
+  existant).
+- Test `test_oricos_window_draw` étendu : 6 ASSERTs supplémentaires
+  pour le texte (pixels (25,11) et (30,11) du 'O' + (33,11) et
+  (38,11) du 'S' = white ; (24,11) et (31,11) frontières = blue).
+- ASSERT précédent (titlebar pixel (30,11)=blue) déplacé à
+  (60,11)=blue car la zone "OS" couvre x=24..39.
+
+#### Démo PPM visualisable
+**Le PPM `/tmp/oricos_window_xvga.ppm`** affiche maintenant :
+- Window 1 (20, 10) avec **"OS"** en blanc dans la titlebar bleue.
+- Window 2 (50, 80) clone via BLIT, titlebar verte.
+
+#### Pipeline complet end-to-end
+```
+Boot kernel asm (65C816)
+  ├─ kernel_vram_write_block × 3 (font 'O', font 'S', string "OS")
+  └─ kernel_gfx_text(base, font, str, x, y, color)
+       → I/O ports $0340-$034F
+       → gpu_device GPU_OP_TEXT exec
+       → vram_peek bitmaps + gpu_set_pixel × N pixels
+       → SDRAM 16 MiB
+       → ASSERTs pixel par pixel + PPM dump visible
+```
+
+#### État Sprint 3 / API GPU
+- ADR-21 : 100% commandes implémentées (Phosphoric + kernel API).
+- API kernel_gfx_* : 5/5 helpers ✅.
+- SP-GPU-3 v0.3 ✅ clos.
+
+#### Reportés
+- v0.4 : color_bg pour TEXT (background au lieu de transparency).
+- v0.4 : fonte taille variable (4×6, 16×16).
+- SP-3.c v0.3 : window list / TCB par fenêtre, true drag, close.
+
+---
+
 ## [0.37.0] - 2026-05-09
 
 ### Sprint 3.c v0.2 — Multi-fenêtre via BLIT (clone) ✨

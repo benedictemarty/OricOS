@@ -303,6 +303,7 @@ GPU_OP_CLEAR     = $01
 GPU_OP_FILL_RECT = $02
 GPU_OP_BLIT      = $03
 GPU_OP_LINE      = $04
+GPU_OP_TEXT      = $05
 GPU_STATUS_BUSY  = $80
 GPU_STATUS_ERR   = $40
 
@@ -333,6 +334,13 @@ GFX_ARG2_HI      = $75           ; clear: size_hi  | rect: unused
 GFX_ARG3_LO      = $76           ; clear: unused   | rect: w
 GFX_ARG3_MID     = $77           ; clear: unused   | rect: h
 GFX_COLOR        = $78           ; couleur 4-bit (0..15)
+; ZP additionnels TEXT (en plus de BASE/ARG2_LO=x/ARG2_MID=y/COLOR)
+GFX_FONT_LO      = $79           ; font_addr 24-bit
+GFX_FONT_MID     = $7A
+GFX_FONT_HI      = $7B
+GFX_STR_LO       = $7C           ; string_addr 24-bit (null-terminated)
+GFX_STR_MID      = $7D
+GFX_STR_HI       = $7E
 
 ; ─── VRAM cold device I/O (ADR-19, Sprint VRAM-2) ──────────────────
 ; Ports $0330-$033C en bank 0 (DBR=0).
@@ -676,6 +684,93 @@ kernel_entry:
         lda #$02
         sta GFX_COLOR                   ; color = 2 (green)
         jsr kernel_gfx_fill_rect
+
+        ; ── Sprint GPU-3 v0.3 : démo kernel_gfx_text ──────────────
+        ; 1. Pré-charger bitmap 'O' à SDRAM[$001000 + 'O'*8 = $001278]
+        ;    via kernel_vram_write_block (depuis bank 1 mini_font_O).
+        lda #<mini_font_O
+        sta DP_PCPTR
+        lda #>mini_font_O
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #$78
+        sta VRAM_OP_ADDR_LO
+        lda #$12
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI
+        lda #$08
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
+        ; 2. Pré-charger bitmap 'S' à SDRAM[$001000 + 'S'*8 = $001298]
+        lda #<mini_font_S
+        sta DP_PCPTR
+        lda #>mini_font_S
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #$98
+        sta VRAM_OP_ADDR_LO
+        lda #$12
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI
+        lda #$08
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
+        ; 3. Pré-charger string "OS\\0" à SDRAM[$002000]
+        lda #<mini_text_OS
+        sta DP_PCPTR
+        lda #>mini_text_OS
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #$00
+        sta VRAM_OP_ADDR_LO
+        lda #$20
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI
+        lda #$03
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
+        ; 4. TEXT(base=$00C000, font=$001000, str=$002000, x=24, y=11,
+        ;    color=15) : écrit "OS" en blanc dans la titlebar de window 1.
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$C0
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = $00C000
+        lda #$00
+        sta GFX_FONT_LO
+        lda #$10
+        sta GFX_FONT_MID
+        lda #$00
+        sta GFX_FONT_HI                 ; font = $001000
+        lda #$00
+        sta GFX_STR_LO
+        lda #$20
+        sta GFX_STR_MID
+        lda #$00
+        sta GFX_STR_HI                  ; str = $002000
+        lda #24
+        sta GFX_ARG2_LO                 ; x = 24
+        lda #11
+        sta GFX_ARG2_MID                ; y = 11 (1 px sous frame top y=10)
+        lda #$0F
+        sta GFX_COLOR                   ; color = 15 (white)
+        jsr kernel_gfx_text
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -2253,6 +2348,30 @@ pattern_table:
 vram_test_str:
         .byte 'V', 'R', 'A', 'M'
 
+; ─── Mini-fonte 8×8 pour Sprint GPU-3 v0.3 (chars 'O' et 'S') ─────
+mini_font_O:
+        .byte $7E       ; 01111110
+        .byte $E7       ; 11100111
+        .byte $C3       ; 11000011
+        .byte $C3       ; 11000011
+        .byte $C3       ; 11000011
+        .byte $E7       ; 11100111
+        .byte $7E       ; 01111110
+        .byte $00       ; 00000000
+
+mini_font_S:
+        .byte $7E       ; 01111110
+        .byte $C0       ; 11000000
+        .byte $E0       ; 11100000
+        .byte $7E       ; 01111110
+        .byte $07       ; 00000111
+        .byte $03       ; 00000011
+        .byte $7E       ; 01111110
+        .byte $00       ; 00000000
+
+mini_text_OS:
+        .byte 'O', 'S', $00
+
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_fill_rect_aligned — rectangle 8-px-aligned X (Sprint 3.b v0.2)
 ; ════════════════════════════════════════════════════════════════════
@@ -2721,6 +2840,66 @@ gfx_line_wait:
         inx
         bne gfx_line_wait
 gfx_line_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_text — exec GPU TEXT via I/O (Sprint GPU-3 v0.3)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP :
+;   GFX_BASE_LO/MID/HI ($70-$72) = base SDRAM framebuffer.
+;   GFX_FONT_LO/MID/HI ($79-$7B) = font_addr 24-bit (256 chars × 8B).
+;   GFX_STR_LO/MID/HI  ($7C-$7E) = string_addr 24-bit (null-term).
+;   GFX_ARG2_LO        ($73)     = x (8-bit).
+;   GFX_ARG2_MID       ($74)     = y (8-bit).
+;   GFX_COLOR          ($78)     = couleur fg (4-bit).
+; Effets : rendu fonte 8×8 monochrome via GPU TEXT. Pixels OFF du
+;          bitmap = laissés intacts (pas de color_bg en v0.1).
+;          Max 255 caractères.
+; Modifie : A, X. Préserve : Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_text
+kernel_gfx_text:
+        ; ARG1 = base
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2 = font_addr
+        lda GFX_FONT_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_FONT_MID
+        sta GPU_ARG2_MID_IO
+        lda GFX_FONT_HI
+        sta GPU_ARG2_HI_IO
+        ; ARG3 = string_addr
+        lda GFX_STR_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_STR_MID
+        sta GPU_ARG3_MID_IO
+        lda GFX_STR_HI
+        sta GPU_ARG3_HI_IO
+        ; ARG4.LO = x, .MID = y, .HI = color
+        lda GFX_ARG2_LO
+        sta GPU_ARG4_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG4_MID_IO
+        lda GFX_COLOR
+        sta GPU_ARG4_HI_IO
+        ; CMD_OP = TEXT, trigger
+        lda #GPU_OP_TEXT
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        ldx #$00
+gfx_text_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_text_done
+        inx
+        bne gfx_text_wait
+gfx_text_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
