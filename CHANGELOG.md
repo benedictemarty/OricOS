@@ -5,6 +5,48 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.31.0] - 2026-05-09
+
+### Sprint VRAM-2 — kernel API vram_* (ADR-19) ✨
+
+#### Added
+- **`kernel_vram_write_block`** : copie RAM banking → VRAM cold via
+  I/O port `VRAM_DATA` avec auto-increment HW. Args ZP : DP_PCPTR
+  source, VRAM_OP_ADDR (24-bit), VRAM_OP_LEN (16-bit).
+- **`kernel_vram_read_block`** : VRAM cold → RAM banking. Mêmes args.
+- **`kernel_vram_dma`** : trigger DMA HW SDRAM↔bank. Args ZP :
+  VRAM_DMA_SRC (24-bit), DST (24-bit), LEN (16-bit, 0=64K), DIR
+  (0=SDRAM→bank, $02=bank→SDRAM). Polling `busy` bit après trigger.
+- Constantes I/O : VRAM_*_IO ($000330-$00033C), VRAM_DMA_TRIG/DIR/BUSY.
+- ZP args : $60-$64 (write/read_block), $65-$6D (dma).
+
+#### Boot kernel intégré
+Tests en séquence après fill_rect_aligned :
+1. **write_block** : "VRAM" embedded (data `vram_test_str`) → SDRAM[$001000].
+2. **read_block** : SDRAM[$002000] (pré-rempli "ABCD" côté C) → bank $04:0500.
+3. **dma** : bank $04:0500 → SDRAM[$003000], 4 bytes (DIR=bank→SDRAM).
+
+#### Validation
+- 525 tests OK (524 → 525, +1).
+- Test `test_oricos_vram_write_read_dma` : ASSERT
+  - vram[$001000..3] = "VRAM" (write_block)
+  - mem[$04:0500..3] = "ABCD" (read_block)
+  - vram[$003000..3] = "ABCD" (dma)
+
+#### Reportés v0.2
+- Helper `kernel_vram_alloc(size)` retourne adresse 24-bit (allocator
+  bumb-only ou bitmap).
+- Wrapper `kernel_vram_blit(src_24, dst_24, w, h)` pour copier des
+  rectangles 2D entre fenêtres backing.
+
+#### Importance architecturale
+**Premier code kernel utilisant l'I/O VRAM cold.** Les Sprints
+suivants (SP-VRAM-3 refactor allocator, SP-3.c window manager)
+peuvent maintenant s'appuyer sur ces helpers comme primitives de
+base pour gérer les backing-stores fenêtres.
+
+---
+
 ## [0.30.0] - 2026-05-09
 
 ### Sprint 3.b v0.2 — kernel_fill_rect_aligned ✨ (+ fix Phosphoric)

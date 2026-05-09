@@ -267,6 +267,42 @@ PCR_READ_DATA   = $AE
 PCR_INACTIVE    = $AA
 KBD_MATRIX      = $015470       ; 8 octets bank 1 (col 0..7 active low)
 
+; ─── VRAM cold device I/O (ADR-19, Sprint VRAM-2) ──────────────────
+; Ports $0330-$033C en bank 0 (DBR=0).
+VRAM_ADDR_LO_IO     = $000330
+VRAM_ADDR_MID_IO    = $000331
+VRAM_ADDR_HI_IO     = $000332
+VRAM_DATA_IO        = $000333
+VRAM_DMA_CTRL_IO    = $000334
+VRAM_DMA_SRC_LO_IO  = $000335
+VRAM_DMA_SRC_MID_IO = $000336
+VRAM_DMA_SRC_HI_IO  = $000337
+VRAM_DMA_DST_LO_IO  = $000338
+VRAM_DMA_DST_MID_IO = $000339
+VRAM_DMA_DST_HI_IO  = $00033A
+VRAM_DMA_LEN_LO_IO  = $00033B
+VRAM_DMA_LEN_HI_IO  = $00033C
+VRAM_DMA_TRIG       = $01       ; bit 0 trigger DMA
+VRAM_DMA_DIR        = $02       ; bit 1 : 0=SDRAM→bank, 1=bank→SDRAM
+VRAM_DMA_BUSY       = $80       ; R bit 7 : busy flag
+
+; ZP args pour kernel_vram_write_block / kernel_vram_read_block
+VRAM_OP_ADDR_LO     = $60       ; SDRAM addr 24-bit
+VRAM_OP_ADDR_MID    = $61
+VRAM_OP_ADDR_HI     = $62
+VRAM_OP_LEN_LO      = $63       ; longueur 16-bit (LEN=0 supportée par DMA mais pas write/read_block)
+VRAM_OP_LEN_HI      = $64
+; ZP args pour kernel_vram_dma
+VRAM_DMA_SRC_LO_ZP  = $65       ; source 24-bit
+VRAM_DMA_SRC_MID_ZP = $66
+VRAM_DMA_SRC_HI_ZP  = $67
+VRAM_DMA_DST_LO_ZP  = $68       ; destination 24-bit
+VRAM_DMA_DST_MID_ZP = $69
+VRAM_DMA_DST_HI_ZP  = $6A
+VRAM_DMA_LEN_LO_ZP  = $6B       ; longueur 16-bit (0 → 65 536)
+VRAM_DMA_LEN_HI_ZP  = $6C
+VRAM_DMA_DIR_ZP     = $6D       ; 0=SDRAM→bank, VRAM_DMA_DIR=bank→SDRAM
+
 ; ─── Période timer T1 (cycles entre IRQ) ────────────────────────────
 ; Sprint 2.d : passé de 512 → 4096 cycles. L'IRQ handler avec
 ; kernel_kbd_scan dure ~830 cycles ; à 512 cycles de période,
@@ -339,6 +375,68 @@ kernel_entry:
         lda #$01                ; red
         sta HIRES2_RECT_COL
         jsr kernel_fill_rect_aligned
+
+        ; ── Sprint VRAM-2 : exerce kernel_vram_* helpers ───────────
+        ; Test 1 : write_block 4 bytes "VRAM" depuis bank 1 vers SDRAM[$001000].
+        ; Source : zone bank 1 où "VRAM" est embedded plus bas (vram_test_str).
+        lda #<vram_test_str
+        sta DP_PCPTR
+        lda #>vram_test_str
+        sta DP_PCPTR+1
+        lda #$01                        ; bank 1 (segment CODE)
+        sta DP_PCPTR+2
+        lda #$00
+        sta VRAM_OP_ADDR_LO
+        lda #$10
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI             ; SDRAM addr = $001000
+        lda #$04
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI              ; len = 4
+        jsr kernel_vram_write_block
+
+        ; Test 2 : read_block depuis SDRAM[$002000] (pré-rempli côté C
+        ; avec "ABCD") vers bank 4 $0500.
+        lda #$00
+        sta DP_PCPTR
+        lda #$05
+        sta DP_PCPTR+1
+        lda #$04                        ; bank 4
+        sta DP_PCPTR+2
+        lda #$00
+        sta VRAM_OP_ADDR_LO
+        lda #$20
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI             ; SDRAM addr = $002000
+        lda #$04
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI              ; len = 4
+        jsr kernel_vram_read_block
+
+        ; Test 3 : DMA bank $04:0500 → SDRAM[$003000], 4 bytes.
+        lda #$00
+        sta VRAM_DMA_SRC_LO_ZP
+        lda #$05
+        sta VRAM_DMA_SRC_MID_ZP
+        lda #$04
+        sta VRAM_DMA_SRC_HI_ZP          ; src = bank $04:0500
+        lda #$00
+        sta VRAM_DMA_DST_LO_ZP
+        lda #$30
+        sta VRAM_DMA_DST_MID_ZP
+        lda #$00
+        sta VRAM_DMA_DST_HI_ZP          ; dst = SDRAM $003000
+        lda #$04
+        sta VRAM_DMA_LEN_LO_ZP
+        lda #$00
+        sta VRAM_DMA_LEN_HI_ZP          ; len = 4
+        lda #VRAM_DMA_DIR               ; bank → SDRAM
+        sta VRAM_DMA_DIR_ZP
+        jsr kernel_vram_dma
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -1841,6 +1939,10 @@ pattern_table:
         .byte $DB, $6D, $B6     ; 6 cyan
         .byte $FF, $FF, $FF     ; 7 white
 
+; Source pour test write_block (Sprint VRAM-2 boot kernel).
+vram_test_str:
+        .byte 'V', 'R', 'A', 'M'
+
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_fill_rect_aligned — rectangle 8-px-aligned X (Sprint 3.b v0.2)
 ; ════════════════════════════════════════════════════════════════════
@@ -1979,6 +2081,116 @@ fra_eol:
         bne fra_line
 
 fra_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_vram_write_block — RAM banking → VRAM cold (Sprint VRAM-2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : DP_PCPTR (24-bit) = source en RAM banking.
+;        VRAM_OP_ADDR_LO/MID/HI ($60-$62) = destination SDRAM 24-bit.
+;        VRAM_OP_LEN_LO/HI ($63-$64) = nombre d'octets (16-bit, 1..65535
+;        ; len=0 → no-op, contrairement au DMA qui interprète 0=64K).
+; Effets : copie len octets via I/O port VRAM_DATA (auto-inc côté HW).
+; Modifie : A, X, Y, $63 (write 0). Préserve DP_PCPTR.
+; Pré-cond : mode N M=1 X=1, DBR=0, vram_device présent.
+;
+; Latence : ~10 cycles/byte. Pour transferts massifs, kernel_vram_dma
+; est ~10× plus rapide (DMA HW v0.1 synchrone "instantané" simulé).
+; ════════════════════════════════════════════════════════════════════
+.export kernel_vram_write_block
+kernel_vram_write_block:
+        ; Set VRAM_ADDR via I/O ports (long absolute writes).
+        lda VRAM_OP_ADDR_LO
+        sta VRAM_ADDR_LO_IO
+        lda VRAM_OP_ADDR_MID
+        sta VRAM_ADDR_MID_IO
+        lda VRAM_OP_ADDR_HI
+        sta VRAM_ADDR_HI_IO
+        ; Loop : Y 16-bit pour offset.
+        rep #$10
+        ldy #$0000
+vwb_loop:
+        cpy VRAM_OP_LEN_LO              ; cpy zp en X=0 lit 16-bit $63-$64
+        bcs vwb_done
+        lda [DP_PCPTR],Y
+        sta VRAM_DATA_IO
+        iny
+        bra vwb_loop
+vwb_done:
+        sep #$10
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_vram_read_block — VRAM cold → RAM banking (Sprint VRAM-2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args : VRAM_OP_ADDR_LO/MID/HI = source SDRAM 24-bit.
+;        DP_PCPTR (24-bit) = destination en RAM banking.
+;        VRAM_OP_LEN_LO/HI = nombre d'octets.
+; Effets : lit len octets via I/O port VRAM_DATA (auto-inc).
+; ════════════════════════════════════════════════════════════════════
+.export kernel_vram_read_block
+kernel_vram_read_block:
+        lda VRAM_OP_ADDR_LO
+        sta VRAM_ADDR_LO_IO
+        lda VRAM_OP_ADDR_MID
+        sta VRAM_ADDR_MID_IO
+        lda VRAM_OP_ADDR_HI
+        sta VRAM_ADDR_HI_IO
+        rep #$10
+        ldy #$0000
+vrb_loop:
+        cpy VRAM_OP_LEN_LO
+        bcs vrb_done
+        lda VRAM_DATA_IO
+        sta [DP_PCPTR],Y
+        iny
+        bra vrb_loop
+vrb_done:
+        sep #$10
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_vram_dma — DMA HW SDRAM↔bank (Sprint VRAM-2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP :
+;   VRAM_DMA_SRC_LO/MID/HI ($65-$67) = adresse source 24-bit.
+;   VRAM_DMA_DST_LO/MID/HI ($68-$6A) = adresse destination 24-bit.
+;   VRAM_DMA_LEN_LO/HI     ($6B-$6C) = longueur 16-bit (LEN=0 → 65536).
+;   VRAM_DMA_DIR_ZP        ($6D)     = $00 (SDRAM→bank) ou $02 (bank→SDRAM).
+; Effets : trigger DMA HW. v0.1 synchrone (instantané), busy=0 immédiat.
+; Pré-cond : mode N M=1 X=1, DBR=0.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_vram_dma
+kernel_vram_dma:
+        ; Setup DMA registers via I/O ports.
+        lda VRAM_DMA_SRC_LO_ZP
+        sta VRAM_DMA_SRC_LO_IO
+        lda VRAM_DMA_SRC_MID_ZP
+        sta VRAM_DMA_SRC_MID_IO
+        lda VRAM_DMA_SRC_HI_ZP
+        sta VRAM_DMA_SRC_HI_IO
+        lda VRAM_DMA_DST_LO_ZP
+        sta VRAM_DMA_DST_LO_IO
+        lda VRAM_DMA_DST_MID_ZP
+        sta VRAM_DMA_DST_MID_IO
+        lda VRAM_DMA_DST_HI_ZP
+        sta VRAM_DMA_DST_HI_IO
+        lda VRAM_DMA_LEN_LO_ZP
+        sta VRAM_DMA_LEN_LO_IO
+        lda VRAM_DMA_LEN_HI_ZP
+        sta VRAM_DMA_LEN_HI_IO
+        ; Trigger : DIR | TRIG bit.
+        lda VRAM_DMA_DIR_ZP
+        ora #VRAM_DMA_TRIG
+        sta VRAM_DMA_CTRL_IO
+        ; Wait busy clear (synchrone v0.1, instantané).
+vdma_wait:
+        lda VRAM_DMA_CTRL_IO
+        and #VRAM_DMA_BUSY
+        bne vdma_wait
         rts
 
 ; ════════════════════════════════════════════════════════════════════
