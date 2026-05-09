@@ -633,6 +633,50 @@ kernel_entry:
         sta WIN_COLOR_BODY              ; body = lgray
         jsr kernel_window_draw
 
+        ; ── Sprint 3.c v0.2 : clone window via BLIT ──────────────
+        ; BLIT window 1 (à (20, 10)) vers position (50, 80).
+        ; src_addr = base + 10*512 + 20/2 = $00C000 + 5130  = $00D40A.
+        ; dst_addr = base + 80*512 + 50/2 = $00C000 + 40985 = $016019.
+        ; (40985 = $A019, base + $A019 = $016019)
+        ; byte_w = 80/2 = 40, byte_h = 60.
+        lda #$0A
+        sta GFX_BASE_LO
+        lda #$D4
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; src = $00D40A
+        lda #$19
+        sta GFX_ARG2_LO
+        lda #$60
+        sta GFX_ARG2_MID
+        lda #$01
+        sta GFX_ARG2_HI                 ; dst = $016019
+        lda #40
+        sta GFX_ARG3_LO                 ; byte_w = 40
+        lda #60
+        sta GFX_ARG3_MID                ; byte_h = 60
+        jsr kernel_gfx_blit
+
+        ; Repaint titlebar window 2 en green (color 2) pour distinction.
+        ; FILL_RECT(base=$00C000, x=50, y=81, w=80, h=7, color=2).
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$C0
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = $00C000
+        lda #50
+        sta GFX_ARG2_LO                 ; x = 50
+        lda #81
+        sta GFX_ARG2_MID                ; y = 81 (1 px sous frame top)
+        lda #80
+        sta GFX_ARG3_LO                 ; w = 80
+        lda #7
+        sta GFX_ARG3_MID                ; h = 7 (gardons frame top y=80)
+        lda #$02
+        sta GFX_COLOR                   ; color = 2 (green)
+        jsr kernel_gfx_fill_rect
+
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
         sta SENTINEL_BASE+0

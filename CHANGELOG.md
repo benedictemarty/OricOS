@@ -5,6 +5,52 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.37.0] - 2026-05-09
+
+### Sprint 3.c v0.2 — Multi-fenêtre via BLIT (clone) ✨
+
+#### Added
+- Boot kernel : démo multi-fenêtre.
+  - Window 1 dessinée à (20, 10) via `kernel_window_draw` (titlebar
+    blue, body lgray) — déjà en v0.1.
+  - **BLIT(src=window1, dst=(50, 80), 80×60)** : clone l'intégralité
+    de window 1 vers une 2e position via GPU BLIT.
+  - **FILL_RECT** repaint titlebar window 2 en green (color 2) pour
+    distinction visuelle.
+
+#### Validation
+- 540 tests OK.
+- Test `test_oricos_window_draw` étendu : 18 ASSERTs window 1 +
+  10 ASSERTs window 2 (4 coins frame + 3 titlebar green + 3 body
+  lgray du BLIT).
+- PPM dump 1024×768 16-color montre **2 fenêtres distinctes** :
+  - Window 1 : (20, 10), titlebar blue.
+  - Window 2 : (50, 80), titlebar green (clone via BLIT puis
+    repaint).
+
+#### Importance
+**Premier multi-fenêtre OricOS** dessiné via le pipeline GPU
+autonome. Démontre :
+1. BLIT HW pour cloner/déplacer une fenêtre rapidement (l'équivalent
+   du drag fenêtre, sans avoir à redessiner depuis scratch).
+2. Composition multi-couche via FILL_RECT repaint (changer un
+   élément d'une fenêtre clonée).
+
+#### Reportés Sprint 3.c v0.3
+- True drag : BLIT + CLEAR pos1 (effacer original après move).
+- Window list / TCB par fenêtre : multi-fenêtré dynamique.
+- `kernel_window_close` / `kernel_window_minimize` : backing-store
+  SDRAM via DMA.
+- Title text via `kernel_gfx_text` (dépend SP-GPU-2 v0.3).
+
+#### Notes implémentation
+- Erreur initiale dans calcul dst_addr : confusion entre 80×512=40960
+  (bon) vs 41000 (faux). Correct = $00C000 + 40985 = $016019.
+- Le BLIT v0.1 byte-aligned exige x_pair pour src et dst (50 et 20
+  sont OK pairs).
+
+---
+
 ## [0.36.0] - 2026-05-09
 
 ### Sprint 3.c v0.1 — Window manager basique ✨
