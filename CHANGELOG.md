@@ -5,6 +5,52 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.32.0] - 2026-05-09
+
+### Sprint VRAM-3 — Pool LIVE banks 129-159 + robustesse DMA ✨
+
+#### Added
+- **`kernel_alloc_live_bank`** : alloue un bank dans le pool LIVE
+  (banks 129-159 = $81-$9F, 31 banks BRAM ECP5 selon ADR-19).
+  Algorithme identique au pool système : pop free list LIFO, sinon
+  bump `BANK_LIVE_NEXT`. Retourne A=$00 si pool épuisé.
+- **`kernel_free_live_bank`** : libère un bank live (push sur free
+  list, drop silencieux si full).
+- Constantes : `BANK_LIVE_POOL_BASE=$81`, `BANK_LIVE_POOL_END=$A0`
+  (banks 129-159 inclusifs). Bank 128 ($80) réservé framebuffer
+  principal HIRES Oric 2 (ADR-12), pas dans le pool live.
+- Storage : `BANK_LIVE_NEXT` ($015458), `BANK_LIVE_FREE_LIST`
+  ($0154C0..$0154CF), `BANK_LIVE_FREE_TOP` ($0154D0).
+
+#### Boot kernel intégré (démo allocator live)
+- Init `BANK_LIVE_NEXT = $81` + `BANK_LIVE_FREE_TOP = 0`.
+- Alloc 3 banks live consécutifs ($81, $82, $83) → BANK_LIVE_DEMO+0/1/2.
+- Free $82 → push sur free list.
+- Alloc → pop free list → $82 → BANK_LIVE_DEMO+3.
+
+#### Robustesse `kernel_vram_dma` (fix incident sprint VRAM-2)
+- Le poll busy avait une **boucle potentiellement infinie** si
+  `vram_device` absent ou stuck (lecture default $FF avec bit 7 set).
+- Fix : timeout 256 polls (X 8-bit count). Robuste en simulation
+  sans vram_device et en HDL face à un controller stuck.
+- Pas d'impact sur le cas nominal v0.1 (busy=0 dès la 1ère poll).
+
+#### Validation
+- 526 tests OK (525 → 526, +1).
+- Test `test_oricos_live_alloc_demo` :
+  - ASSERT BANK_LIVE_DEMO+0..3 = $81 $82 $83 $82 (3 alloc + free + alloc).
+
+#### Architecture
+**Deux pools de banks distincts** désormais :
+- Pool système (banks 4-127, $04..$7F) pour code/data apps.
+- Pool live (banks 129-159, $81..$9F) pour fenêtres GUI live.
+
+OricOS peut désormais allouer des banks dédiés au framebuffer/fenêtres
+GUI sans interférer avec le pool d'apps. SP-3.c (window manager)
+exploitera ce pool : 1 bank live par fenêtre active.
+
+---
+
 ## [0.31.0] - 2026-05-09
 
 ### Sprint VRAM-2 — kernel API vram_* (ADR-19) ✨

@@ -76,7 +76,8 @@ TCB_2_S         = TCB_2 + TCB_S_LO              ; $015C18
 TCB_1_STATE     = TCB_1 + TCB_STATE
 TCB_2_STATE     = TCB_2 + TCB_STATE
 
-; ─── Bank allocator (Sprint 2.b/2.h) ────────────────────────────────
+; ─── Bank allocator pool système (Sprint 2.b/2.h) ──────────────────
+; Pool système : banks 4-127 (= $04..$7F, 124 banks) pour code/data apps.
 BANK_NEXT       = $015450       ; prochain bank libre via bump (uint8)
 BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
 BANK_POOL_BASE  = $04            ; premier bank du pool
@@ -85,6 +86,17 @@ BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 ; Sprint 2.h : free list LIFO 16 entries. alloc pop d'abord, sinon bump.
 BANK_FREE_LIST  = $0154A0       ; 16 bytes stack (banks libérés)
 BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
+
+; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19) ──────────────
+; Pool live : banks 129-159 (= $81..$9F, 31 banks) en BRAM ECP5.
+; Bank 128 ($80) réservé au framebuffer principal HIRES Oric 2.
+; Réservé aux fenêtres GUI actives (backing-stores live + framebuffers).
+BANK_LIVE_NEXT       = $015458   ; prochain bank live via bump (uint8)
+BANK_LIVE_DEMO       = $015468   ; 4 octets : résultats alloc/free demo
+BANK_LIVE_POOL_BASE  = $81       ; bank 129
+BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 129-159
+BANK_LIVE_FREE_LIST  = $0154C0   ; 16 bytes stack
+BANK_LIVE_FREE_TOP   = $0154D0   ; 1 byte (count 0..16)
 
 ; ─── Modèle erreur kernel (Sprint 2.i) ──────────────────────────────
 PANIC_CODE      = $015495       ; 1 byte : dernier code panic (0 = OK)
@@ -581,6 +593,24 @@ kernel_entry:
         sta BANK_NEXT
         lda #$00
         sta BANK_FREE_TOP
+
+        ; ── Sprint VRAM-3 : init pool LIVE (banks 129-159, ADR-19) ──
+        lda #BANK_LIVE_POOL_BASE
+        sta BANK_LIVE_NEXT
+        lda #$00
+        sta BANK_LIVE_FREE_TOP
+
+        ; Démo live : alloc 3, free 1, alloc 1 → résultats à BANK_LIVE_DEMO.
+        jsr kernel_alloc_live_bank
+        sta BANK_LIVE_DEMO+0    ; = $81 (129)
+        jsr kernel_alloc_live_bank
+        sta BANK_LIVE_DEMO+1    ; = $82 (130)
+        jsr kernel_alloc_live_bank
+        sta BANK_LIVE_DEMO+2    ; = $83 (131)
+        lda BANK_LIVE_DEMO+1    ; libère $82
+        jsr kernel_free_live_bank
+        jsr kernel_alloc_live_bank
+        sta BANK_LIVE_DEMO+3    ; doit être $82 (free list pop)
 
         ; Démo : alloue 3 banks, stocke à BANK_DEMO+0..2.
         jsr kernel_alloc_bank
@@ -1839,6 +1869,59 @@ free_drop:
         pla                     ; pop sauve
         rts                     ; silently drop si plein
 
+; ════════════════════════════════════════════════════════════════════
+;  kernel_alloc_live_bank / kernel_free_live_bank (Sprint VRAM-3, ADR-19)
+; ════════════════════════════════════════════════════════════════════
+;
+; Pool LIVE : banks 129-159 (BRAM ECP5 selon ADR-19). Bank 128
+; réservé au framebuffer principal HIRES Oric 2 (ADR-12).
+;
+; Convention identique au pool système :
+;   alloc_live : retourne A = bank num (129..159), ou 0 si épuisé.
+;   free_live  : A = bank num à libérer. Préserve X, Y.
+;
+; Pré-conditions : appelé en mode N M=X=1, DBR=0.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_alloc_live_bank
+kernel_alloc_live_bank:
+        ; Try free list first (LIFO pop)
+        lda BANK_LIVE_FREE_TOP
+        beq alloc_live_bump
+        dec a
+        sta BANK_LIVE_FREE_TOP
+        tax
+        lda BANK_LIVE_FREE_LIST,X
+        rts
+alloc_live_bump:
+        lda BANK_LIVE_NEXT
+        cmp #BANK_LIVE_POOL_END
+        bcs alloc_live_none
+        pha
+        inc a
+        sta BANK_LIVE_NEXT
+        pla
+        rts
+alloc_live_none:
+        lda #$00                ; pool épuisé
+        rts
+
+.export kernel_free_live_bank
+kernel_free_live_bank:
+        pha                     ; sauve bank num
+        lda BANK_LIVE_FREE_TOP
+        cmp #$10                ; full ?
+        bcs free_live_drop
+        tax
+        pla
+        sta BANK_LIVE_FREE_LIST,X
+        inx
+        txa
+        sta BANK_LIVE_FREE_TOP
+        rts
+free_live_drop:
+        pla
+        rts
+
 ; ─── task_a_entry : boucle qui incrémente TASK_A_CTR ────────────────
 .export task_a_entry
 task_a_entry:
@@ -2186,11 +2269,16 @@ kernel_vram_dma:
         lda VRAM_DMA_DIR_ZP
         ora #VRAM_DMA_TRIG
         sta VRAM_DMA_CTRL_IO
-        ; Wait busy clear (synchrone v0.1, instantané).
+        ; Wait busy clear avec timeout 256 polls (robustesse : si
+        ; vram_device absent ou stuck, ne bloque pas indéfiniment).
+        ldx #$00
 vdma_wait:
         lda VRAM_DMA_CTRL_IO
         and #VRAM_DMA_BUSY
+        beq vdma_done
+        inx
         bne vdma_wait
+vdma_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
