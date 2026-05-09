@@ -328,9 +328,17 @@ kernel_entry:
         lda #$04                ; blue
         jsr kernel_hires2_clear
 
-        ; Sprint 3.b v0.2 : kernel_fill_rect_aligned existe mais bug
-        ; d'offset_initial à débugger (rectangle dessiné à (-6gx, -51y)).
-        ; Appel boot retiré jusqu'à la résolution du bug. Voir BACKLOG.
+        ; Sprint 3.b v0.2 : kernel_fill_rect_aligned avec sentinels debug.
+        lda #10
+        sta HIRES2_GX_START
+        sta HIRES2_GX_COUNT
+        lda #60
+        sta HIRES2_Y_START
+        lda #80
+        sta HIRES2_Y_COUNT
+        lda #$01                ; red
+        sta HIRES2_RECT_COL
+        jsr kernel_fill_rect_aligned
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'

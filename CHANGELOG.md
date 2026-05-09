@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.30.0] - 2026-05-09
 
-### Sprint 3.b v0.2 partiel — kernel_fill_rect_aligned (bug d'offset)
+### Sprint 3.b v0.2 — kernel_fill_rect_aligned ✨ (+ fix Phosphoric)
 
 #### Added
 - **`kernel_fill_rect_aligned`** : rectangle 8-px-aligned X (groupes
@@ -16,23 +16,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   inner loop écrit gx_count triples consécutifs via DP indirect long
   [HIRES2_FB_PTR],Y avec Y 16-bit.
 - Constantes : HIRES2_BPL=90, HIRES2_GX_START..RECT_COL en zp $40-$44.
+- Boot kernel intégré : appel `kernel_fill_rect_aligned(gx=10,
+  gxc=10, y=60, yc=80, red)` après `kernel_hires2_clear(blue)`.
 
-#### ⚠️ Bug connu (à débugger v0.2.1)
-- Symptôme : rectangle dessiné à (-6gx, -51y) du target. Size correcte
-  (800 triples pour 10×80) mais placement faux.
-- Calcul `y_start × 90 + gx_start × 3` semble correct en review listing
-  asm (kernel.lst), mais en pratique l'écriture commence à offset 822
-  au lieu de 5430 (pour y=60, gx=10).
-- Differential = 4608 = 0x1200 = 18 × 256. Suggère un bug high byte
-  de FB_PTR.
-- **Appel au boot retiré** pour ne pas casser le test
-  `test_oricos_hires2_clear_fills_blue` (qui passe en v0.1).
-- Reprendre avec asm sentinels (sta zone bank 1 connue) + lecture
-  post-STP pour tracer les valeurs intermédiaires.
+#### Bug racine (côté Phosphoric, fixé) — analyse instructive
+La 1ère implémentation montrait un rectangle dessiné à (-6gx, -51y)
+du target. Sentinels asm (zone bank 1 $015D00..$015D0E) ont permis
+d'isoler le bug DANS Phosphoric, pas OricOS :
+- Opcodes ASL/LSR/ROL/ROR Accumulator (`$0A`, `$4A`, `$2A`, `$6A`)
+  ne propageaient PAS le carry low → high byte en M=0.
+- Calcul `y * 90` par shifts 16-bit donnait `$0318 = 792` au lieu de
+  `$1518 = 5400` pour y=60.
 
-#### Validation v0.1 préservée
-- 515 tests OK (état Sprint 3.b v0.1 inchangé).
-- `kernel_hires2_clear(blue)` au boot continue à remplir bank 128.
+Fix Phosphoric : branchement M=8bit/M=16bit explicite dans les 4 cas
+Accumulator, utilisant `cpu->C` 16-bit en M=0 (cf. Phosphoric/CHANGELOG).
+
+Cette session est un **bel exemple de pluri-projets** : un bug
+golden-model découvert via la primitive OS, fixé en amont, le code
+OricOS s'avère correct depuis le début.
+
+#### Validation
+- 515 tests OK.
+- Test `test_oricos_hires2_clear_and_rect` : boot kernel → ASSERT
+  6400 pixels red à (80..159, 60..139) + 41600 pixels blue partout
+  ailleurs + 0 autres couleurs. Frontières strictes vérifiées.
 
 #### Reportés v0.3
 - `kernel_pixel_set(x, y, color)` arbitraire pixel-perfect.
