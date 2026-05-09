@@ -301,6 +301,8 @@ GPU_INT_CTRL_IO  = $00034F
 
 GPU_OP_CLEAR     = $01
 GPU_OP_FILL_RECT = $02
+GPU_OP_BLIT      = $03
+GPU_OP_LINE      = $04
 GPU_STATUS_BUSY  = $80
 GPU_STATUS_ERR   = $40
 
@@ -527,6 +529,48 @@ kernel_entry:
         lda #$0F
         sta GFX_COLOR                   ; color = 15 (white)
         jsr kernel_gfx_fill_rect
+
+        ; Test GPU BLIT : copie 10×8 bytes de src=$004000 (= ligne 0 du
+        ; framebuffer test) vers dst=$008000 (= ligne 32). Couvre le
+        ; rect en src lignes 2..5 → réplique en dst lignes 2..5 depuis
+        ; ligne 32 = lignes 34..37 du framebuffer test.
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$40
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; src = $004000
+        lda #$00
+        sta GFX_ARG2_LO
+        lda #$80
+        sta GFX_ARG2_MID
+        lda #$00
+        sta GFX_ARG2_HI                 ; dst = $008000
+        lda #$0A
+        sta GFX_ARG3_LO                 ; byte_w = 10
+        lda #$08
+        sta GFX_ARG3_MID                ; byte_h = 8
+        jsr kernel_gfx_blit
+
+        ; Test GPU LINE : ligne verticale x=40, y=20..25, color=2 (green)
+        ; sur le framebuffer test base $004000.
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$40
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = $004000
+        lda #40
+        sta GFX_ARG2_LO                 ; x1 = 40
+        lda #20
+        sta GFX_ARG2_MID                ; y1 = 20
+        lda #40
+        sta GFX_ARG3_LO                 ; x2 = 40
+        lda #25
+        sta GFX_ARG3_MID                ; y2 = 25
+        lda #$02
+        sta GFX_COLOR                   ; color = 2 (green)
+        jsr kernel_gfx_line
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -2465,6 +2509,113 @@ gfx_fill_wait:
         inx
         bne gfx_fill_wait
 gfx_fill_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_blit — exec GPU BLIT via I/O (Sprint GPU-3 v0.2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP (sémantique pour BLIT) :
+;   GFX_BASE_LO/MID/HI ($70-$72) = src 24-bit (SDRAM source).
+;   GFX_ARG2_LO/MID/HI ($73-$75) = dst 24-bit (SDRAM destination).
+;   GFX_ARG3_LO        ($76)     = byte_w (octets/ligne, 1..255).
+;   GFX_ARG3_MID       ($77)     = byte_h (lignes, 1..255).
+; Effets : copie un bloc rectangulaire src → dst dans la SDRAM.
+;          v0.1 limites HW : src/dst byte-alignés, pas d'overlap, pas
+;          de transparency. BPL hardcodé GPU=512 (XVGA).
+;          v0.1 sync : poll busy timeout 256.
+; Modifie : A, X. Préserve : Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_blit
+kernel_gfx_blit:
+        ; ARG1 = src (= GFX_BASE)
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2 = dst (= GFX_ARG2)
+        lda GFX_ARG2_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG2_MID_IO
+        lda GFX_ARG2_HI
+        sta GPU_ARG2_HI_IO
+        ; ARG3.LO = byte_w, ARG3.MID = byte_h
+        lda GFX_ARG3_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_ARG3_MID
+        sta GPU_ARG3_MID_IO
+        lda #$00
+        sta GPU_ARG3_HI_IO
+        ; CMD_OP = BLIT, trigger
+        lda #GPU_OP_BLIT
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        ldx #$00
+gfx_blit_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_blit_done
+        inx
+        bne gfx_blit_wait
+gfx_blit_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_line — exec GPU LINE Bresenham via I/O (Sprint GPU-3 v0.2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP (sémantique pour LINE) :
+;   GFX_BASE_LO/MID/HI ($70-$72) = base SDRAM framebuffer.
+;   GFX_ARG2_LO        ($73)     = x1 (8-bit).
+;   GFX_ARG2_MID       ($74)     = y1 (8-bit).
+;   GFX_ARG3_LO        ($76)     = x2 (8-bit).
+;   GFX_ARG3_MID       ($77)     = y2 (8-bit).
+;   GFX_COLOR          ($78)     = couleur (4-bit, 0..15).
+; Effets : trace une ligne Bresenham 4bpp de (x1,y1) à (x2,y2).
+;          BPL hardcodé GPU=512 (XVGA).
+; Modifie : A, X. Préserve : Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_line
+kernel_gfx_line:
+        ; ARG1 = base
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2.LO = x1, ARG2.MID = y1
+        lda GFX_ARG2_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG2_MID_IO
+        lda #$00
+        sta GPU_ARG2_HI_IO
+        ; ARG3.LO = x2, ARG3.MID = y2
+        lda GFX_ARG3_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_ARG3_MID
+        sta GPU_ARG3_MID_IO
+        lda #$00
+        sta GPU_ARG3_HI_IO
+        ; ARG4.LO = color
+        lda GFX_COLOR
+        sta GPU_ARG4_LO_IO
+        ; CMD_OP = LINE, trigger
+        lda #GPU_OP_LINE
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        ldx #$00
+gfx_line_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_line_done
+        inx
+        bne gfx_line_wait
+gfx_line_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════

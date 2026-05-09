@@ -5,6 +5,58 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.35.0] - 2026-05-09
+
+### Sprint GPU-3 v0.2 — kernel_gfx_blit + kernel_gfx_line ✨
+
+#### Added
+- **`kernel_gfx_blit`** : copie bloc rectangulaire SDRAM → SDRAM via
+  GPU BLIT. Args ZP : GFX_BASE (= src), GFX_ARG2 (= dst, 24-bit),
+  GFX_ARG3_LO=byte_w, GFX_ARG3_MID=byte_h.
+- **`kernel_gfx_line`** : tracé Bresenham 4bpp via GPU LINE. Args
+  ZP : GFX_BASE, GFX_ARG2_LO=x1, GFX_ARG2_MID=y1, GFX_ARG3_LO=x2,
+  GFX_ARG3_MID=y2, GFX_COLOR.
+- Constantes I/O : GPU_OP_BLIT = $03, GPU_OP_LINE = $04.
+
+#### Boot kernel intégré (démos)
+- BLIT(src=$004000, dst=$008000, byte_w=10, byte_h=8) : copie 8 lignes
+  × 10 bytes (= 20 pixels) du framebuffer test vers ligne 32+.
+  Le rect FILL_RECT (lignes 2..5 byte 2..5) est répliqué en lignes
+  34..37 byte 2..5 dans le dst.
+- LINE((40, 20)→(40, 25), color=2=green) : ligne verticale 6 pixels
+  vert sur fond blue. Pixel 40 pair → mask 0xF0 → byte = (clear $44 &
+  $0F) | (color 2 << 4) = $24.
+
+#### Validation
+- 539 tests OK (inchangé en compte mais test couvre maintenant 4
+  commandes GPU au lieu de 2).
+- Test étendu `test_oricos_gpu_clear_then_fill_rect` :
+  - CLEAR + FILL_RECT (existants).
+  - BLIT : rect copié à dst correct, hors range = $44 (zone CLEAR).
+  - LINE : 3 pixels x=40 sur lignes 20, 22, 25 = $24 ; hors LINE = $44.
+
+#### État API kernel_gfx_*
+| Helper | Status | GPU opcode |
+|--------|--------|------------|
+| kernel_gfx_clear | ✅ v0.1 | CLEAR |
+| kernel_gfx_fill_rect | ✅ v0.1 | FILL_RECT |
+| kernel_gfx_blit | ✅ v0.2 | BLIT |
+| kernel_gfx_line | ✅ v0.2 | LINE |
+| kernel_gfx_text | ⏳ v0.3 | TEXT (font ROM) |
+
+#### Reportés
+- `kernel_gfx_text` : dépend de SP-GPU-2 v0.3 (font ROM côté Phosphoric).
+- IRQ-based wait (vs polling busy actuel timeout 256).
+- Refactor `kernel_hires2_*` legacy → suppression Sprint 3.b cleanup.
+
+#### Importance
+**Le kernel OricOS dispose maintenant d'une API graphique complète
+pour Sprint 3.c** : clear, fill_rect, blit, line. Suffisant pour un
+window manager basique sans texte (ou avec texte minimal via
+fill_rect bitmap manuelle).
+
+---
+
 ## [0.34.0] - 2026-05-09
 
 ### Sprint GPU-3 — kernel API kernel_gfx_* via GPU (ADR-21) ✨
