@@ -5,6 +5,42 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.30.0] - 2026-05-09
+
+### Sprint 3.b v0.2 partiel — kernel_fill_rect_aligned (bug d'offset)
+
+#### Added
+- **`kernel_fill_rect_aligned`** : rectangle 8-px-aligned X (groupes
+  de 8 pixels). Args ZP : gx_start, gx_count, y_start, y_count, color.
+- Algorithme : pour chaque ligne (count-down 8-bit en zp $3B),
+  inner loop écrit gx_count triples consécutifs via DP indirect long
+  [HIRES2_FB_PTR],Y avec Y 16-bit.
+- Constantes : HIRES2_BPL=90, HIRES2_GX_START..RECT_COL en zp $40-$44.
+
+#### ⚠️ Bug connu (à débugger v0.2.1)
+- Symptôme : rectangle dessiné à (-6gx, -51y) du target. Size correcte
+  (800 triples pour 10×80) mais placement faux.
+- Calcul `y_start × 90 + gx_start × 3` semble correct en review listing
+  asm (kernel.lst), mais en pratique l'écriture commence à offset 822
+  au lieu de 5430 (pour y=60, gx=10).
+- Differential = 4608 = 0x1200 = 18 × 256. Suggère un bug high byte
+  de FB_PTR.
+- **Appel au boot retiré** pour ne pas casser le test
+  `test_oricos_hires2_clear_fills_blue` (qui passe en v0.1).
+- Reprendre avec asm sentinels (sta zone bank 1 connue) + lecture
+  post-STP pour tracer les valeurs intermédiaires.
+
+#### Validation v0.1 préservée
+- 515 tests OK (état Sprint 3.b v0.1 inchangé).
+- `kernel_hires2_clear(blue)` au boot continue à remplir bank 128.
+
+#### Reportés v0.3
+- `kernel_pixel_set(x, y, color)` arbitraire pixel-perfect.
+- `kernel_blit(src, dst, w, h)` pour fontes / icônes.
+- Bascule mode TEXT ↔ HIRES via registre I/O `VID_MODE`.
+
+---
+
 ## [0.29.0] - 2026-05-09
 
 ### Sprint 3.b v0.1 — Kernel primitive HIRES Oric 2 (clear_screen) ✨

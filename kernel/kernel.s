@@ -283,6 +283,13 @@ T1_PERIOD_HI    = $10
 ;                              4=blue, 5=magenta, 6=cyan, 7=white.
 HIRES2_BANK     = $80           ; bank du framebuffer
 HIRES2_FB_SIZE  = 18000         ; total bytes (90 × 200) = $4650
+HIRES2_BPL      = 90            ; bytes per line (30 groupes × 3)
+; ZP args pour kernel_fill_rect_aligned (Sprint 3.b v0.2)
+HIRES2_GX_START = $40           ; groupe X de départ (0..29)
+HIRES2_GX_COUNT = $41           ; nombre de groupes en largeur (1..30-gx_start)
+HIRES2_Y_START  = $42           ; ligne de départ (0..199)
+HIRES2_Y_COUNT  = $43           ; nombre de lignes (1..200-y_start)
+HIRES2_RECT_COL = $44           ; couleur (0..7)
 ; ZP tmp pour kernel_hires2_clear (libres au moment du boot)
 HIRES2_PAT_PTR  = $20           ; 3 bytes : DP indirect long → pattern_table
 HIRES2_FB_PTR   = $24           ; 3 bytes : DP indirect long → $80:0000
@@ -320,6 +327,10 @@ kernel_entry:
         ; écriture déclenche le lazy alloc B1.8 du bank 128.
         lda #$04                ; blue
         jsr kernel_hires2_clear
+
+        ; Sprint 3.b v0.2 : kernel_fill_rect_aligned existe mais bug
+        ; d'offset_initial à débugger (rectangle dessiné à (-6gx, -51y)).
+        ; Appel boot retiré jusqu'à la résolution du bug. Voir BACKLOG.
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -1821,6 +1832,146 @@ pattern_table:
         .byte $B6, $DB, $6D     ; 5 magenta
         .byte $DB, $6D, $B6     ; 6 cyan
         .byte $FF, $FF, $FF     ; 7 white
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_fill_rect_aligned — rectangle 8-px-aligned X (Sprint 3.b v0.2)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP :
+;   HIRES2_GX_START ($40) = groupe X de départ (0..29, pixels 0,8,16,..)
+;   HIRES2_GX_COUNT ($41) = nombre de groupes en largeur (≥1)
+;   HIRES2_Y_START  ($42) = ligne de départ (0..199)
+;   HIRES2_Y_COUNT  ($43) = nombre de lignes (≥1)
+;   HIRES2_RECT_COL ($44) = couleur (0..7, masquée 3 bits)
+; Effets : remplit le rectangle [gx*8 .. (gx+gxc)*8-1] × [y .. y+yc-1]
+;          en bank $80 avec pattern color × $249249.
+;          Pas de clipping : caller responsable des bornes.
+; Modifie : A, X, Y, $20-$22 (PAT_PTR), $24-$26 (FB_PTR),
+;           $34-$36 (PB0/1/2), $37-$3A (tmp 16-bit), $3B (tmp 8-bit).
+; Pré-cond : mode N M=1 X=1, DBR=0.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_fill_rect_aligned
+kernel_fill_rect_aligned:
+        ; Early exit si y_count=0 ou gx_count=0 (rts direct, hors portée bra)
+        lda HIRES2_Y_COUNT
+        bne fra_yc_ok
+        rts
+fra_yc_ok:
+        lda HIRES2_GX_COUNT
+        bne fra_gxc_ok
+        rts
+fra_gxc_ok:
+
+        ; ── Charge pattern (color × $249249) → PB0/PB1/PB2 ────────
+        lda HIRES2_RECT_COL
+        and #$07
+        sta $3B                 ; tmp color
+        asl                     ; ×2
+        clc
+        adc $3B                 ; +color = ×3 (index dans table)
+        clc
+        adc #<pattern_table
+        sta HIRES2_PAT_PTR
+        lda #>pattern_table
+        adc #$00
+        sta HIRES2_PAT_PTR+1
+        lda #$01                ; bank 1 (segment CODE)
+        sta HIRES2_PAT_PTR+2
+        ldy #$00
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB0
+        iny
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB1
+        iny
+        lda [HIRES2_PAT_PTR],Y
+        sta HIRES2_PB2
+
+        ; ── Calcule offset_initial = y_start × 90 + gx_start × 3 ──
+        ; tmp_y 16-bit en $37-$38 (zero-ext de Y_START 8-bit)
+        lda HIRES2_Y_START
+        sta $37
+        lda #$00
+        sta $38
+        ; y * 90 = y*2 + y*8 + y*16 + y*64 (90 = 0b01011010, bits 1,3,4,6)
+        rep #$20                ; M=0
+        lda $37                 ; A = y (16-bit, zero-ext)
+        asl                     ; y×2
+        sta $39                 ; tmp = y×2
+        asl                     ; y×4
+        asl                     ; y×8
+        clc
+        adc $39                 ; +y×2 = y×10
+        sta $37                 ; sauve y×10 (16-bit)
+        asl                     ; y×20
+        asl                     ; y×40
+        asl                     ; y×80
+        clc
+        adc $37                 ; +y×10 = y×90
+        sta $37                 ; $37-$38 = y×90 (16-bit)
+        sep #$20                ; M=1
+        ; gx_start × 3 (8-bit suffit, max=29*3=87)
+        lda HIRES2_GX_START
+        sta $3B
+        asl
+        clc
+        adc $3B                 ; A = gx_start * 3
+        ; FB_PTR = y×90 + gx_start×3 (16-bit add)
+        clc
+        adc $37                 ; A + $37 (low) avec carry vers high
+        sta HIRES2_FB_PTR
+        lda $38
+        adc #$00
+        sta HIRES2_FB_PTR+1
+        lda #HIRES2_BANK
+        sta HIRES2_FB_PTR+2     ; bank 128
+
+        ; ── inner_limit_16 = gx_count × 3 → $39-$3A (16-bit) ──
+        lda HIRES2_GX_COUNT
+        sta $3B
+        asl
+        clc
+        adc $3B                 ; A = gx_count*3 (8-bit, max=90)
+        sta $39
+        lda #$00
+        sta $3A                 ; high byte = 0 pour cpy 16-bit safe
+
+        ; ── line_counter (8-bit) → $3B ──
+        lda HIRES2_Y_COUNT
+        sta $3B
+
+fra_line:
+        ; Inner loop : écrit gx_count triples (Y 16-bit pour offset)
+        rep #$10                ; Y 16-bit
+        ldy #$0000
+fra_inner:
+        cpy $39                 ; cpy zp en X=0 lit 16-bit $39-$3A
+        bcs fra_eol             ; Y >= limit → fin de ligne
+        lda HIRES2_PB0
+        sta [HIRES2_FB_PTR],Y
+        iny
+        lda HIRES2_PB1
+        sta [HIRES2_FB_PTR],Y
+        iny
+        lda HIRES2_PB2
+        sta [HIRES2_FB_PTR],Y
+        iny
+        bra fra_inner
+fra_eol:
+        sep #$10                ; Y 8-bit (pas vraiment nécessaire)
+        ; Avance FB_PTR += 90 (HIRES2_BPL) vers ligne suivante
+        rep #$20
+        lda HIRES2_FB_PTR
+        clc
+        adc #HIRES2_BPL
+        sta HIRES2_FB_PTR
+        sep #$20
+        ; Décrément line counter en zp
+        dec $3B
+        bne fra_line
+
+fra_done:
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  NMI_HANDLER — bank 1 $5500
