@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-09
 
+### Phase 1 PH-cleanup-zombie — Retrait kernel_hires2_* legacy
+
+#### Removed
+- `kernel.s` :
+  - `kernel_hires2_clear` (~62 lignes) + `pattern_table` (8 × 3 octets).
+  - `kernel_fill_rect_aligned` (~134 lignes).
+  - 14 constantes ZP `HIRES2_*` (BANK, FB_SIZE, BPL, GX_START/COUNT,
+    Y_START/COUNT, RECT_COL, PAT_PTR, FB_PTR, PB0/1/2).
+  - Appels boot `jsr kernel_hires2_clear` (color blue=4) et
+    `jsr kernel_fill_rect_aligned` (red rect 80×80 centre).
+
+#### Justification
+- ADR-19 v2 (VRAM SDRAM unifiée) a rendu bank `$80` (ex-VRAM live)
+  invisible côté compositor. `kernel_hires2_*` écrivait dans le vide.
+- Rendu desktop XVGA = **GPU blitter (ADR-21)** via `kernel_gfx_*`
+  (Sprint GPU-3 v0.3) exclusivement.
+
+#### Validation
+- Build `make` → `kernel.bin` 57344 bytes.
+- Tests Phosphoric : 540 OK (-1, suppression `test_oricos_hires2`).
+
+---
+
+## [Unreleased] - 2026-05-09
+
 ### Phase 0 programme état-de-l'art — décisions architecture OricOS
 
 #### Ratified
