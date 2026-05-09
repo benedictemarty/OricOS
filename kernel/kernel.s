@@ -815,6 +815,34 @@ kernel_entry:
         sta GFX_COLOR                   ; color = 0 (efface)
         jsr kernel_gfx_fill_rect
 
+        ; ── Sprint 3.c v0.4 démo : window 3 colorful (140, 100) ──
+        ; Démontre la palette VGA 16 couleurs avec une 3e fenêtre :
+        ; frame=lightred(12), title=yellow(14), body=lightcyan(11).
+        ; v0.1 limite : x+w-1 ≤ 255 et y+h-1 ≤ 255 (8-bit ZP args).
+        lda #$00
+        sta WIN_BASE_LO
+        lda #$C0
+        sta WIN_BASE_MID
+        lda #$00
+        sta WIN_BASE_HI                 ; base = $00C000
+        lda #140
+        sta WIN_X                       ; x = 140
+        lda #100
+        sta WIN_Y                       ; y = 100
+        lda #80
+        sta WIN_W                       ; w = 80 (x_end=219 OK 8-bit)
+        lda #60
+        sta WIN_H                       ; h = 60 (y_end=159 OK 8-bit)
+        lda #8
+        sta WIN_TITLEBAR_H
+        lda #$0C
+        sta WIN_COLOR_FRAME             ; lightred
+        lda #$0E
+        sta WIN_COLOR_TITLE             ; yellow
+        lda #$0B
+        sta WIN_COLOR_BODY              ; lightcyan
+        jsr kernel_window_draw
+
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
         sta SENTINEL_BASE+0

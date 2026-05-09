@@ -5,6 +5,36 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.40.0] - 2026-05-09
+
+### Sprint 3.c v0.4 — 3e fenêtre démo palette ✨
+
+#### Added
+- Boot kernel : ajout window 3 colorful à (140, 100), 80×60.
+- Couleurs distinctes : frame=12=lightred, title=14=yellow,
+  body=11=lightcyan.
+- Démontre la palette VGA-IBM 16 couleurs (ADR-20 v3).
+
+#### Notes / contraintes connues
+- `kernel_window_draw` v0.1 utilise des args ZP 8-bit (WIN_X/Y/W/H).
+- Limite : x+w-1 ≤ 255 et y+h-1 ≤ 255.
+- Window 3 placée à (140, 100, 80, 60) → x_end=219, y_end=159 (OK).
+- Extension args 16-bit prévue v0.5 pour fenêtres dépassant la zone
+  haute-gauche du framebuffer XVGA.
+
+#### Validation
+- 541 tests OK (+6 ASSERTs window 3).
+- PPM `/tmp/oricos_window_xvga.ppm` montre 3 fenêtres simultanées.
+
+#### Démo PPM finale (visualisation 1024×768)
+- **Window 1** (20, 10) titlebar BLEUE avec "OS" en BLANC.
+- **Window 2** (300, 300) titlebar VERTE — *dragged* depuis (50, 80).
+- **Window 3** (140, 100) frame rouge clair, titlebar JAUNE,
+  body cyan clair ✨ NOUVEAU.
+- Position (50, 80) tout NOIR (zone effacée par drag).
+
+---
+
 ## [0.39.0] - 2026-05-09
 
 ### Sprint 3.c v0.3 — true drag (BLIT + CLEAR pos1) ✨✨
