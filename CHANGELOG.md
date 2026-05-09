@@ -5,6 +5,22 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.33.0] - 2026-05-09
+
+### Pool LIVE ajusté pour ADR-20 (banks 132-159)
+
+Suite à la ratification d'ADR-20 (mode HIRES Oric 2 desktop = SVGA
+800×600×4bpp, framebuffer occupe 4 banks 128-131), le pool LIVE
+allocator démarre à **bank 132 ($84)** au lieu de bank 129.
+
+- `BANK_LIVE_POOL_BASE` : $81 → $84.
+- Pool live = 28 banks (132-159) au lieu de 31.
+- Démo allocator au boot retourne maintenant $84/$85/$86/$85.
+
+Toujours 526 tests OK.
+
+---
+
 ## [0.32.0] - 2026-05-09
 
 ### Sprint VRAM-3 — Pool LIVE banks 129-159 + robustesse DMA ✨

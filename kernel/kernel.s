@@ -87,14 +87,15 @@ BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 BANK_FREE_LIST  = $0154A0       ; 16 bytes stack (banks libérés)
 BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
 
-; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19) ──────────────
-; Pool live : banks 129-159 (= $81..$9F, 31 banks) en BRAM ECP5.
-; Bank 128 ($80) réservé au framebuffer principal HIRES Oric 2.
-; Réservé aux fenêtres GUI actives (backing-stores live + framebuffers).
+; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19 + ADR-20) ─────
+; Pool live : banks 132-159 (= $84..$9F, 28 banks) en BRAM ECP5.
+; Banks 128-131 ($80..$83) réservés au framebuffer principal SVGA
+; 800x600x4bpp (4 banks consécutifs, ADR-20).
+; Pool live = backing-stores fenêtres GUI actives + buffers GPU.
 BANK_LIVE_NEXT       = $015458   ; prochain bank live via bump (uint8)
 BANK_LIVE_DEMO       = $015468   ; 4 octets : résultats alloc/free demo
-BANK_LIVE_POOL_BASE  = $81       ; bank 129
-BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 129-159
+BANK_LIVE_POOL_BASE  = $84       ; bank 132 (= $84, 1er bank libre après FB)
+BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 132-159
 BANK_LIVE_FREE_LIST  = $0154C0   ; 16 bytes stack
 BANK_LIVE_FREE_TOP   = $0154D0   ; 1 byte (count 0..16)
 
@@ -602,15 +603,15 @@ kernel_entry:
 
         ; Démo live : alloc 3, free 1, alloc 1 → résultats à BANK_LIVE_DEMO.
         jsr kernel_alloc_live_bank
-        sta BANK_LIVE_DEMO+0    ; = $81 (129)
+        sta BANK_LIVE_DEMO+0    ; = $84 (132)
         jsr kernel_alloc_live_bank
-        sta BANK_LIVE_DEMO+1    ; = $82 (130)
+        sta BANK_LIVE_DEMO+1    ; = $85 (133)
         jsr kernel_alloc_live_bank
-        sta BANK_LIVE_DEMO+2    ; = $83 (131)
-        lda BANK_LIVE_DEMO+1    ; libère $82
+        sta BANK_LIVE_DEMO+2    ; = $86 (134)
+        lda BANK_LIVE_DEMO+1    ; libère $85
         jsr kernel_free_live_bank
         jsr kernel_alloc_live_bank
-        sta BANK_LIVE_DEMO+3    ; doit être $82 (free list pop)
+        sta BANK_LIVE_DEMO+3    ; doit être $85 (free list pop)
 
         ; Démo : alloue 3 banks, stocke à BANK_DEMO+0..2.
         jsr kernel_alloc_bank
