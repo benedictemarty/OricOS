@@ -280,6 +280,42 @@ PCR_READ_DATA   = $AE
 PCR_INACTIVE    = $AA
 KBD_MATRIX      = $015470       ; 8 octets bank 1 (col 0..7 active low)
 
+; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
+; Ports $0340-$034F en bank 0 (DBR=0).
+GPU_CMD_OP_IO    = $000340
+GPU_ARG1_LO_IO   = $000341
+GPU_ARG1_MID_IO  = $000342
+GPU_ARG1_HI_IO   = $000343
+GPU_ARG2_LO_IO   = $000344
+GPU_ARG2_MID_IO  = $000345
+GPU_ARG2_HI_IO   = $000346
+GPU_ARG3_LO_IO   = $000347
+GPU_ARG3_MID_IO  = $000348
+GPU_ARG3_HI_IO   = $000349
+GPU_ARG4_LO_IO   = $00034A
+GPU_ARG4_MID_IO  = $00034B
+GPU_ARG4_HI_IO   = $00034C
+GPU_STATUS_IO    = $00034D
+GPU_TRIGGER_IO   = $00034E
+GPU_INT_CTRL_IO  = $00034F
+
+GPU_OP_CLEAR     = $01
+GPU_OP_FILL_RECT = $02
+GPU_STATUS_BUSY  = $80
+GPU_STATUS_ERR   = $40
+
+; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
+; (sémantique partagée selon le helper appelé)
+GFX_BASE_LO      = $70           ; base address 24-bit (SDRAM offset)
+GFX_BASE_MID     = $71
+GFX_BASE_HI      = $72
+GFX_ARG2_LO      = $73           ; clear: size_lo  | rect: x
+GFX_ARG2_MID     = $74           ; clear: size_mid | rect: y
+GFX_ARG2_HI      = $75           ; clear: size_hi  | rect: unused
+GFX_ARG3_LO      = $76           ; clear: unused   | rect: w
+GFX_ARG3_MID     = $77           ; clear: unused   | rect: h
+GFX_COLOR        = $78           ; couleur 4-bit (0..15)
+
 ; ─── VRAM cold device I/O (ADR-19, Sprint VRAM-2) ──────────────────
 ; Ports $0330-$033C en bank 0 (DBR=0).
 VRAM_ADDR_LO_IO     = $000330
@@ -450,6 +486,47 @@ kernel_entry:
         lda #VRAM_DMA_DIR               ; bank → SDRAM
         sta VRAM_DMA_DIR_ZP
         jsr kernel_vram_dma
+
+        ; ── Sprint GPU-3 : exerce kernel_gfx_clear / fill_rect ──
+        ; Test GPU CLEAR : remplit framebuffer XVGA SDRAM[$004000..]
+        ; (zone test 32 KiB = 64 lignes XVGA) avec color=4 (blue VGA).
+        ; Pattern écrit = $44 (2 pixels color 4 par byte).
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$40
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = SDRAM $004000
+        lda #$00
+        sta GFX_ARG2_LO
+        lda #$80
+        sta GFX_ARG2_MID
+        lda #$00
+        sta GFX_ARG2_HI                 ; size = $8000 = 32768 octets
+        lda #$04
+        sta GFX_COLOR                   ; color = 4 (blue VGA)
+        jsr kernel_gfx_clear
+
+        ; Test GPU FILL_RECT : rectangle 8×4 pixels color=15 (white)
+        ; à (x=4, y=2). Base SDRAM = $004000 (même framebuffer test).
+        ; BPL hardcodé GPU = 512.
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$40
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = SDRAM $004000
+        lda #$04
+        sta GFX_ARG2_LO                 ; x = 4
+        lda #$02
+        sta GFX_ARG2_MID                ; y = 2
+        lda #$08
+        sta GFX_ARG3_LO                 ; w = 8
+        lda #$04
+        sta GFX_ARG3_MID                ; h = 4
+        lda #$0F
+        sta GFX_COLOR                   ; color = 15 (white)
+        jsr kernel_gfx_fill_rect
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -2280,6 +2357,114 @@ vdma_wait:
         inx
         bne vdma_wait
 vdma_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_clear — exec GPU CLEAR via I/O (Sprint GPU-3, ADR-21)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP :
+;   GFX_BASE_LO/MID/HI ($70-$72) = base SDRAM 24-bit (offset).
+;   GFX_ARG2_LO/MID/HI ($73-$75) = size 24-bit (octets).
+;   GFX_COLOR ($78)              = couleur (0..15).
+; Effets : remplit `size` octets en SDRAM[base] avec pattern
+;          (color << 4) | color (= 2 pixels même couleur par byte).
+;          v0.1 synchrone : poll busy avec timeout 256.
+; Modifie : A, X. Préserve : Y.
+; Pré-cond : mode N M=1 X=1, DBR=0, gpu_device présent.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_clear
+kernel_gfx_clear:
+        ; ARG1 = base
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2 = size
+        lda GFX_ARG2_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG2_MID_IO
+        lda GFX_ARG2_HI
+        sta GPU_ARG2_HI_IO
+        ; ARG3.LO = color
+        lda GFX_COLOR
+        sta GPU_ARG3_LO_IO
+        ; CMD_OP = CLEAR
+        lda #GPU_OP_CLEAR
+        sta GPU_CMD_OP_IO
+        ; Trigger
+        sta GPU_TRIGGER_IO
+        ; Poll busy (timeout 256 itérations)
+        ldx #$00
+gfx_clear_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_clear_done
+        inx
+        bne gfx_clear_wait
+gfx_clear_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_fill_rect — exec GPU FILL_RECT via I/O (Sprint GPU-3)
+; ════════════════════════════════════════════════════════════════════
+;
+; Args ZP :
+;   GFX_BASE_LO/MID/HI ($70-$72) = base SDRAM 24-bit du framebuffer.
+;   GFX_ARG2_LO        ($73)     = x (8-bit, 0..255).
+;   GFX_ARG2_MID       ($74)     = y (8-bit, 0..255).
+;   GFX_ARG3_LO        ($76)     = w (8-bit).
+;   GFX_ARG3_MID       ($77)     = h (8-bit).
+;   GFX_COLOR          ($78)     = couleur (0..15).
+; Effets : remplit le rectangle [x..x+w-1] × [y..y+h-1] dans le
+;          framebuffer avec pixel = color. BPL hardcodé GPU côté HW
+;          (= 512 pour XVGA 1024×768×4bpp ADR-20 v3).
+;          v0.1 synchrone : poll busy avec timeout 256.
+; Modifie : A, X. Préserve : Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_fill_rect
+kernel_gfx_fill_rect:
+        ; ARG1 = base
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2.LO = x, ARG2.MID = y
+        lda GFX_ARG2_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG2_MID_IO
+        lda #$00
+        sta GPU_ARG2_HI_IO
+        ; ARG3.LO = w, ARG3.MID = h
+        lda GFX_ARG3_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_ARG3_MID
+        sta GPU_ARG3_MID_IO
+        lda #$00
+        sta GPU_ARG3_HI_IO
+        ; ARG4.LO = color
+        lda GFX_COLOR
+        sta GPU_ARG4_LO_IO
+        ; CMD_OP = FILL_RECT
+        lda #GPU_OP_FILL_RECT
+        sta GPU_CMD_OP_IO
+        ; Trigger
+        sta GPU_TRIGGER_IO
+        ; Poll busy (timeout 256)
+        ldx #$00
+gfx_fill_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_fill_done
+        inx
+        bne gfx_fill_wait
+gfx_fill_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════

@@ -5,6 +5,49 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.34.0] - 2026-05-09
+
+### Sprint GPU-3 — kernel API kernel_gfx_* via GPU (ADR-21) ✨
+
+#### Added
+- **`kernel_gfx_clear`** : remplit zone SDRAM via GPU CLEAR.
+  Args ZP : GFX_BASE_LO/MID/HI ($70-$72), GFX_ARG2_LO/MID/HI ($73-$75
+  pour size 24-bit), GFX_COLOR ($78). Setup registres I/O GPU
+  $0341-$0349, trigger via $034E, poll busy timeout 256.
+- **`kernel_gfx_fill_rect`** : rectangle 4bpp dans framebuffer SDRAM
+  via GPU FILL_RECT. Args ZP : GFX_BASE_LO/MID/HI, GFX_ARG2_LO=x,
+  GFX_ARG2_MID=y, GFX_ARG3_LO=w, GFX_ARG3_MID=h, GFX_COLOR. v0.1
+  limites 8-bit chacun (≤255) ; BPL hardcodé GPU=512 (XVGA ADR-20 v3).
+- Constantes I/O `GPU_*_IO` (ports $0340-$034F) + opcodes
+  GPU_OP_CLEAR=$01, GPU_OP_FILL_RECT=$02 + bits status.
+- ZP args $70-$78 (9 octets).
+
+#### Boot kernel intégré (démo)
+- CLEAR(base=$004000, size=32 KiB, color=4=blue) → 32 KiB pattern $44.
+- FILL_RECT(base=$004000, x=4, y=2, w=8, h=4, color=15=white) →
+  rectangle 8×4 pixels white sur fond blue.
+
+#### Validation
+- 534 tests OK (533 → 534, +1).
+- Test `test_oricos_gpu_clear_then_fill_rect` :
+  - 32 KiB pattern $44 vérifié sur 3 points + frontières.
+  - Rect 4 coins bytes vérifiés à $FF.
+  - Hors rect vérifié à $44 (avant/après/dessus/dessous).
+
+#### Reportés Sprint GPU-3 v0.2
+- Helpers `kernel_gfx_blit`, `kernel_gfx_line`, `kernel_gfx_text`
+  (dépendent de SP-GPU-2 = extension Phosphoric).
+- IRQ-based wait (vs polling busy actuel).
+- Refactor : `kernel_hires2_clear` / `kernel_fill_rect_aligned`
+  deviennent obsolètes vs `kernel_gfx_*`. Cleanup Sprint 3.b.
+
+#### Importance
+**Premier code OricOS qui utilise le GPU** au lieu d'écrire directement
+en VRAM. SP-3.c (window manager) pourra s'appuyer sur ces helpers
+pour dessiner des fenêtres.
+
+---
+
 ## [0.33.0] - 2026-05-09
 
 ### Pool LIVE ajusté pour ADR-20 (banks 132-159)
