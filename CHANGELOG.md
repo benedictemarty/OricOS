@@ -5,6 +5,47 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.39.0] - 2026-05-09
+
+### Sprint 3.c v0.3 — true drag (BLIT + CLEAR pos1) ✨✨
+
+#### Added
+- Boot kernel : démo true drag de window 2.
+  - **BLIT** depuis (50, 80) vers (300, 300), 80×60 pixels.
+  - **FILL_RECT** clear ancienne pos avec color 0 (effacement).
+- Window 1 + "OS" titlebar intacte.
+
+#### Démo PPM finale (3 actions visuelles)
+- **Window 1** (20, 10) titlebar BLEUE avec "OS" en BLANC ✨
+- **Window 2** (300, 300) titlebar VERTE — *dragged* depuis (50, 80)
+- Position (50, 80) tout NOIR (zone effacée par drag) ✨
+
+#### Validation
+- 541 tests OK.
+- Test mis à jour pour valider :
+  - Anciennes asserts (50, 80) effacées → color 0.
+  - Nouvelles asserts (300, 300) → pattern fenêtre via BLIT.
+  - Frame, titlebar green, body lgray vérifiés à nouvelle pos.
+
+#### Notes implémentation
+- **Bug d'arithmétique** trouvé et fixé : confusion entre $58 et $18
+  pour MID byte de dst_addr ($031896, pas $035896). Différence
+  visuelle = +16 KiB, hors zone visible. Fix : un seul `$58 → $18`.
+
+#### Importance
+**True drag** = BLIT (move pixels) + CLEAR (effacer trace originale).
+C'est l'opération de base d'un window manager interactif. SP-3.c
+v0.4 ajoutera : window list / TCB par fenêtre, focus management,
+event-driven drag depuis souris/clavier.
+
+#### Reportés Sprint 3.c v0.4
+- struct window_t en RAM (id, x, y, w, h, base_offset, flags).
+- Liste fixe 8 windows (TCB-like).
+- `kernel_window_create/destroy/move/raise/lower`.
+- close/minimize avec backing-store SDRAM via DMA.
+
+---
+
 ## [0.38.0] - 2026-05-09
 
 ### Sprint GPU-3 v0.3 — kernel_gfx_text + démo "OS" titlebar ✨✨

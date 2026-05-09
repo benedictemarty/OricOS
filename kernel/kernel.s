@@ -772,6 +772,49 @@ kernel_entry:
         sta GFX_COLOR                   ; color = 15 (white)
         jsr kernel_gfx_text
 
+        ; ── Sprint 3.c v0.3 : true drag window 2 → (300, 300) ────
+        ; BLIT depuis ancienne pos (50, 80) vers nouvelle (300, 300).
+        ; src = base + 80*512 + 50/2  = $00C000 + 40985 = $016019.
+        ; dst = base + 300*512+ 300/2 = $00C000 + 153750 = $031896.
+        ; byte_w = 40, byte_h = 60.
+        lda #$19
+        sta GFX_BASE_LO
+        lda #$60
+        sta GFX_BASE_MID
+        lda #$01
+        sta GFX_BASE_HI                 ; src = $016019
+        lda #$96
+        sta GFX_ARG2_LO
+        lda #$18
+        sta GFX_ARG2_MID
+        lda #$03
+        sta GFX_ARG2_HI                 ; dst = $031896
+        lda #40
+        sta GFX_ARG3_LO
+        lda #60
+        sta GFX_ARG3_MID
+        jsr kernel_gfx_blit
+
+        ; CLEAR ancienne pos (50, 80, 80, 60) en color 0 (effacement).
+        ; Utilise FILL_RECT car CLEAR opère sur range linéaire, pas rect.
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$C0
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = $00C000
+        lda #50
+        sta GFX_ARG2_LO                 ; x = 50
+        lda #80
+        sta GFX_ARG2_MID                ; y = 80
+        lda #80
+        sta GFX_ARG3_LO                 ; w = 80
+        lda #60
+        sta GFX_ARG3_MID                ; h = 60
+        lda #$00
+        sta GFX_COLOR                   ; color = 0 (efface)
+        jsr kernel_gfx_fill_rect
+
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
         sta SENTINEL_BASE+0
