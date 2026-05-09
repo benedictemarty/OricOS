@@ -5,6 +5,37 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-05-09
+
+### Phase 0 programme état-de-l'art — décisions architecture OricOS
+
+#### Ratified
+- **ADR-16** Driver model OricOS : hybride event-driven + sync, sans struct ops v1.
+  - Classe 1 IRQ-driven event queue : clavier (VIA T1, ring buffer 16 keycodes en bank 1 `$5860`), audio AY (futur), GPU async (ADR-21 v2).
+  - Classe 2 sync : FAT32, console, GPU sync v1, bank alloc.
+  - Mécanisme IRQ formalisé : table dispatch `$01:5680`.
+  - Débloque OS-2.d (clavier).
+- **ADR-17** ABI kernel publique exposée à userland :
+  - 18 syscalls v1, slots `$01-$12`, table dispatch `$01:5750`.
+  - `cop #$AA` ABI v1 versionné (v2 future = `cop #$AB`).
+  - Convention sentinelle `A=$FF` + errno bank 1 `$5760`.
+  - Args > 2 bytes via zero-page kernel `$D0-$DF`.
+  - Préservés : X (sauf retour multi-byte), D, DBR, PBR, pile.
+  - Débloque Sprint 4 userland C.
+
+#### Sprints à venir Phase 1
+- **OS-2.f.v2** — migration COP handler v0.1 (cmp/bne hardcoded sur SYS_PRINT_CHAR) → v0.2 table dispatch 18 syscalls. Estim. 2 j.
+- **OS-2.d** — driver clavier IRQ-driven event queue selon ADR-16. Estim. 3-5 j.
+- **OS-2.e** — driver console générique. Estim. 2-3 j.
+
+#### Documentation
+- Cf. `../docs/adr/0016-driver-model.md`, `../docs/adr/0017-abi-syscall-userland.md`, et `../CLAUDE.md` §2.
+
+#### Aucun changement de code en Phase 0
+- Pas de modification `kernel.s`. État du kernel inchangé.
+
+---
+
 ## [0.40.0] - 2026-05-09
 
 ### Sprint 3.c v0.4 — 3e fenêtre démo palette ✨
