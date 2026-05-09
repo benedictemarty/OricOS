@@ -306,6 +306,22 @@ GPU_OP_LINE      = $04
 GPU_STATUS_BUSY  = $80
 GPU_STATUS_ERR   = $40
 
+; ZP args pour kernel_window_draw (Sprint 3.c v0.1)
+WIN_X            = $80           ; coin haut-gauche x (8-bit)
+WIN_Y            = $81           ; coin haut-gauche y (8-bit)
+WIN_W            = $82           ; largeur (8-bit)
+WIN_H            = $83           ; hauteur (8-bit)
+WIN_TITLEBAR_H   = $84           ; hauteur title bar (8-bit, typ. 8)
+WIN_COLOR_FRAME  = $85           ; couleur cadre (4-bit)
+WIN_COLOR_TITLE  = $86           ; couleur title bar
+WIN_COLOR_BODY   = $87           ; couleur corps
+WIN_BASE_LO      = $88           ; base SDRAM framebuffer (24-bit)
+WIN_BASE_MID     = $89
+WIN_BASE_HI      = $8A
+; Tmp $8B-$8F pour calculs (X+W-1, Y+H-1)
+WIN_TMP_X_END    = $8B
+WIN_TMP_Y_END    = $8C
+
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)
 GFX_BASE_LO      = $70           ; base address 24-bit (SDRAM offset)
@@ -571,6 +587,51 @@ kernel_entry:
         lda #$02
         sta GFX_COLOR                   ; color = 2 (green)
         jsr kernel_gfx_line
+
+        ; ── Sprint 3.c v0.1 : démo kernel_window_draw ─────────────
+        ; D'abord CLEAR fond noir (color 0) sur 32 KiB à $00C000
+        ; (= 64 lignes XVGA).
+        lda #$00
+        sta GFX_BASE_LO
+        lda #$C0
+        sta GFX_BASE_MID
+        lda #$00
+        sta GFX_BASE_HI                 ; base = SDRAM $00C000
+        lda #$00
+        sta GFX_ARG2_LO
+        lda #$80
+        sta GFX_ARG2_MID
+        lda #$00
+        sta GFX_ARG2_HI                 ; size = $8000 = 32 KiB
+        lda #$00
+        sta GFX_COLOR                   ; color = 0 (black)
+        jsr kernel_gfx_clear
+
+        ; Window à (x=20, y=10, w=80, h=60), titlebar h=8.
+        ; Frame noir (0), title bar dark blue (1), body lightgray (7).
+        lda #$00
+        sta WIN_BASE_LO
+        lda #$C0
+        sta WIN_BASE_MID
+        lda #$00
+        sta WIN_BASE_HI                 ; base = SDRAM $00C000
+        lda #20
+        sta WIN_X
+        lda #10
+        sta WIN_Y
+        lda #80
+        sta WIN_W
+        lda #60
+        sta WIN_H
+        lda #8
+        sta WIN_TITLEBAR_H
+        lda #$00
+        sta WIN_COLOR_FRAME             ; frame = black
+        lda #$01
+        sta WIN_COLOR_TITLE             ; title = blue
+        lda #$07
+        sta WIN_COLOR_BODY              ; body = lgray
+        jsr kernel_window_draw
 
         ; ── Sentinel "ORIOS\x00" + "v0.3\x00" ───────────────────────
         lda #'O'
@@ -2616,6 +2677,125 @@ gfx_line_wait:
         inx
         bne gfx_line_wait
 gfx_line_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_window_draw — dessine 1 fenêtre rectangulaire (Sprint 3.c)
+; ════════════════════════════════════════════════════════════════════
+;
+; Dessine une fenêtre via GPU (3 étapes) :
+;   1. Body (FILL_RECT entier W×H avec WIN_COLOR_BODY).
+;   2. Title bar (FILL_RECT W×TITLEBAR_H en haut avec WIN_COLOR_TITLE).
+;   3. Cadre (4 LINEs avec WIN_COLOR_FRAME).
+;
+; Args ZP :
+;   WIN_BASE_LO/MID/HI ($88-$8A) = base SDRAM framebuffer.
+;   WIN_X ($80), WIN_Y ($81)     = coordonnées coin haut-gauche.
+;   WIN_W ($82), WIN_H ($83)     = dimensions (8-bit chacun).
+;   WIN_TITLEBAR_H ($84)         = hauteur title bar.
+;   WIN_COLOR_FRAME ($85)        = couleur cadre 4-bit.
+;   WIN_COLOR_TITLE ($86)        = couleur title bar.
+;   WIN_COLOR_BODY ($87)         = couleur corps.
+; Modifie : A, X, Y, $70-$78 (utilisés par les helpers GFX), $8B-$8C.
+; Pré-cond : mode N M=1 X=1, gpu_device présent, fb base valide.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_window_draw
+kernel_window_draw:
+        ; Pré-calcul X+W-1 et Y+H-1 (utilisés par les LINE du cadre)
+        lda WIN_X
+        clc
+        adc WIN_W
+        sec
+        sbc #$01
+        sta WIN_TMP_X_END               ; X+W-1
+        lda WIN_Y
+        clc
+        adc WIN_H
+        sec
+        sbc #$01
+        sta WIN_TMP_Y_END               ; Y+H-1
+
+        ; Copie BASE → GFX_BASE (partagée par tous les helpers)
+        lda WIN_BASE_LO
+        sta GFX_BASE_LO
+        lda WIN_BASE_MID
+        sta GFX_BASE_MID
+        lda WIN_BASE_HI
+        sta GFX_BASE_HI
+
+        ; ── Étape 1 : zone body (FILL_RECT entier) ──────────────────
+        lda WIN_X
+        sta GFX_ARG2_LO
+        lda WIN_Y
+        sta GFX_ARG2_MID
+        lda WIN_W
+        sta GFX_ARG3_LO
+        lda WIN_H
+        sta GFX_ARG3_MID
+        lda WIN_COLOR_BODY
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect
+
+        ; ── Étape 2 : title bar (FILL_RECT haut) ────────────────────
+        lda WIN_X
+        sta GFX_ARG2_LO
+        lda WIN_Y
+        sta GFX_ARG2_MID
+        lda WIN_W
+        sta GFX_ARG3_LO
+        lda WIN_TITLEBAR_H
+        sta GFX_ARG3_MID
+        lda WIN_COLOR_TITLE
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect
+
+        ; ── Étape 3a : LINE top (X, Y) → (X+W-1, Y) ─────────────────
+        lda WIN_X
+        sta GFX_ARG2_LO
+        lda WIN_Y
+        sta GFX_ARG2_MID
+        lda WIN_TMP_X_END
+        sta GFX_ARG3_LO
+        lda WIN_Y
+        sta GFX_ARG3_MID
+        lda WIN_COLOR_FRAME
+        sta GFX_COLOR
+        jsr kernel_gfx_line
+
+        ; ── Étape 3b : LINE bottom (X, Y+H-1) → (X+W-1, Y+H-1) ──────
+        lda WIN_X
+        sta GFX_ARG2_LO
+        lda WIN_TMP_Y_END
+        sta GFX_ARG2_MID
+        lda WIN_TMP_X_END
+        sta GFX_ARG3_LO
+        lda WIN_TMP_Y_END
+        sta GFX_ARG3_MID
+        ; (color frame déjà set)
+        jsr kernel_gfx_line
+
+        ; ── Étape 3c : LINE left (X, Y) → (X, Y+H-1) ────────────────
+        lda WIN_X
+        sta GFX_ARG2_LO
+        lda WIN_Y
+        sta GFX_ARG2_MID
+        lda WIN_X
+        sta GFX_ARG3_LO
+        lda WIN_TMP_Y_END
+        sta GFX_ARG3_MID
+        jsr kernel_gfx_line
+
+        ; ── Étape 3d : LINE right (X+W-1, Y) → (X+W-1, Y+H-1) ───────
+        lda WIN_TMP_X_END
+        sta GFX_ARG2_LO
+        lda WIN_Y
+        sta GFX_ARG2_MID
+        lda WIN_TMP_X_END
+        sta GFX_ARG3_LO
+        lda WIN_TMP_Y_END
+        sta GFX_ARG3_MID
+        jsr kernel_gfx_line
+
         rts
 
 ; ════════════════════════════════════════════════════════════════════

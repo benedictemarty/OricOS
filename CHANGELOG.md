@@ -5,6 +5,65 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.36.0] - 2026-05-09
+
+### Sprint 3.c v0.1 — Window manager basique ✨
+
+#### Added
+- **`kernel_window_draw`** : dessine 1 fenêtre rectangulaire via GPU.
+  - Args ZP : WIN_BASE_LO/MID/HI ($88-$8A) = base SDRAM framebuffer.
+    WIN_X ($80), WIN_Y ($81), WIN_W ($82), WIN_H ($83) = position et
+    dimensions (8-bit). WIN_TITLEBAR_H ($84) = hauteur title bar.
+    WIN_COLOR_FRAME ($85), WIN_COLOR_TITLE ($86), WIN_COLOR_BODY ($87)
+    = couleurs 4-bit.
+  - Algorithme : 6 commandes GPU séquentielles :
+    1. FILL_RECT body entier.
+    2. FILL_RECT titlebar par-dessus.
+    3-6. 4 LINEs Bresenham pour le cadre (top, bottom, left, right).
+  - Pré-calcul X+W-1 et Y+H-1 dans tmp $8B/$8C.
+
+#### Boot kernel intégré (démo window)
+- CLEAR(base=$00C000, size=32 KiB, color=0=black) : fond noir 64 lignes.
+- kernel_window_draw(base=$00C000, x=20, y=10, w=80, h=60, titlebar=8,
+  frame=0=black, title=1=blue, body=7=lgray).
+
+#### Validation
+- 540 tests OK (539 → 540, +1).
+- Test `test_oricos_window_draw` valide pixel par pixel :
+  - 4 coins du cadre = 0 (black).
+  - 4 milieux des bords = 0.
+  - 3 pixels titlebar interior = 1 (blue).
+  - 3 pixels body interior = 7 (lgray).
+  - 4 pixels hors fenêtre = 0 (CLEAR initial).
+
+#### Importance
+**Première fenêtre GUI dessinée par OricOS via le pipeline GPU
+complet end-to-end** :
+```
+Boot kernel
+  → kernel_window_draw (asm OricOS)
+  → kernel_gfx_fill_rect/line (asm)
+  → I/O ports $0340-$034F
+  → gpu_device dispatch (Phosphoric C)
+  → exec FILL_RECT/LINE (4bpp pixel mask)
+  → vram_device SDRAM
+ASSERT pixel par pixel : cadre + titlebar + body corrects.
+```
+
+Sprint 3.c v0.1 démontre que OricOS peut dessiner une fenêtre via le
+GPU autonome. Sprint 3.c v0.2 (à venir) ajoutera : drag fenêtre via
+BLIT, multifenêtré, focus management.
+
+#### Reportés Sprint 3.c v0.2
+- `kernel_window_move(window_id, dx, dy)` via BLIT depuis position
+  ancienne vers nouvelle.
+- `kernel_window_close` / `kernel_window_minimize` (backing-store
+  SDRAM via DMA).
+- Multifenêtré (TCB par fenêtre).
+- Title text via `kernel_gfx_text` (dépend SP-GPU-2 v0.3).
+
+---
+
 ## [0.35.0] - 2026-05-09
 
 ### Sprint GPU-3 v0.2 — kernel_gfx_blit + kernel_gfx_line ✨
