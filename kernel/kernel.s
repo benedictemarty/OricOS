@@ -173,6 +173,7 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 DP_PTR          = $08            ; DP+$08/$09/$0A : pointer 24-bit
 DP_PCPTR        = $0C            ; DP+$0C/$0D : pointer 16-bit
 DP_TMP          = $10            ; DP+$10 : char temp
+DP_SYS_ARG_X    = $11            ; DP+$11 : X sauvé avant corruption dispatch (OS-2.f.v2)
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
@@ -2889,6 +2890,136 @@ kernel_window_draw:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  Syscall handlers v0.2 — implémentent les 18 syscalls ADR-17
+; ════════════════════════════════════════════════════════════════════
+;
+; Appelés via JSR depuis kernel_cop_handler (table dispatch v0.2).
+; Convention : retournent via RTS. A = valeur de retour ($FF = erreur).
+; X arg1 est lu depuis DP_SYS_ARG_X (sauvé par le dispatcher).
+; Y arg2 est lu depuis le registre Y (intact, non touché par dispatcher).
+;
+; ════════════════════════════════════════════════════════════════════
+
+; $00 — sys_invalid : syscall réservé ou hors-table (aussi fin de table) ─
+sys_invalid:
+        lda #$FF
+        rts
+
+; $01 — SYS_PRINT_CHAR : arg X = char ────────────────────────────────
+sys_print_char:
+        ldx DP_SYS_ARG_X        ; récupère l'arg X original
+        txa
+        jsr kernel_print_char
+        rts
+
+; $02 — SYS_PRINT_STRING : X=lo, Y=hi du pointeur (bank = DBR appelant) ─
+sys_print_string:
+        phb
+        pla                     ; A = DBR de l'appelant
+        sta DP_PTR+2
+        lda DP_SYS_ARG_X        ; A = arg X = lo ptr
+        sta DP_PTR
+        tya                     ; A = arg Y = hi ptr
+        sta DP_PTR+1
+        jsr kernel_print_string
+        rts
+
+; $03 — SYS_READ_CHAR : bloquant (stub — attend OS-2.d driver clavier) ─
+sys_read_char:
+        lda #$FF                ; stub : pas de driver clavier
+        rts
+
+; $04 — SYS_EXIT : X = exit_code ─────────────────────────────────────
+sys_exit:
+        stp                     ; v0.1 : arrêt (pas de task cleanup OS-2.g.v2)
+        bra *
+
+; $05 — SYS_YIELD : cède le CPU ───────────────────────────────────────
+sys_yield:
+        rts                     ; no-op : scheduler est IRQ-driven (ADR-03)
+
+; $06 — SYS_GET_KEY : non-bloquant (stub) → A = 0 ────────────────────
+sys_get_key:
+        lda #$00                ; stub : pas de driver clavier
+        rts
+
+; $07 — SYS_FAT_OPEN : DP_FILENAME (11B) posé par l'appelant ──────────
+; Retourne A=$00 si trouvé (fd=0 v0.1), A=$FF si non trouvé.
+sys_fat_open:
+        jsr kernel_fat_open
+        lda FS_OPEN_RESULT
+        bne sfop_err
+        lda #$00                ; A=$00 = fd 0 (single file v0.1)
+        rts
+sfop_err:
+        lda #$FF
+        rts
+
+; $08 — SYS_FAT_READ : args dans ZP kernel_fat_read_file ──────────────
+sys_fat_read:
+        jsr kernel_fat_read_file
+        rts
+
+; $09 — SYS_FAT_CLOSE : stub v0.2 ─────────────────────────────────────
+sys_fat_close:
+        lda #$00
+        rts
+
+; $0A — SYS_PANIC : X = code ──────────────────────────────────────────
+sys_panic:
+        lda DP_SYS_ARG_X        ; récupère le code (arg X)
+        jsr kernel_panic
+        rts
+
+; $0B — SYS_ALLOC_BANK : ret A = bank ou $FF ──────────────────────────
+sys_alloc_bank:
+        jsr kernel_alloc_bank
+        cmp #$00
+        bne sab_ok
+        lda #$FF                ; pool épuisé → erreur ADR-17
+sab_ok: rts
+
+; $0C — SYS_FREE_BANK : X = bank ──────────────────────────────────────
+sys_free_bank:
+        lda DP_SYS_ARG_X        ; récupère numéro bank (arg X)
+        jsr kernel_free_bank
+        rts
+
+; $0D — SYS_GFX_CLEAR : args via I/O ZP (ADR-21 convention) ──────────
+sys_gfx_clear:
+        jsr kernel_gfx_clear
+        lda #$00
+        rts
+
+; $0E — SYS_GFX_FILL_RECT ─────────────────────────────────────────────
+sys_gfx_fill_rect:
+        jsr kernel_gfx_fill_rect
+        lda #$00
+        rts
+
+; $0F — SYS_GFX_BLIT ──────────────────────────────────────────────────
+sys_gfx_blit:
+        jsr kernel_gfx_blit
+        lda #$00
+        rts
+
+; $10 — SYS_GFX_LINE ──────────────────────────────────────────────────
+sys_gfx_line:
+        jsr kernel_gfx_line
+        lda #$00
+        rts
+
+; $11 — SYS_GFX_TEXT ──────────────────────────────────────────────────
+sys_gfx_text:
+        jsr kernel_gfx_text
+        lda #$00
+        rts
+
+; $12 — SYS_SLEEP_MS : X/Y = ms16 (stub v0.2) ────────────────────────
+sys_sleep_ms:
+        rts                     ; stub : pas de timer ms précis
+
+; ════════════════════════════════════════════════════════════════════
 ;  NMI_HANDLER — bank 1 $5500
 ; ════════════════════════════════════════════════════════════════════
 ;
@@ -2903,32 +3034,62 @@ kernel_nmi_handler:
         rti
 
 ; ════════════════════════════════════════════════════════════════════
-;  COP_HANDLER — syscall dispatcher (bank 1 $5700, ADR-13)
+;  COP_HANDLER — syscall dispatcher v0.2 (bank 1 $5700, ADR-13/17)
 ; ════════════════════════════════════════════════════════════════════
 ;
-; Convention v0.1 (ADR-13 minimal) : `cop #$AA` (signature OricOS).
-; Le numéro de syscall est passé en A. Args en X/Y selon syscall.
-;
-; v0.1 supporte un seul syscall hardcoded :
-;   SYS_PRINT_CHAR ($01) : A=$01 → X = char (oui, A non utilisable car
-;     contient le numéro). Convention v0.1bis : si A=$01, X = char.
-;
-; Plus tard : table de pointers en bank 1 indexée par A*2.
+; Convention v0.2 (ADR-17) : cop #$AA → A=num syscall, X=arg1, Y=arg2.
+; Table dispatch : SYSCALL_TABLE à $01:5750, 64 entrées × 2B (ADR-17).
+; Le dispatcher sauve X dans DP_SYS_ARG_X avant de l'utiliser comme
+; index. Les handlers lisent X arg depuis DP_SYS_ARG_X. Y est intact.
+; Retour : A = valeur ($FF = erreur, ADR-17).
 ;
 ; ════════════════════════════════════════════════════════════════════
         .segment "COP_HANDLER"
 
 .export kernel_cop_handler
 kernel_cop_handler:
-        sep #$30                ; sécurité M=X=1
-        cmp #$01                ; SYS_PRINT_CHAR ?
-        bne cop_unknown
-        ; SYS_PRINT_CHAR : char est en X (8-bit), passé via X.
-        txa                     ; A = char
-        jsr kernel_print_char
-cop_unknown:
-        ; v0.1 : ignore syscalls inconnus
+        sep #$30                ; sécurité M=X=1 (mode N native)
+        stx DP_SYS_ARG_X       ; sauve X (arg1) — sera écrasé par l'index
+        cmp #$40               ; num < 64 ?
+        bcs cop_invalid
+        asl a                   ; A = num × 2 (offset bytes dans la table)
+        tax                     ; X = index table (DP_SYS_ARG_X contient l'arg1)
+        jsr (syscall_table,x)  ; appel handler via table (ADR-17)
+        rti                     ; retour caller — A = valeur de retour
+
+cop_invalid:
+        lda #$FF                ; convention erreur ADR-17
         rti
+
+; ════════════════════════════════════════════════════════════════════
+;  SYSCALL_TABLE — table 64 entrées × 2B (bank 1 $5750, ADR-17)
+; ════════════════════════════════════════════════════════════════════
+        .segment "SYSCALL_TABLE"
+
+.export syscall_table
+syscall_table:
+        .word sys_invalid       ; $00 réservé
+        .word sys_print_char    ; $01 SYS_PRINT_CHAR
+        .word sys_print_string  ; $02 SYS_PRINT_STRING
+        .word sys_read_char     ; $03 SYS_READ_CHAR  (stub — OS-2.d)
+        .word sys_exit          ; $04 SYS_EXIT
+        .word sys_yield         ; $05 SYS_YIELD
+        .word sys_get_key       ; $06 SYS_GET_KEY    (stub — OS-2.d)
+        .word sys_fat_open      ; $07 SYS_FAT_OPEN
+        .word sys_fat_read      ; $08 SYS_FAT_READ
+        .word sys_fat_close     ; $09 SYS_FAT_CLOSE  (stub)
+        .word sys_panic         ; $0A SYS_PANIC
+        .word sys_alloc_bank    ; $0B SYS_ALLOC_BANK
+        .word sys_free_bank     ; $0C SYS_FREE_BANK
+        .word sys_gfx_clear     ; $0D SYS_GFX_CLEAR
+        .word sys_gfx_fill_rect ; $0E SYS_GFX_FILL_RECT
+        .word sys_gfx_blit      ; $0F SYS_GFX_BLIT
+        .word sys_gfx_line      ; $10 SYS_GFX_LINE
+        .word sys_gfx_text      ; $11 SYS_GFX_TEXT
+        .word sys_sleep_ms      ; $12 SYS_SLEEP_MS   (stub)
+        .repeat 45
+        .word sys_invalid       ; $13-$3F réservés
+        .endrep
 
 ; ════════════════════════════════════════════════════════════════════
 ;  IRQ_HANDLER — scheduler préemptif (bank 1 $5600)

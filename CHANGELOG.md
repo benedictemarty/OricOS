@@ -5,6 +5,27 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2026-05-23
+
+### OS-2.f.v2 — COP handler v0.2 : table de dispatch 18 syscalls (ADR-13/17)
+
+#### Added
+- `kernel.cfg` : segment `SYSCALL_TABLE` à `$01:5750` (bank 1).
+- `kernel.s` :
+  - `kernel_cop_handler` v0.2 : sauve X (arg1) en `DP_SYS_ARG_X` (`$11`),
+    valide `num < 64`, dispatch via `jsr (syscall_table,x)` (opcode `$FC`).
+    Erreur `A=$FF` si num hors table (sentinelle ADR-17).
+  - `syscall_table` : 64 entrées × 2 octets, 18 syscalls v1 ($01-$12) +
+    slots réservés pointant vers `sys_invalid`.
+  - 19 handlers `sys_*` : print_char/string, read_char/get_key (stubs
+    clavier OS-2.d), exit, yield, fat_open/read/close, panic, alloc/free_bank,
+    gfx_clear/fill_rect/blit/line/text, sleep_ms (stub).
+  - `DP_SYS_ARG_X = $11` : sauvegarde de l'arg X avant écrasement par l'index.
+
+#### Note
+- Dépend de l'opcode 65C816 `$FC` (`jsr (a,x)`) — implémenté côté Phosphoric
+  golden model en v1.22.20-alpha. Sans lui, le dispatch était un no-op silencieux.
+
 ## [Unreleased] - 2026-05-09
 
 ### Phase 1 PH-cleanup-zombie — Retrait kernel_hires2_* legacy
