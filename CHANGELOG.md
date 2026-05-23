@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-23
 
+### OS-2.e.2 — Console : CR (\r) + scroll up
+
+#### Added
+- `kernel.s` :
+  - **`kernel_print_char`** gère désormais **CR (`\r`, $0D)** : retour en début
+    de ligne courante (`CURSOR_ADDR -= CURSOR_X`, `CURSOR_X = 0`), sans écriture.
+  - **`kernel_scroll_up`** : scroll écran d'une ligne (lignes 1..27 → 0..26,
+    dernière ligne remplie d'espaces, attribut INK 7 restauré en `$BB80`).
+  - `kernel_print_char` : dépassement bas d'écran → `kernel_scroll_up` (au lieu
+    du clamp v0.1) ; le curseur reste sur la dernière ligne (col 0).
+  - Self-tests boot (avant `clear_screen`) : scroll + CR, résultats en
+    `SCROLL_TEST_RES` (`$015477`).
+
+#### Note
+- Modèle console à attribut unique : la cellule ligne0/col0 (`$BB80`) reste
+  réservée à l'INK ; le caractère ligne1/col0 est perdu au scroll (artefact mineur).
+- Reporté : attribut couleur par ligne, INKs multiples simultanés.
+
 ### OS-2.d — Driver clavier Oric 2 (KBD2 IRQ-driven, ADR-22)
 
 #### Added

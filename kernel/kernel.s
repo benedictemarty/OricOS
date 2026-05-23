@@ -302,6 +302,7 @@ KBD_RING_COUNT  = $015872       ; nb octets en file (0..16)
 KBD_RING_SIZE   = 16
 KBD_RING_MASK   = KBD_RING_SIZE - 1
 KBD_GETKEY_RES  = $015476       ; sentinelle test : résultat SYS_GET_KEY démo
+SCROLL_TEST_RES = $015477       ; sentinelle test OS-2.e.2 : 4 octets (scroll+CR)
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
@@ -949,6 +950,31 @@ kernel_entry:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
+
+        ; ── OS-2.e.2 : self-tests console (scroll + CR) AVANT clear_screen ──
+        ; (le clear suivant efface l'écran ; les résultats vont en bank 1).
+        ; Scroll : 'S' en ligne1/col1 ($BBA9) doit remonter ligne0/col1 ($BB81).
+        lda #'S'
+        sta $00BBA9
+        jsr kernel_scroll_up
+        lda $00BB81             ; = 'S' si scroll OK
+        sta SCROLL_TEST_RES+0
+        lda $00BFB8             ; dernière ligne effacée → espace $20
+        sta SCROLL_TEST_RES+1
+        ; CR : curseur $BB85/X=5 → CR → $BB80/X=0.
+        rep #$20
+        lda #$BB85
+        sta CURSOR_ADDR
+        sep #$20
+        lda #$05
+        sta CURSOR_X
+        lda #$0D                ; CR
+        jsr kernel_print_char
+        lda CURSOR_ADDR         ; low byte → doit être $80
+        sta SCROLL_TEST_RES+2
+        lda CURSOR_X            ; doit être $00
+        sta SCROLL_TEST_RES+3
+
         jsr kernel_clear_screen
         jsr kernel_console_init
         jsr kernel_print_banner
@@ -2047,8 +2073,8 @@ clr_done:
 ;   - kernel_print_string (DP+$08/$09 = ptr 16-bit en bank 1)
 ;   - kernel_print_banner réécrit via print_string
 ;
-; Non-implémenté v0.1 (reporté OS-2.e.2) : CR (\r), scroll up,
-; attribut couleur, gestion de plusieurs INKs simultanés.
+; OS-2.e.2 : CR (\r) → début de ligne, scroll up (lignes 1..27 → 0..26).
+; Non-implémenté (reporté) : attribut couleur par ligne, INKs multiples.
 ;
 ; Pré-cond toutes routines : mode N M=X=1, DBR=0.
 ; ════════════════════════════════════════════════════════════════════
@@ -2074,6 +2100,8 @@ kernel_print_char:
         sta DP_TMP               ; sauve char
         cmp #$0A
         beq pc_lf
+        cmp #$0D                 ; CR (\r) → début de ligne courante
+        beq pc_cr
         ; Char normal : store at CURSOR_ADDR (bank DBR=0 par défaut)
         ; Setup pointer 16-bit DP_PCPTR ← CURSOR_ADDR ; DBR fournit bank 0.
         rep #$20
@@ -2110,19 +2138,66 @@ pc_lf:
         sep #$20
         lda #$00
         sta CURSOR_X
+        bra pc_check_end
+pc_cr:
+        ; CR : CURSOR_ADDR -= CURSOR_X (retour col 0), CURSOR_X = 0.
+        lda CURSOR_X
+        rep #$20
+        and #$00FF               ; CURSOR_X zero-étendu (16-bit)
+        sta DP_PCPTR             ; scratch 16-bit
+        lda CURSOR_ADDR
+        sec
+        sbc DP_PCPTR
+        sta CURSOR_ADDR
+        sep #$20
+        lda #$00
+        sta CURSOR_X
+        bra pc_done              ; CR ne peut pas dépasser le bas d'écran
 pc_check_end:
-        ; Si CURSOR_ADDR >= SCREEN_END, reste à la dernière ligne
-        ; (scroll non implémenté v0.1 — clamp simple).
+        ; Si CURSOR_ADDR >= SCREEN_END → scroll up d'une ligne (OS-2.e.2).
         rep #$20
         lda CURSOR_ADDR
         cmp #SCREEN_END
         sep #$20
         bcc pc_done
+        jsr kernel_scroll_up
         rep #$20
-        lda #SCREEN_LAST_ROW     ; clamp à dernière ligne (start)
+        lda #SCREEN_LAST_ROW     ; curseur sur la dernière ligne (col 0)
         sta CURSOR_ADDR
         sep #$20
+        lda #$00
+        sta CURSOR_X
 pc_done:
+        rts
+
+; ─── kernel_scroll_up : scroll écran vers le haut d'une ligne ──────
+; Copie lignes 1..27 → 0..26 (40 octets décalage), remplit la dernière
+; ligne d'espaces, restaure l'attribut INK 7 en $BB80. La cellule
+; ligne0/col0 étant réservée à l'attribut, le car. ligne1/col0 est perdu
+; (artefact mineur du modèle console à attribut unique). Modifie A, X.
+; Pré-cond : mode N M=X=1, DBR=0.
+.export kernel_scroll_up
+kernel_scroll_up:
+        rep #$10                 ; X 16-bit (compteur > 255)
+        ldx #$0000
+scrl_copy:
+        lda SCREEN_BASE+SCREEN_COLS,X   ; src = ligne+1 (abs long,X)
+        sta SCREEN_BASE,X               ; dst = ligne
+        inx
+        cpx #(SCREEN_END - SCREEN_BASE - SCREEN_COLS)  ; 1080 octets
+        bcc scrl_copy
+        ; Efface la dernière ligne (40 espaces).
+        ldx #$0000
+scrl_clear:
+        lda #SCREEN_FILL
+        sta SCREEN_LAST_ROW,X
+        inx
+        cpx #SCREEN_COLS
+        bcc scrl_clear
+        sep #$10                 ; X repasse en 8-bit
+        ; Restaure l'attribut INK 7 en tête d'écran.
+        lda #$07
+        sta SCREEN_BASE
         rts
 
 ; ─── kernel_print_string : args DP+$08/$09 = ptr 16-bit en bank 1 ──
