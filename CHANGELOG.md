@@ -5,7 +5,26 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-05-23
+## [Unreleased] - 2026-05-24
+
+### OS-2.i.v2 — Modèle d'erreur kernel : log ring buffer + codes nommés
+
+#### Added
+- `kernel.s` :
+  - **Codes d'erreur nommés** : `ERR_NONE`, `ERR_BANK_EXHAUSTED`,
+    `ERR_BAD_SYSCALL`, `ERR_BUNDLE_INVALID`. Niveaux `LOG_INFO/WARN/ERROR/PANIC`.
+  - **`kernel_log_write`** (A=code, X=level) : ring buffer circulaire 8 entrées
+    × 2 octets (level, code) en bank 1 `$54E0` ; écrase la plus ancienne si plein.
+  - **`kernel_log_init`** : vide le ring (appelé tôt au boot).
+  - **Points de journalisation câblés** : `kernel_panic` (LOG_PANIC),
+    `cop_invalid` (syscall ≥ 64 → WARN/ERR_BAD_SYSCALL), `alloc_none`
+    (pool épuisé → ERROR/ERR_BANK_EXHAUSTED).
+  - Self-test boot : COP invalide ($50) → 1 entrée vérifiée → `LOG_TEST_RES`.
+  - `DP_LOG_TMP` ($13) scratch.
+
+#### Note
+- `SYS_PANIC` ($0A) journalise désormais via `kernel_panic`.
+- Log inspectable post-mortem (ring en bank 1). Persistance disque reportée.
 
 ### OS-2.e.2 — Console : CR (\r) + scroll up
 

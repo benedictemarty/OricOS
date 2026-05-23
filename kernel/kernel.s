@@ -99,8 +99,32 @@ BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 132-159
 BANK_LIVE_FREE_LIST  = $0154C0   ; 16 bytes stack
 BANK_LIVE_FREE_TOP   = $0154D0   ; 1 byte (count 0..16)
 
-; ─── Modèle erreur kernel (Sprint 2.i) ──────────────────────────────
+; ─── Modèle erreur kernel (Sprint 2.i / OS-2.i.v2) ──────────────────
 PANIC_CODE      = $015495       ; 1 byte : dernier code panic (0 = OK)
+
+; Codes d'erreur/panic nommés (8-bit). 0 = OK.
+ERR_NONE            = $00
+ERR_BANK_EXHAUSTED  = $01       ; pool de banks épuisé (kernel_alloc_bank)
+ERR_BAD_SYSCALL     = $02       ; numéro de syscall invalide (COP dispatch)
+ERR_BUNDLE_INVALID  = $03       ; bundle app malformé (réservé)
+
+; Niveaux de log kernel.
+LOG_INFO            = $01
+LOG_WARN            = $02
+LOG_ERROR           = $03
+LOG_PANIC           = $04
+
+; Log ring buffer (OS-2.i.v2) — bank 1, gap $5400-$54FF (hors CODE/segments).
+; 8 entrées × 2 octets (level, code) = 16B. Circulaire : si plein, l'entrée
+; la plus ancienne est écrasée (head suit tail). Inspectable post-mortem.
+LOG_RING        = $0154E0       ; 16 octets (8 entrées × {level, code})
+LOG_HEAD        = $0154F0       ; index lecture (entrée la plus ancienne)
+LOG_TAIL        = $0154F1       ; index écriture
+LOG_COUNT       = $0154F2       ; nb entrées (0..8)
+LOG_SIZE        = 8
+LOG_MASK        = LOG_SIZE - 1
+DP_LOG_TMP      = $13           ; DP+$13 : scratch code log
+LOG_TEST_RES    = $0154F3       ; sentinelle test OS-2.i.v2 : 3 octets (count, lvl, code)
 
 ; ─── Format bundle apps (Sprint 2.k, ADR-08 v0.1) ───────────────────
 ; Header bundle "OOS\x01" : 8 octets fixes :
@@ -443,6 +467,9 @@ kernel_entry:
         tcs                     ; S = $01FF
         sep #$20
         sep #$30                ; M=1, X=1
+
+        ; ── OS-2.i.v2 : init log ring buffer (tôt, avant tout log/panic) ──
+        jsr kernel_log_init
 
         ; ── PH-cleanup-zombie (2026-05-09) ─────────────────────────
         ; Sprints 3.a/3.b kernel_hires2_clear + kernel_fill_rect_aligned
@@ -974,6 +1001,17 @@ kernel_entry:
         sta SCROLL_TEST_RES+2
         lda CURSOR_X            ; doit être $00
         sta SCROLL_TEST_RES+3
+
+        ; ── OS-2.i.v2 : self-test log (COP invalide → 1 entrée WARN) ──
+        ; num syscall $50 (≥ $40) → cop_invalid journalise (WARN, ERR_BAD_SYSCALL).
+        lda #$50
+        cop #$AA
+        lda LOG_COUNT           ; doit être 1
+        sta LOG_TEST_RES+0
+        lda LOG_RING+0          ; entrée 0 : level (head=0) → LOG_WARN
+        sta LOG_TEST_RES+1
+        lda LOG_RING+1          ; entrée 0 : code → ERR_BAD_SYSCALL
+        sta LOG_TEST_RES+2
 
         jsr kernel_clear_screen
         jsr kernel_console_init
@@ -1963,10 +2001,58 @@ app_exec_jsl_bank:
 ; Pré-cond : mode N M=X=1, DBR=0, console initialisée (CURSOR_ADDR
 ; valide en bank 0 screen RAM).
 ; ════════════════════════════════════════════════════════════════════
+; ── kernel_log_init : vide le log ring buffer ─────────────────────
+; Pré-cond : mode N M=X=1, DBR=0. Modifie A.
+.export kernel_log_init
+kernel_log_init:
+        lda #$00
+        sta LOG_HEAD
+        sta LOG_TAIL
+        sta LOG_COUNT
+        rts
+
+; ── kernel_log_write : ajoute une entrée (A=code, X=level) ─────────
+; Ring circulaire : si plein, écrase l'entrée la plus ancienne.
+; Modifie A, X, Y. Pré-cond : mode N M=X=1, DBR=0.
+.export kernel_log_write
+kernel_log_write:
+        sta DP_LOG_TMP          ; sauve code
+        txa
+        pha                     ; sauve level
+        lda LOG_TAIL
+        asl a                   ; offset octet = tail × 2
+        tax
+        pla                     ; A = level
+        sta LOG_RING,X          ; ring[tail].level (abs long,X)
+        inx
+        lda DP_LOG_TMP          ; code
+        sta LOG_RING,X          ; ring[tail].code
+        ; tail = (tail+1) & mask
+        lda LOG_TAIL
+        inc a
+        and #LOG_MASK
+        sta LOG_TAIL
+        ; count++ si non plein, sinon head suit tail (drop le plus ancien)
+        lda LOG_COUNT
+        cmp #LOG_SIZE
+        bcs lw_full
+        inc a
+        sta LOG_COUNT
+        rts
+lw_full:
+        lda LOG_HEAD
+        inc a
+        and #LOG_MASK
+        sta LOG_HEAD
+        rts
+
 .export kernel_panic
 kernel_panic:
         sta PANIC_CODE
-        pha                     ; sauve code
+        pha                     ; sauve code (A inchangé par pha)
+        ; OS-2.i.v2 : journalise l'événement panic (A=code, X=level).
+        ldx #LOG_PANIC
+        jsr kernel_log_write
         ; Setup DP_PTR pour panic_msg en bank 1
         lda #$01
         sta DP_PTR+2
@@ -2390,7 +2476,11 @@ alloc_bump:
         pla
         rts
 alloc_none:
-        lda #$00                ; pool épuisé
+        ; OS-2.i.v2 : journalise l'épuisement du pool de banks.
+        lda #ERR_BANK_EXHAUSTED
+        ldx #LOG_ERROR
+        jsr kernel_log_write
+        lda #$00                ; pool épuisé (convention retour)
         rts
 
 .export kernel_free_bank
@@ -3199,6 +3289,10 @@ kernel_cop_handler:
         rti                     ; retour caller — A = valeur de retour
 
 cop_invalid:
+        ; OS-2.i.v2 : journalise le syscall invalide (num ≥ 64).
+        lda #ERR_BAD_SYSCALL
+        ldx #LOG_WARN
+        jsr kernel_log_write
         lda #$FF                ; convention erreur ADR-17
         rti
 

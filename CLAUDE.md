@@ -141,8 +141,8 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] **2.f** Mécanisme syscall (COP handler + table) — ✅ v0.2 (table dispatch 18 syscalls, ADR-13/17)
 - [x] **2.g** Scheduler TCB-based (table 16 + bitmap, ADR-14) — ✅ v0.1 (N tâches dynamiques reporté v0.2)
 - [x] **2.h** Bank allocator free list LIFO — ✅ v0.1 (bitmap reportée v0.2)
-- [ ] **2.i** Modèle d'erreur kernel (panic codes, kernel log ring buffer) ← **JALON COURANT**
-- [ ] **2.j** FAT32 SD lecture seule
+- [x] **2.i** Modèle d'erreur kernel — v0.1 (panic+hex) + v0.2 (log ring buffer `$54E0`, codes nommés, wiring panic/cop_invalid/alloc)
+- [ ] **2.j** FAT32 SD lecture seule ← **JALON COURANT**
 - [ ] **2.k** Format bundle apps (header + sections) — implémente ADR-08
 - [ ] **2.l** App loader (parse bundle, alloc bank, exec)
 - [ ] **2.m** Première app "hello" en asm (PoC userland sans llvm-mos)
