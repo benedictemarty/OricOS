@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-23
 
+### OS-2.d — Driver clavier Oric 2 (KBD2 IRQ-driven, ADR-22)
+
+#### Added
+- `kernel.s` :
+  - **Driver clavier paravirtualisé** : remplace le scan matriciel Oric 1 par
+    une lecture IRQ-driven du contrôleur KBD2 (`$0350-$035F`, ADR-22).
+  - `kernel_kbd_init` : vide le ring + active l'IRQ KBD2 (`KBD2_CTRL`).
+  - `kernel_kbd_poll` : draine la FIFO KBD2 → ring buffer (appelé par l'IRQ
+    handler à chaque tick + par la démo boot).
+  - `kernel_kbd_ring_push` / `kernel_kbd_ring_pop` : ring buffer 16 keycodes
+    en bank 1 `$5860` (ADR-16), head/tail/count, wrap puissance de 2.
+  - **`SYS_GET_KEY`** ($06, non-bloquant) et **`SYS_READ_CHAR`** ($03,
+    bloquant spin-poll) câblés sur le ring (étaient des stubs).
+  - Démo boot OS-2.d : drain + SYS_GET_KEY → sentinelle `KBD_GETKEY_RES`.
+  - Constantes `KBD2_*`, `KBD_RING*`, `DP_KBD_TMP`.
+
+#### Removed
+- `kernel_kbd_scan` (scan matriciel VIA/PSG) + init DDR/PSG de `kernel_kbd_init` :
+  obsolètes avec le contrôleur KBD2 (la keymap est faite côté contrôleur, ADR-22).
+
+#### Note
+- L'IRQ handler appelle désormais `kernel_kbd_poll` au lieu de `kernel_kbd_scan`.
+- Blocage vrai de `SYS_READ_CHAR` (task BLOCKED + wake) reporté à OS-2.g (TCB states).
+
 ### OS-2.f.v2 — COP handler v0.2 : table de dispatch 18 syscalls (ADR-13/17)
 
 #### Added

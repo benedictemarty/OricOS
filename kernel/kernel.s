@@ -174,6 +174,7 @@ DP_PTR          = $08            ; DP+$08/$09/$0A : pointer 24-bit
 DP_PCPTR        = $0C            ; DP+$0C/$0D : pointer 16-bit
 DP_TMP          = $10            ; DP+$10 : char temp
 DP_SYS_ARG_X    = $11            ; DP+$11 : X sauvé avant corruption dispatch (OS-2.f.v2)
+DP_KBD_TMP      = $12            ; DP+$12 : scratch ring clavier (OS-2.d)
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
@@ -279,7 +280,28 @@ PCR_LATCH_ADDR  = $EE
 PCR_WRITE_DATA  = $EA
 PCR_READ_DATA   = $AE
 PCR_INACTIVE    = $AA
-KBD_MATRIX      = $015470       ; 8 octets bank 1 (col 0..7 active low)
+KBD_MATRIX      = $015470       ; 8 octets bank 1 (legacy scan Oric 1, inutilisé OS-2.d)
+
+; ─── Contrôleur clavier Oric 2 KBD2 (ADR-22, OS-2.d) ────────────────
+; Modèle hybride paravirtualisé : l'hôte OricOS lit une FIFO ASCII via
+; IRQ (plus de scan matriciel). Registres I/O bank 0 $0350-$035F.
+KBD2_STATUS     = $000350       ; R : bit7=data_ready, bit6=overflow, bit0=guest_focus
+KBD2_DATA       = $000351       ; R : pop FIFO (keycode ASCII), avance la file
+KBD2_CTRL       = $000352       ; R/W : bit0=IRQ en, bit1=clear, bit2=route_guest
+KBD2_MOD        = $000353       ; R : SHIFT/CTRL/FUNCT/CAPS
+KBD2_ST_READY   = $80
+KBD2_CT_IRQ_EN  = $01
+
+; Ring buffer keycodes (ADR-16) — bank 1 $5860, 16 entrées (puissance de 2
+; pour wrap via AND). Réutilise la région source charset, morte après la
+; copie boot vers $B400 (cf. kernel_install_charset, même pattern que TCB).
+KBD_RING        = $015860       ; 16 octets
+KBD_RING_HEAD   = $015870       ; index lecture (pop)
+KBD_RING_TAIL   = $015871       ; index écriture (push)
+KBD_RING_COUNT  = $015872       ; nb octets en file (0..16)
+KBD_RING_SIZE   = 16
+KBD_RING_MASK   = KBD_RING_SIZE - 1
+KBD_GETKEY_RES  = $015476       ; sentinelle test : résultat SYS_GET_KEY démo
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
@@ -985,8 +1007,16 @@ b3_guest_loop:
         jsr kernel_bundle_find_code
         ; A = $00 OK, BUNDLE_FOUND_SIZE/OFFSET stockés.
 
-        ; ── Sprint 2.d : init clavier (DDR + PSG R7) ───────────────
+        ; ── OS-2.d : init driver clavier Oric 2 (KBD2 IRQ, ADR-22) ──
         jsr kernel_kbd_init
+
+        ; Démo OS-2.d : draine la FIFO KBD2 (touche éventuellement pré-injectée
+        ; par le test) vers le ring, puis lit via SYS_GET_KEY ($06). Le keycode
+        ; est stocké en KBD_GETKEY_RES (sentinelle test). $00 si aucune touche.
+        jsr kernel_kbd_poll
+        lda #$06                ; SYS_GET_KEY
+        cop #$AA
+        sta KBD_GETKEY_RES
 
         ; ── Sprint 2.b/2.h : init bank allocator (bump + free list) ──
         lda #BANK_POOL_BASE
@@ -2173,52 +2203,83 @@ psg_read_data:
         pla
         rts
 
-; ── kernel_kbd_init : DDR + PSG R7 + matrice initiale ──────────────
-; Pré-cond : mode N M=X=1, DBR=0.
+; ── kernel_kbd_init : init driver clavier Oric 2 (ADR-22) ──────────
+; Pré-cond : mode N M=X=1, DBR=0. Vide le ring + active l'IRQ KBD2.
+; Le scan matriciel Oric 1 est remplacé par la FIFO IRQ-driven du
+; contrôleur KBD2 (la keymap est faite côté contrôleur, plus dans le kernel).
 .export kernel_kbd_init
 kernel_kbd_init:
-        ; DDRA = $FF (port A en sortie pour PSG bus)
-        lda #$FF
-        sta VIA_DDRA
-        ; DDRB = $F7 (bits 0-2 col select output, bit 3 input scan, 4-7 output)
-        lda #$F7
-        sta VIA_DDRB
-        ; PSG R7 = $FF : tones 0-2 enabled, port A en input mode (bit 6=1
-        ;                dans la convention Phosphoric/Oricutron Oric 1).
-        lda #$07
-        jsr psg_set_reg
-        lda #$FF
-        jsr psg_write_data
-        ; Init KBD_MATRIX à $FF (= no key pressed, active low)
-        ldx #$00
-kbd_init_loop:
-        lda #$FF
-        sta KBD_MATRIX,X
-        inx
-        cpx #$08
-        bcc kbd_init_loop
+        ; Ring buffer vide.
+        lda #$00
+        sta KBD_RING_HEAD
+        sta KBD_RING_TAIL
+        sta KBD_RING_COUNT
+        sta KBD_GETKEY_RES
+        ; Active l'IRQ du contrôleur KBD2 (FIFO non vide → IRQ).
+        lda #KBD2_CT_IRQ_EN
+        sta KBD2_CTRL
         rts
 
-; ── kernel_kbd_scan : scan 8 colonnes → KBD_MATRIX ─────────────────
-; Pré-cond : mode N M=X=1, DBR=0. Modifie A, X. Préserve Y.
-.export kernel_kbd_scan
-kernel_kbd_scan:
-        ldx #$00
-kbd_scan_loop:
-        ; Sélectionne col X via VIA ORB bits 0-2 (bits 3-7 forcés à 0
-        ; — OricOS ne pilote ni cassette ni printer ; à étendre plus
-        ; tard si besoin).
-        txa
-        and #$07
-        sta VIA_ORB
-        ; Demande PSG R14 (port A input → rangées clavier)
-        lda #$0E
-        jsr psg_set_reg
-        jsr psg_read_data        ; A = état des 8 rangées de la col X
-        sta KBD_MATRIX,X
-        inx
-        cpx #$08
-        bcc kbd_scan_loop
+; ── kernel_kbd_poll : draine la FIFO KBD2 → ring buffer ────────────
+; Appelé par l'IRQ handler à chaque tick (et lisible directement).
+; Lit KBD2_DATA tant que data_ready, push chaque keycode dans le ring.
+; Vider la FIFO déasserte l'IRQ KBD2 (level-triggered). Modifie A, X. Préserve Y.
+.export kernel_kbd_poll
+kernel_kbd_poll:
+kpoll_loop:
+        lda KBD2_STATUS
+        and #KBD2_ST_READY
+        beq kpoll_done           ; FIFO vide → terminé
+        lda KBD2_DATA            ; pop keycode ASCII
+        jsr kernel_kbd_ring_push
+        bra kpoll_loop
+kpoll_done:
+        rts
+
+; ── kernel_kbd_ring_push : push A (keycode) dans le ring ───────────
+; Drop silencieux si plein (16). Modifie A, X. Préserve Y.
+; NB : LDX/INC/DEC n'ont pas de mode absolu long sur 65C816 → on passe
+; par LDA (abs long) + A pour les variables ring en bank 1.
+kernel_kbd_ring_push:
+        sta DP_KBD_TMP           ; sauve keycode
+        lda KBD_RING_COUNT
+        cmp #KBD_RING_SIZE
+        bcs kpush_full           ; plein → drop
+        lda KBD_RING_TAIL
+        tax
+        lda DP_KBD_TMP           ; A = keycode
+        sta KBD_RING,X           ; store au tail (abs long,X = $9F)
+        lda KBD_RING_TAIL
+        inc a
+        and #KBD_RING_MASK       ; wrap 16
+        sta KBD_RING_TAIL
+        lda KBD_RING_COUNT
+        inc a
+        sta KBD_RING_COUNT
+kpush_full:
+        rts
+
+; ── kernel_kbd_ring_pop : pop → A = keycode, ou A=$00 si vide ──────
+; Modifie A, X. Préserve Y. Convention ADR-17 SYS_GET_KEY (A=keycode/0).
+.export kernel_kbd_ring_pop
+kernel_kbd_ring_pop:
+        lda KBD_RING_COUNT
+        beq kpop_empty
+        lda KBD_RING_HEAD
+        tax
+        lda KBD_RING,X           ; A = keycode
+        sta DP_KBD_TMP           ; sauve keycode
+        lda KBD_RING_HEAD
+        inc a
+        and #KBD_RING_MASK
+        sta KBD_RING_HEAD
+        lda KBD_RING_COUNT
+        dec a
+        sta KBD_RING_COUNT
+        lda DP_KBD_TMP           ; A = keycode
+        rts
+kpop_empty:
+        lda #$00
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -2924,10 +2985,15 @@ sys_print_string:
         jsr kernel_print_string
         rts
 
-; $03 — SYS_READ_CHAR : bloquant (stub — attend OS-2.d driver clavier) ─
+; $03 — SYS_READ_CHAR : bloquant → A = keycode (OS-2.d, ADR-22) ──────
+; v0.1 : spin-poll le ring (les autres tâches tournent via préemption
+; timer). Blocage vrai (task BLOCKED + wake) reporté à OS-2.g (TCB states).
 sys_read_char:
-        lda #$FF                ; stub : pas de driver clavier
-        rts
+sread_wait:
+        jsr kernel_kbd_ring_pop
+        cmp #$00
+        beq sread_wait          ; vide → attend une touche
+        rts                     ; A = keycode
 
 ; $04 — SYS_EXIT : X = exit_code ─────────────────────────────────────
 sys_exit:
@@ -2938,9 +3004,9 @@ sys_exit:
 sys_yield:
         rts                     ; no-op : scheduler est IRQ-driven (ADR-03)
 
-; $06 — SYS_GET_KEY : non-bloquant (stub) → A = 0 ────────────────────
+; $06 — SYS_GET_KEY : non-bloquant → A = keycode ou $00 (OS-2.d) ─────
 sys_get_key:
-        lda #$00                ; stub : pas de driver clavier
+        jsr kernel_kbd_ring_pop ; A = keycode, ou $00 si ring vide
         rts
 
 ; $07 — SYS_FAT_OPEN : DP_FILENAME (11B) posé par l'appelant ──────────
@@ -3118,8 +3184,8 @@ kernel_irq_handler:
         ; ── Ack VIA T1 IRQ (lecture T1C-L clear T1 IFR) ────────────
         lda VIA_T1CL
 
-        ; ── Sprint 2.d : scan clavier à chaque tick ────────────────
-        jsr kernel_kbd_scan
+        ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring à chaque tick ──
+        jsr kernel_kbd_poll
 
         ; ── Increment tick counter ─────────────────────────────────
         lda TICK_COUNTER

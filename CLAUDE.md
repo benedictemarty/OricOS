@@ -136,8 +136,8 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] **2.b** Bank allocator (incrémental v0.1)
 - [x] **2.c** Driver console minimal (banner hardcoded)
 - [x] **2.c+** Fonte char embarquée (autonomie OS native)
-- [ ] **2.d** Driver clavier Oric 1 (matrice VIA PB) ← **JALON COURANT**
-- [ ] **2.e** Driver console générique (`print_char`/`print_string`/cursor/scroll)
+- [x] **2.d** Driver clavier Oric 2 KBD2 IRQ-driven (ADR-22, contrôleur paravirtualisé `$0350-$035F`, ring `$5860`, SYS_GET_KEY/READ_CHAR)
+- [ ] **2.e** Driver console générique (`print_char`/`print_string`/cursor/scroll) ← **JALON COURANT**
 - [ ] **2.f** Mécanisme syscall (COP handler + table) — bloqué par ADR-13
 - [ ] **2.g** Refactor TCB-based scheduler (struct task_t, N tâches, états) — bloqué par ADR-14
 - [ ] **2.h** Bank allocator bitmap avec free
