@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### OS-perf — Copie charset via MVN (block move)
+
+#### Changed
+- **`kernel_install_charset`** : la copie fonte `$015800 → $00B400` (1024 octets)
+  passe d'une boucle octet-par-octet (~18K cycles) à l'instruction **MVN**
+  (block move 65C816, ~2K cycles). Boot STP de ~153K → ~143K cycles.
+  Encodage explicite `.byte $54, dst, src` (ordre machine dest_bank, src_bank).
+
+#### Note
+- `rep #$30` / **`sep #$30`** (pas `php`/`plp`) pour encadrer le mode 16-bit :
+  `plp` est invisible au tracking `.smart` de ca65 → mal-dimensionnement des
+  immédiats suivants. `sep #$30` explicite garde `.smart` cohérent.
+
 ### OS-2.i.v2 — Modèle d'erreur kernel : log ring buffer + codes nommés
 
 #### Added

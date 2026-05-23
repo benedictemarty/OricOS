@@ -2110,21 +2110,19 @@ nib_digit:
 ; le rendu mode TEXT affiche du noir partout (fonte tout-zéro).
 ;
 ; Pré-condition : mode N, M=X=1, DBR=0.
-; Modifie : A, X. Préserve Y.
+; Modifie : A, X, Y, DBR (=0 après). Préserve P (php/plp).
+; OS-perf : copie via MVN (block move 65C816) au lieu d'une boucle
+; octet-par-octet (~18K cycles → ~2K). MVN copie C+1 octets de
+; src_bank:X vers dst_bank:Y en ascendant ; DBR finit = dst_bank.
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_install_charset
 kernel_install_charset:
-        rep #$10                ; X 16-bit
-        ldx #$0000
-charset_loop:
-        cpx #CHARSET_SIZE
-        bcs charset_done
-        lda CHARSET_SRC,X       ; long $lll,X
-        sta CHARSET_DST,X       ; long $lll,X
-        inx
-        bra charset_loop
-charset_done:
-        sep #$10                ; X 8-bit retour
+        rep #$30                     ; A/X/Y 16-bit (requis par MVN)
+        lda #CHARSET_SIZE-1          ; C = nb octets - 1 ($03FF)
+        ldx #.loword(CHARSET_SRC)    ; X = offset source ($5800, bank 1)
+        ldy #.loword(CHARSET_DST)    ; Y = offset dest ($B400, bank 0)
+        .byte $54, .bankbyte(CHARSET_DST), .bankbyte(CHARSET_SRC)  ; MVN dst,src
+        sep #$30                     ; retour M=X=1 (cohérent .smart ; DBR=dst $00)
         rts
 
 ; ════════════════════════════════════════════════════════════════════
