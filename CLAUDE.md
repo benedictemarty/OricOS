@@ -151,11 +151,13 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 > options : Sprint 3 GUI (partiellement amorcé : `kernel_window_draw`, GPU helpers),
 > Sprint 4 userland C (llvm-mos), ou PH-bootrom (refactor `--kernel`).
 
-### Sprint 3 — GUI (différé : prérequis Sprint 2.d→2.i)
-- [ ] Compositor logique au-dessus du HW.
-- [ ] Window manager basique (1 fenêtre + focus).
-- [ ] Event loop (clavier/timer/IRQ) — pré-req 2.d.
-- [ ] Toolkit minimal (frame, label, button).
+### Sprint 3 — GUI (en cours)
+- [x] Compositor logique au-dessus du HW (B4 + GPU blitter ADR-21).
+- [~] Window manager basique : `kernel_window_draw` (SP-3.c) + **window table
+      N fenêtres / focus / hit-test / move** (SP-3.e v0.1, ADR-24 souris).
+- [~] Event loop : `kernel_wm_mouse_step` (clic→focus, drag) v0.1 polled ;
+      IRQ-driven + backing-store DMA reportés v0.2.
+- [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### SP-3.e v0.1 — Driver souris + window manager (ADR-24)
+
+#### Added
+- `kernel.s` — **driver souris MOU2** (`$0360-$036F`, ADR-24) :
+  - `kernel_mouse_init` (reset état ; v0.1 **polled**, IRQ MOU2 reportée v0.2
+    car le dispatch IRQ ne gère pas encore MOU2).
+  - `kernel_mouse_read` : MOU2 → `MOUSE_X/Y/BTN` (lecture 16-bit directe des
+    registres X_LO/X_HI consécutifs), clear event.
+- **Window manager** (`kernel_wm_*`) : table 4 fenêtres en bank 1 `$5900`
+  (flags/id/x/y/w/h, 16-bit), `kernel_wm_init`/`add`/`hit_test` (topmost)/
+  `set_focus`/`move_focused`. Coords 16-bit (espace XVGA).
+- **`kernel_wm_mouse_step`** : 1 itération event loop — clic gauche → focus
+  fenêtre sous le curseur ; bouton tenu + mouvement → drag (delta MOU2 DX/DY).
+- Self-test boot : 2 fenêtres, hit-test, focus, move, lecture souris →
+  sentinelle `WM_TEST_RES` (`$015940`).
+
+#### Note
+- v0.2 reporté : event loop IRQ-driven, **drag live + backing-store DMA**
+  (VRAM cold) + redraw multi-fenêtre. v0.1 pose la table + la logique WM + le
+  driver souris polled, validés par tests déterministes.
+
 ### OS-perf — Copie charset via MVN (block move)
 
 #### Changed

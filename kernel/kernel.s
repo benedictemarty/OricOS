@@ -371,6 +371,52 @@ WIN_BASE_HI      = $8A
 WIN_TMP_X_END    = $8B
 WIN_TMP_Y_END    = $8C
 
+; ─── Souris Oric 2 MOU2 (ADR-24, SP-3.e) — I/O bank 0 $0360-$036F ────
+MOU2_STATUS      = $000360       ; R : bit7=event, bit0=G bit1=D bit2=M
+MOU2_X_LO        = $000361
+MOU2_X_HI        = $000362
+MOU2_Y_LO        = $000363
+MOU2_Y_HI        = $000364
+MOU2_BUTTONS     = $000365
+MOU2_CTRL        = $000366       ; bit0=IRQ en, bit1=clear event
+MOU2_DX          = $000367       ; R : delta X signé (read-clear)
+MOU2_DY          = $000368       ; R : delta Y signé (read-clear)
+MOU2_CT_IRQ_EN   = $01
+MOU2_BTN_LEFT    = $01
+
+; État souris (bank 1)
+MOUSE_X          = $015930       ; 2B position absolue
+MOUSE_Y          = $015932       ; 2B
+MOUSE_BTN        = $015934       ; 1B boutons courants
+MOUSE_PREV_BTN   = $015935       ; 1B boutons frame précédente (edge-detect clic)
+WM_TEST_RES      = $015940       ; sentinelle test SP-3.e (12 octets)
+
+; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
+; 4 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
+WM_TABLE         = $015900       ; 4 × 10 = 40 octets ($5900-$5927)
+WM_COUNT         = $015928       ; 1B : nb fenêtres
+WM_FOCUS         = $015929       ; 1B : id fenêtre focus ($FF = aucune)
+WM_MAX           = 4
+WM_ENTSZ         = 10
+WM_F_USED        = $01           ; flags bit0 : slot occupé
+WM_F_VISIBLE     = $02           ; bit1 : visible
+WM_F_FOCUS       = $04           ; bit2 : a le focus
+WM_OFF_FLAGS     = 0
+WM_OFF_ID        = 1
+WM_OFF_X         = 2
+WM_OFF_Y         = 4
+WM_OFF_W         = 6
+WM_OFF_H         = 8
+
+; ZP args window manager (16-bit). DP $14-$1F libres.
+WM_ARG_X         = $14           ; 2B
+WM_ARG_Y         = $16           ; 2B
+WM_ARG_W         = $18           ; 2B
+WM_ARG_H         = $1A           ; 2B
+WM_ARG_DX        = $1C           ; 2B signé
+WM_ARG_DY        = $1E           ; 2B signé
+WM_DP_TMP        = $20           ; 2B scratch
+
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)
 GFX_BASE_LO      = $70           ; base address 24-bit (SDRAM offset)
@@ -1012,6 +1058,85 @@ kernel_entry:
         sta LOG_TEST_RES+1
         lda LOG_RING+1          ; entrée 0 : code → ERR_BAD_SYSCALL
         sta LOG_TEST_RES+2
+
+        ; ── SP-3.e self-test : window manager + souris (ADR-24) ──────
+        jsr kernel_mouse_init
+        jsr kernel_wm_init
+        ; fenêtre 0 @ (100,100, 80×60)
+        rep #$20
+        lda #100
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        lda #80
+        sta WM_ARG_W
+        lda #60
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add
+        sta WM_TEST_RES+0       ; id0 = 0
+        ; fenêtre 1 @ (300,300, 80×60)
+        rep #$20
+        lda #300
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        lda #80
+        sta WM_ARG_W
+        lda #60
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add
+        sta WM_TEST_RES+1       ; id1 = 1
+        ; hit-test (110,110) → 0
+        rep #$20
+        lda #110
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        sep #$20
+        jsr kernel_wm_hit_test
+        sta WM_TEST_RES+2
+        ; hit-test (320,320) → 1
+        rep #$20
+        lda #320
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        sep #$20
+        jsr kernel_wm_hit_test
+        sta WM_TEST_RES+3
+        ; hit-test (500,500) → $FF
+        rep #$20
+        lda #500
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        sep #$20
+        jsr kernel_wm_hit_test
+        sta WM_TEST_RES+4
+        ; focus fenêtre 1
+        lda #$01
+        jsr kernel_wm_set_focus
+        lda WM_FOCUS
+        sta WM_TEST_RES+5       ; = 1
+        ; move focus (+50,+10) → fenêtre 1 x : 300 → 350
+        rep #$20
+        lda #50
+        sta WM_ARG_DX
+        lda #10
+        sta WM_ARG_DY
+        sep #$20
+        jsr kernel_wm_move_focused
+        lda #$01
+        jsr kernel_wm_offset
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta WM_TEST_RES+6       ; = 350 ($015E)
+        sep #$20
+        ; lecture souris (position injectée par le test) → MOUSE_X/BTN
+        jsr kernel_mouse_read
+        rep #$20
+        lda MOUSE_X
+        sta WM_TEST_RES+8       ; X souris injectée
+        sep #$20
+        lda MOUSE_BTN
+        sta WM_TEST_RES+10
 
         jsr kernel_clear_screen
         jsr kernel_console_init
@@ -3111,6 +3236,242 @@ kernel_window_draw:
         sta GFX_ARG3_MID
         jsr kernel_gfx_line
 
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  Souris MOU2 + Window manager (SP-3.e v0.1, ADR-24)
+; ════════════════════════════════════════════════════════════════════
+; Pré-cond toutes routines : mode N M=X=1, DBR=0.
+
+; ── kernel_mouse_init : reset état souris ──────────────────────────
+; v0.1 : driver POLLED (lecture explicite via kernel_mouse_read), pas
+; d'IRQ MOU2 (le dispatch IRQ ne gère pas encore MOU2 → l'activer
+; bouclerait après CLI). IRQ-driven reporté v0.2.
+.export kernel_mouse_init
+kernel_mouse_init:
+        lda #$00
+        sta MOUSE_BTN
+        sta MOUSE_PREV_BTN
+        lda #$02                 ; CTRL bit1 = clear event (IRQ off)
+        sta MOU2_CTRL
+        rts
+
+; ── kernel_mouse_read : MOU2 → MOUSE_X/Y/BTN, clear event ──────────
+; Les registres X_LO/X_HI (resp Y) sont consécutifs → lecture 16-bit
+; directe. Modifie A. Préserve X, Y.
+.export kernel_mouse_read
+kernel_mouse_read:
+        lda MOUSE_BTN
+        sta MOUSE_PREV_BTN
+        rep #$20
+        lda MOU2_X_LO            ; 16-bit : X_LO | X_HI<<8 = X absolu
+        sta MOUSE_X
+        lda MOU2_Y_LO
+        sta MOUSE_Y
+        sep #$20
+        lda MOU2_BUTTONS
+        sta MOUSE_BTN
+        lda #$02                 ; bit1 = clear event (v0.1 polled, IRQ off)
+        sta MOU2_CTRL
+        rts
+
+; ── kernel_wm_offset : A = id → X = id*WM_ENTSZ (offset). Modifie A,X.
+kernel_wm_offset:
+        asl a                    ; 2·id
+        sta WM_DP_TMP
+        asl a
+        asl a                    ; 8·id
+        clc
+        adc WM_DP_TMP            ; 10·id
+        tax
+        rts
+
+; ── kernel_wm_init : vide la table ─────────────────────────────────
+.export kernel_wm_init
+kernel_wm_init:
+        lda #$00
+        sta WM_COUNT
+        lda #$FF
+        sta WM_FOCUS
+        ldx #$00
+wm_init_lp:
+        lda #$00
+        sta WM_TABLE+WM_OFF_FLAGS,X   ; flags = 0 (slot libre)
+        txa
+        clc
+        adc #WM_ENTSZ
+        tax
+        cpx #(WM_MAX*WM_ENTSZ)
+        bcc wm_init_lp
+        rts
+
+; ── kernel_wm_add : args WM_ARG_X/Y/W/H (16-bit) → A = id ou $FF ────
+.export kernel_wm_add
+kernel_wm_add:
+        lda WM_COUNT
+        cmp #WM_MAX
+        bcs wm_add_full
+        sta DP_TMP               ; id = WM_COUNT
+        jsr kernel_wm_offset     ; X = id*10
+        lda #(WM_F_USED | WM_F_VISIBLE)
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        lda DP_TMP
+        sta WM_TABLE+WM_OFF_ID,X
+        rep #$20
+        lda WM_ARG_X
+        sta WM_TABLE+WM_OFF_X,X
+        lda WM_ARG_Y
+        sta WM_TABLE+WM_OFF_Y,X
+        lda WM_ARG_W
+        sta WM_TABLE+WM_OFF_W,X
+        lda WM_ARG_H
+        sta WM_TABLE+WM_OFF_H,X
+        sep #$20
+        lda WM_COUNT
+        inc a
+        sta WM_COUNT
+        lda DP_TMP               ; retourne id
+        rts
+wm_add_full:
+        lda #$FF
+        rts
+
+; ── kernel_wm_hit_test : args WM_ARG_X/Y (point) → A = id topmost ou $FF
+.export kernel_wm_hit_test
+kernel_wm_hit_test:
+        lda #$FF
+        sta DP_TMP               ; résultat
+        ldy #$00
+wm_ht_loop:
+        tya
+        cmp WM_COUNT             ; CMP abs long (CPY ne supporte pas le long)
+        bcs wm_ht_done
+        jsr kernel_wm_offset     ; A=id → X = id*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #(WM_F_USED | WM_F_VISIBLE)
+        cmp #(WM_F_USED | WM_F_VISIBLE)
+        bne wm_ht_next
+        rep #$20
+        lda WM_ARG_X             ; px >= x ?
+        cmp WM_TABLE+WM_OFF_X,X
+        bcc wm_ht_next16
+        lda WM_TABLE+WM_OFF_X,X  ; px < x+w ?
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sta WM_DP_TMP
+        lda WM_ARG_X
+        cmp WM_DP_TMP
+        bcs wm_ht_next16
+        lda WM_ARG_Y             ; py >= y ?
+        cmp WM_TABLE+WM_OFF_Y,X
+        bcc wm_ht_next16
+        lda WM_TABLE+WM_OFF_Y,X  ; py < y+h ?
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        sta WM_DP_TMP
+        lda WM_ARG_Y
+        cmp WM_DP_TMP
+        bcs wm_ht_next16
+        sep #$20                 ; hit → result = id (topmost = dernier match)
+        tya
+        sta DP_TMP
+        bra wm_ht_next
+wm_ht_next16:
+        sep #$20
+wm_ht_next:
+        iny
+        bra wm_ht_loop
+wm_ht_done:
+        lda DP_TMP
+        rts
+
+; ── kernel_wm_set_focus : A = id ───────────────────────────────────
+.export kernel_wm_set_focus
+kernel_wm_set_focus:
+        sta DP_TMP               ; nouvel id
+        lda WM_FOCUS
+        cmp #$FF
+        beq wm_sf_new
+        jsr kernel_wm_offset     ; X = ancien focus *10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #(<~WM_F_FOCUS)      ; clear bit focus
+        sta WM_TABLE+WM_OFF_FLAGS,X
+wm_sf_new:
+        lda DP_TMP
+        jsr kernel_wm_offset
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        ora #WM_F_FOCUS
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        lda DP_TMP
+        sta WM_FOCUS
+        rts
+
+; ── kernel_wm_move_focused : args WM_ARG_DX/DY (signé 16-bit) ───────
+.export kernel_wm_move_focused
+kernel_wm_move_focused:
+        lda WM_FOCUS
+        cmp #$FF
+        beq wm_mv_done
+        jsr kernel_wm_offset     ; X = focus*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_ARG_DX
+        sta WM_TABLE+WM_OFF_X,X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WM_ARG_DY
+        sta WM_TABLE+WM_OFF_Y,X
+        sep #$20
+wm_mv_done:
+        rts
+
+; ── kernel_wm_mouse_step : 1 itération event loop (clic → focus,
+;    bouton tenu + mouvement → drag fenêtre focus). Lit MOUSE_*. ─────
+; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
+.export kernel_wm_mouse_step
+kernel_wm_mouse_step:
+        ; Edge-detect : bouton gauche vient d'être pressé ?
+        lda MOUSE_BTN
+        and #MOU2_BTN_LEFT
+        beq wm_step_done         ; bouton relâché → rien (v0.1 : pas de release)
+        ; bouton gauche tenu. Était-il déjà tenu (drag) ou nouveau clic ?
+        lda MOUSE_PREV_BTN
+        and #MOU2_BTN_LEFT
+        bne wm_step_drag         ; déjà tenu → drag
+        ; Nouveau clic → focus la fenêtre sous le curseur.
+        rep #$20
+        lda MOUSE_X
+        sta WM_ARG_X
+        lda MOUSE_Y
+        sta WM_ARG_Y
+        sep #$20
+        jsr kernel_wm_hit_test   ; A = id ou $FF
+        cmp #$FF
+        beq wm_step_done
+        jsr kernel_wm_set_focus
+        rts
+wm_step_drag:
+        ; Drag : déplace la fenêtre focus du delta souris (MOU2 DX/DY).
+        lda MOU2_DX
+        jsr _sext8_to16          ; WM_ARG_DX = sign-extend(DX)
+        sta WM_ARG_DX
+        stx WM_ARG_DX+1
+        lda MOU2_DY
+        jsr _sext8_to16
+        sta WM_ARG_DY
+        stx WM_ARG_DY+1
+        jsr kernel_wm_move_focused
+wm_step_done:
+        rts
+
+; helper : A = octet signé → A=low, X=high (sign-extension). Modifie A,X.
+_sext8_to16:
+        ldx #$00
+        cmp #$80                 ; bit7 ? (négatif)
+        bcc _sext_pos
+        ldx #$FF
+_sext_pos:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
