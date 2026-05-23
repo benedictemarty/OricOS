@@ -131,7 +131,7 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] Scheduler préemptif round-robin 2 tâches.
 - [x] IRQ timer VIA T1.
 
-### Sprint 2 — IPC et drivers (en cours, **partiellement clos**)
+### Sprint 2 — IPC et drivers ✅ (clos 2026-05-24)
 - [x] **2.a** VIA T1 drives scheduler autonomously
 - [x] **2.b** Bank allocator (incrémental v0.1)
 - [x] **2.c** Driver console minimal (banner hardcoded)
@@ -142,10 +142,14 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] **2.g** Scheduler TCB-based (table 16 + bitmap, ADR-14) — ✅ v0.1 (N tâches dynamiques reporté v0.2)
 - [x] **2.h** Bank allocator free list LIFO — ✅ v0.1 (bitmap reportée v0.2)
 - [x] **2.i** Modèle d'erreur kernel — v0.1 (panic+hex) + v0.2 (log ring buffer `$54E0`, codes nommés, wiring panic/cop_invalid/alloc)
-- [ ] **2.j** FAT32 SD lecture seule ← **JALON COURANT**
-- [ ] **2.k** Format bundle apps (header + sections) — implémente ADR-08
-- [ ] **2.l** App loader (parse bundle, alloc bank, exec)
-- [ ] **2.m** Première app "hello" en asm (PoC userland sans llvm-mos)
+- [x] **2.j** FAT32 SD lecture seule — v0.8 (`fat_init`/`fat_open`/`fat_read_cluster`/`fat_next_cluster`/`fat_read_file`, multi-cluster ≤ 64 KiB ; reporté : > 64 KiB, BPS≠512, subdirs)
+- [x] **2.k** Format bundle apps (header + sections, ADR-08) — `kernel_bundle_validate`/`find_code`
+- [x] **2.l** App loader (parse bundle, alloc bank, exec) — v0.2 multi-cluster depuis SD
+- [x] **2.m** Première app "hello" en asm — `apps/hello/`, pipeline ca65+ld65+`oricos-bundle.py`
+
+> **Sprint 2 clos.** Prochain : voir BACKLOG.md (source de vérité ordonnée) —
+> options : Sprint 3 GUI (partiellement amorcé : `kernel_window_draw`, GPU helpers),
+> Sprint 4 userland C (llvm-mos), ou PH-bootrom (refactor `--kernel`).
 
 ### Sprint 3 — GUI (différé : prérequis Sprint 2.d→2.i)
 - [ ] Compositor logique au-dessus du HW.
