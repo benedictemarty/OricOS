@@ -930,6 +930,36 @@ kernel_entry:
         jsr kernel_console_init
         jsr kernel_print_banner
 
+        ; ── B3 : démo bascule E→N (paravirtualisation guest Oric 1) ──
+        ; Affiche message entrée guest
+        lda #$01
+        sta DP_PTR+2
+        lda #<str_b3_guest_in
+        sta DP_PTR
+        lda #>str_b3_guest_in
+        sta DP_PTR+1
+        jsr kernel_print_string
+        ; Bascule mode E — simulation guest Oric 1 (ADR-18 / B3)
+        sec
+        xce                     ; → mode E (comportement 6502 strict)
+        ldx #$20                ; 32 NOP en mode E
+b3_guest_loop:
+        nop
+        dex
+        bne b3_guest_loop
+        ; Retour mode N
+        clc
+        xce                     ; → mode N
+        sep #$30                ; restaure M=X=1
+        ; Affiche confirmation retour
+        lda #$01
+        sta DP_PTR+2
+        lda #<str_b3_guest_out
+        sta DP_PTR
+        lda #>str_b3_guest_out
+        sta DP_PTR+1
+        jsr kernel_print_string
+
         ; ── Sprint 2.f : test COP syscall (ADR-13) ─────────────────
         ; SYS_PRINT_CHAR ($01) : X = char.
         ldx #'Y'
@@ -2092,7 +2122,13 @@ kernel_print_banner:
         rts
 
 banner_str:
-        .byte "OricOS v0.7", $0A, $00
+        .byte "OricOS B3 Demo", $0A
+        .byte "CPU : 65C816 MODE N", $0A
+        .byte "MEM : 256KiB (BK0-3)", $0A, $00
+str_b3_guest_in:
+        .byte "GUEST: MODE E RUN...", $0A, $00
+str_b3_guest_out:
+        .byte "GUEST: BACK N OK", $0A, $00
 
 ; ─── Bundle hello (Sprint 2.m.1) ────────────────────────────────────
 ; Première app standalone OricOS, source asm dans `apps/hello/hello.s`,
@@ -2930,7 +2966,7 @@ kernel_irq_handler:
         sta TICK_COUNTER
         cmp #TICK_GOAL
         bcc do_switch
-        ; ≥ TICK_GOAL → arrêt propre
+        ; ≥ TICK_GOAL → arrêt propre (signal "boot OK" pour les tests)
         stp
         bra *
 
