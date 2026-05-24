@@ -3731,9 +3731,102 @@ kernel_wm_add_widget:
 _waw_full:
         rts
 
+; ── _wm_draw_widgets_for_slot : dessine uniquement les widgets dont le parent
+;    est le slot passé en A. Appelé par wm_rd_loop pour chaque fenêtre → z-order
+;    correct (les fenêtres suivantes couvrent les widgets des fenêtres précédentes).
+;    Modifie A, X, Y. Préserve rien (appelant sauve Y via phy/ply).
+_wm_draw_widgets_for_slot:
+        sta WM_DP_TMP           ; WM_DP_TMP = slot cible (1B utilisé)
+        lda #$00
+        sta WG_I
+_wdws_loop:
+        lda WG_I
+        cmp WIDGET_COUNT
+        bcc _wdws_go
+        jmp _wdws_done
+_wdws_go:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+0,X
+        and #$01
+        bne _wdws_check_parent
+        jmp _wdws_next          ; slot libre
+_wdws_check_parent:
+        lda WIDGET_TABLE+1,X    ; parent slot
+        cmp WM_DP_TMP           ; == slot cible ?
+        beq _wdws_draw
+        jmp _wdws_next
+_wdws_draw:
+        ; dessiner ce widget (copie de la logique de _wm_draw_all_widgets)
+        lda WIDGET_TABLE+2,X
+        sta WG_TYPE
+        lda WIDGET_TABLE+3,X
+        sta GFX_COLOR
+        rep #$20
+        lda WIDGET_TABLE+4,X
+        sta WG_RELX
+        lda WIDGET_TABLE+6,X
+        sta WG_RELY
+        lda WIDGET_TABLE+8,X
+        sta WG_RELW
+        lda WIDGET_TABLE+10,X
+        sta WG_RELH
+        sep #$20
+        lda WIDGET_TABLE+12,X
+        sta DP_PCPTR
+        lda WIDGET_TABLE+13,X
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        ; coords absolues = win.xy + rel.xy
+        lda WM_DP_TMP
+        jsr kernel_wm_offset    ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WG_RELX
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WG_RELY
+        sta WM_ARG_Y
+        lda WG_RELW
+        sta WM_ARG_W
+        lda WG_RELH
+        sta WM_ARG_H
+        sep #$20
+        lda WG_TYPE
+        bne _wdws_btn
+        jsr kernel_tk_label
+        bra _wdws_next
+_wdws_btn:
+        lda WG_I
+        cmp WIDGET_ACTIVE
+        bne _wdws_btn_normal
+        lda #$01
+        sta TK_BTN_PRESSED
+        bra _wdws_btn_draw
+_wdws_btn_normal:
+        lda #$00
+        sta TK_BTN_PRESSED
+_wdws_btn_draw:
+        jsr kernel_tk_button
+_wdws_next:
+        lda WG_I
+        inc a
+        sta WG_I
+        jmp _wdws_loop
+_wdws_done:
+        rts
+
 ; ── _wm_draw_all_widgets : redessine tous les widgets à leur position
 ;    absolue (fenêtre parente + offset relatif). Appelé après les fenêtres
 ;    → widgets persistent et suivent leur fenêtre au drag. Modifie A,X,Y.
+;    OBSOLÈTE : remplacé par _wm_draw_widgets_for_slot dans la boucle principale.
+;    Conservé pour compatibilité (kernel_wm_redraw_drag l'utilise indirectement).
 _wm_draw_all_widgets:
         lda #$00
         sta WG_I
@@ -4999,12 +5092,16 @@ wm_rd_setcol:
         ; On réutilise WM_ARG_X (= win_x) + WM_ARG_W (= win_w) via lecture table.
         ; Calcul abs simplifié : utilise les valeurs ZP WM_ARG_X/W.
         jsr _wm_draw_title_and_close  ; dessine titre + bouton X (SP-3.f)
+        ; dessine les widgets de cette fenêtre avant de passer à la suivante
+        ; → z-order correct : fenêtre N+1 couvre les widgets de la fenêtre N
+        tya
+        jsr _wm_draw_widgets_for_slot
         ply
 wm_rd_next:
         iny
         bra wm_rd_loop
 wm_rd_done:
-        jmp _wm_draw_all_widgets   ; SP-3.d v0.2 : widgets après les fenêtres
+        jmp kernel_menu_draw   ; menu par-dessus tout (plus de passe globale widgets)
 
 ; ── _wm_draw_title_and_close : dessine le titre + bouton × dans la titlebar ──
 ; SP-3.f v0.1 (titre) + v0.2 (bouton fermer).
