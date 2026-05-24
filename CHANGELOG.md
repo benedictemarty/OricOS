@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.h — Maximize/minimize fenêtres (SP-3.h)
+
+#### Added
+- **`kernel_wm_maximize`** : bascule une fenêtre entre état normal et maximisé.
+  Dimensions maximisées : x=0, y=14 (`MENU_BAR_H`), w=1024, h=741 (`TB_Y_SEP-MENU_BAR_H`).
+  Sauvegarde les coords originales dans `WM_SAVED_RECTS` (`$015AA9`, 4×8B, entrées slot×8)
+  via `STA f:WM_SAVED_RECTS,X` (opcode `$9F` = long,X). `WM_CRH_TMP` ($25-$26) sert de ZP
+  tampon pour le slot*10 WM_TABLE pendant le calcul avec X=slot*8.
+- **`kernel_wm_minimize`** : cache une fenêtre (clear `WM_F_VISIBLE`, state = `WM_STATE_HIDDEN`).
+  Le focus est redistribué si nécessaire.
+- **Restore depuis taskbar** : `kernel_taskbar_hit` restaure une fenêtre `WM_STATE_HIDDEN`
+  (set `WM_F_VISIBLE` + `WM_STATE_NORMAL`) avant de donner le focus.
+- **Boutons □ et _ dessinés dans la titlebar** : `_wm_draw_title_and_close` appelle
+  2 `kernel_gfx_text16` supplémentaires pour les boutons maximize ("O") et minimize ("_").
+  Strings uploadées en SDRAM au boot (`WM_MAX_STR=$011090`, `WM_MIN_STR=$0110A0`).
+- **`_wm_chrome_hit`** : hit-test 3 zones chrome (retourne 0/1/2/3 = none/×/□/_).
+  Zones (12px chacune, de droite à gauche) : × `[right-12..right-1]`,
+  □ `[right-24..right-13]`, _ `[right-36..right-25]`.
+- **`_wm_close_btn_hit`** : conservé comme wrapper de `_wm_chrome_hit` (retour==1).
+- **Drag désactivé sur fenêtre maximisée** : `kernel_wm_move_focused` vérifie
+  `WM_STATES[focus]` avant de déplacer.
+- Nouvelles constantes : `WM_STATE_NORMAL=$00`, `WM_STATE_MAXED=$01`, `WM_STATE_HIDDEN=$02`,
+  `WM_STATES=$015AA5` (4×1B), `WM_SAVED_RECTS=$015AA9` (4×8B), `WM_H_TEST_RES=$015AC9`,
+  `WM_MAX_STR=$011090`, `WM_MIN_STR=$0110A0`, `BTN_MAX_OFFSET=22`, `BTN_MIN_OFFSET=34`,
+  `WM_CRH_TMP=$25` (6B).
+
+#### Fixed
+- **Bug critique `_wm_chrome_hit`** : `sbc #12` dans `_crh_test_max` et `_crh_test_min`
+  assemblé en mode 8-bit par ca65 (tracking mode perdu après `sep #$20` d'une branche
+  adjacente). L'opcode 2B `E9 0C` au lieu de 3B `E9 0C 00` en mode 16-bit rendait le
+  `sbc` incorrect et laissait l'octet suivant ($85/$27) être interprété comme opérande.
+  Conséquence : `WM_DP_TMP+1` ($21), `WM_DP_TMP+2` ($22 = WM_ARG_TITLE_LO), $23/$24
+  (WIN_SLOT) corrompus → 4 régressions silencieuses sur SP-3.e/f/g (drag, focus, widgets).
+  Fix : ajout de `rep #$20` explicite au début de chaque label cible. `WM_CRH_TMP` ($25)
+  utilisé à la place de `WM_DP_TMP+n` pour éviter la zone de collision.
+
 ### Sprint 3.g — Taskbar fixe bas desktop XVGA
 
 #### Added

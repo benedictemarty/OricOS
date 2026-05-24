@@ -472,6 +472,19 @@ WG_RELH          = $015A9A       ; 2B
 TB_I             = $015A9C       ; 1B : index boucle taskbar
 TB_BTN_X         = $015A9E       ; 2B : btn_x courant (4 + i*124)
 TB_WIN_SCRATCH   = $015AA0       ; 5B : "WinN\0" en bank 1 RAM (source pour upload)
+; ── SP-3.h : états maximize/minimize + rects sauvegardés ──────────────
+WM_STATE_NORMAL  = $00           ; état fenêtre : normal
+WM_STATE_MAXED   = $01           ; état fenêtre : maximisée
+WM_STATE_HIDDEN  = $02           ; état fenêtre : minimisée (invisible)
+WM_STATES        = $015AA5       ; 4 × 1B : état par slot ($AA5-$AA8)
+WM_SAVED_RECTS   = $015AA9       ; 4 × 8B : x(2)+y(2)+w(2)+h(2) avant maximize ($AA9-$AC8)
+WM_H_TEST_RES    = $015AC9       ; sentinelle test SP-3.h (5 octets)
+; Strings boutons max/min uploadées en SDRAM au boot
+WM_MAX_STR       = $011090       ; "O\0" uploadé au boot (□ simplifié)
+WM_MIN_STR       = $0110A0       ; "_\0" uploadé au boot
+; Offsets relatifs (depuis win_x+win_w) pour les boutons chrome
+BTN_MAX_OFFSET   = 22            ; □ : 12px à gauche du ×
+BTN_MIN_OFFSET   = 34            ; _ : 24px à gauche du ×
 TB_WIN_SDRAM     = $011100       ; adresse SDRAM du scratch "WinN\0" (5 bytes)
 
 ; Taskbar layout (ADR-20 XVGA 1024×768)
@@ -514,6 +527,7 @@ WM_ARG_H         = $1A           ; 2B
 WM_ARG_DX        = $1C           ; 2B signé
 WM_ARG_DY        = $1E           ; 2B signé
 WM_DP_TMP        = $20           ; 2B scratch
+WM_CRH_TMP      = $25           ; 6B scratch pour _wm_chrome_hit (SP-3.h) : $25-$2A
 
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)
@@ -1153,6 +1167,44 @@ kernel_entry:
         sta VRAM_OP_LEN_HI
         jsr kernel_vram_write_block
 
+        ; ── SP-3.h : upload "O\0" en SDRAM WM_MAX_STR ($011090) ──────────
+        lda #<str_max_o
+        sta DP_PCPTR
+        lda #>str_max_o
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #<WM_MAX_STR
+        sta VRAM_OP_ADDR_LO
+        lda #>WM_MAX_STR
+        sta VRAM_OP_ADDR_MID
+        lda #$01
+        sta VRAM_OP_ADDR_HI      ; SDRAM $011090
+        lda #$02
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
+        ; ── SP-3.h : upload "_\0" en SDRAM WM_MIN_STR ($0110A0) ──────────
+        lda #<str_min_und
+        sta DP_PCPTR
+        lda #>str_min_und
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #<WM_MIN_STR
+        sta VRAM_OP_ADDR_LO
+        lda #>WM_MIN_STR
+        sta VRAM_OP_ADDR_MID
+        lda #$01
+        sta VRAM_OP_ADDR_HI      ; SDRAM $0110A0
+        lda #$02
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
         ; ── OS-2.e.2 : self-tests console (scroll + CR) AVANT clear_screen ──
         ; (le clear suivant efface l'écran ; les résultats vont en bank 1).
         ; Scroll : 'S' en ligne1/col1 ($BBA9) doit remonter ligne0/col1 ($BB81).
@@ -1326,6 +1378,21 @@ kernel_entry:
         lda #>tk_demo_ok
         sta DP_PCPTR+1
         jsr kernel_wm_add_widget
+
+        ; ── SP-3.h : sentinelle init (WM_STATES[0] = normal après init) ──
+        ; Pas d'appel à kernel_wm_maximize ici — trop coûteux pour le boot,
+        ; testé séparément dans test_oricos_boot.c (test_wm_maximize etc.).
+        lda WM_STATES+0
+        sta WM_H_TEST_RES+0      ; doit être $00 (normal)
+        lda WM_STATES+1
+        sta WM_H_TEST_RES+1      ; doit être $00 (normal)
+        lda WM_STATES+2
+        sta WM_H_TEST_RES+2      ; doit être $00 (normal)
+        lda WM_STATES+3
+        sta WM_H_TEST_RES+3      ; doit être $00 (normal)
+        ; WM_H_TEST_RES+4 : réservé pour test_wm_maximize (laissé à $00)
+        lda #$00
+        sta WM_H_TEST_RES+4
 
         ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres + widgets) via GPU
         ; FILL_RECT16 à SDRAM $100000. Visible avec --xvga / --xvga-screenshot.
@@ -2935,6 +3002,11 @@ str_win1_title:
 ; SP-3.f : string close button "X\0" (uploadé en SDRAM WM_CLOSE_STR au boot)
 str_close_x:
         .byte "X", $00
+; SP-3.h : strings boutons maximize et minimize
+str_max_o:
+        .byte "O", $00           ; bouton □ maximize (O simplifié, fonte 8×8)
+str_min_und:
+        .byte "_", $00           ; bouton _ minimize
 
 ; kernel_fill_rect_aligned retiré en PH-cleanup-zombie (2026-05-09).
 ; Code legacy ADR-19 v2 (écrivait bank $80, plus visible compositor).
@@ -4359,6 +4431,17 @@ kernel_wm_init:
         sta WM_TITLES+1
         sta WM_TITLES+2
         sta WM_TITLES+3
+        ; SP-3.h : init WM_STATES (4 × 1B = normal) et WM_SAVED_RECTS (4 × 8B = 0)
+        sta WM_STATES+0
+        sta WM_STATES+1
+        sta WM_STATES+2
+        sta WM_STATES+3
+        ldx #$00
+wm_init_sr:
+        sta WM_SAVED_RECTS,X
+        inx
+        cpx #32                  ; 4 × 8B
+        bcc wm_init_sr
         ldx #$00
 wm_init_lp:
         lda #$00
@@ -4511,11 +4594,18 @@ wm_sf_new:
         rts
 
 ; ── kernel_wm_move_focused : args WM_ARG_DX/DY (signé 16-bit) ───────
+; SP-3.h : skip si la fenêtre focus est maximisée (WM_STATE_MAXED).
 .export kernel_wm_move_focused
 kernel_wm_move_focused:
         lda WM_FOCUS
         cmp #$FF
         beq wm_mv_done
+        ; SP-3.h : skip le drag si fenêtre maximisée
+        tax
+        lda WM_STATES,X
+        cmp #WM_STATE_MAXED
+        beq wm_mv_done           ; maximisée → pas de déplacement
+        lda WM_FOCUS
         jsr kernel_wm_offset     ; X = focus*10
         rep #$20
         lda WM_TABLE+WM_OFF_X,X
@@ -4582,6 +4672,170 @@ wm_close_next:
         iny
         bra wm_close_find_focus
 wm_close_done:
+        rts
+
+; ── kernel_wm_maximize : bascule maximize/restore d'une fenêtre (SP-3.h) ──
+; A = id de la fenêtre. Si normale → maximise. Si maximisée → restore.
+; WM_SAVED_RECTS[slot×8] = {x(2),y(2),w(2),h(2)} sauvegardé avant maximize.
+; Dimensions desktop XVGA : x=0, y=MENU_BAR_H=14, w=1024, h=TB_Y_SEP-MENU_BAR_H=741.
+; Stratégie adressage WM_SAVED_RECTS : STA/LDA f:WM_SAVED_RECTS,X avec X=slot*8
+; (opcode $9F/$BF = long,X — seul mode indexé long valide en 65C816).
+; WM_CRH_TMP ($25-$26) : sauvegarde temporaire de l'offset WM_TABLE (slot*10).
+; Modifie A, X, Y.
+.export kernel_wm_maximize
+kernel_wm_maximize:
+        cmp #WM_MAX
+        bcs kwmax_done           ; id invalide
+        sta DP_TMP               ; sauve id (8-bit)
+        tax
+        lda WM_STATES,X          ; WM_STATES[id]
+        cmp #WM_STATE_MAXED
+        beq kwmax_restore        ; déjà maximisée → restore
+
+        ; ── maximize : sauvegarde des coords avant agrandissement ─────────
+        ; Calcule slot*10 (WM_TABLE offset) → sauve dans WM_CRH_TMP (ZP 2B).
+        lda DP_TMP
+        jsr kernel_wm_offset     ; X = slot*10
+        stx WM_CRH_TMP           ; sauve slot*10 en ZP
+        ; Lit x,y,w,h depuis WM_TABLE[slot*10]
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta WM_DP_TMP            ; tmp_x = win.x
+        lda WM_TABLE+WM_OFF_Y,X
+        pha                      ; win.y → stack
+        lda WM_TABLE+WM_OFF_W,X
+        pha                      ; win.w → stack
+        lda WM_TABLE+WM_OFF_H,X
+        pha                      ; win.h → stack
+        sep #$20
+        ; Calcule slot*8 → X (index pour WM_SAVED_RECTS long,X)
+        lda DP_TMP
+        asl a
+        asl a
+        asl a                    ; slot × 8
+        tax                      ; X = slot*8
+        ; Sauve x,y,w,h dans WM_SAVED_RECTS via STA f:WM_SAVED_RECTS,X ($9F = long,X)
+        rep #$20
+        lda WM_DP_TMP            ; win.x
+        sta f:WM_SAVED_RECTS+0,X ; [slot*8+0..+1] = x
+        pla                      ; win.h (dépilé en ordre inverse)
+        sta f:WM_SAVED_RECTS+6,X ; [slot*8+6..+7] = h
+        pla                      ; win.w
+        sta f:WM_SAVED_RECTS+4,X ; [slot*8+4..+5] = w
+        pla                      ; win.y
+        sta f:WM_SAVED_RECTS+2,X ; [slot*8+2..+3] = y
+        sep #$20
+        ; Restaure X = slot*10 pour écrire les nouvelles coords dans WM_TABLE
+        ldx WM_CRH_TMP           ; slot*10 depuis ZP
+        rep #$20
+        ; Écrit les nouvelles coords : x=0, y=14, w=1024, h=741
+        lda #$0000
+        sta WM_TABLE+WM_OFF_X,X  ; x = 0
+        lda #14
+        sta WM_TABLE+WM_OFF_Y,X  ; y = 14
+        lda #1024
+        sta WM_TABLE+WM_OFF_W,X  ; w = 1024
+        lda #741
+        sta WM_TABLE+WM_OFF_H,X  ; h = 741
+        sep #$20
+        ; WM_STATES[slot] = WM_STATE_MAXED
+        lda DP_TMP
+        tax
+        lda #WM_STATE_MAXED
+        sta WM_STATES,X
+        jsr kernel_wm_redraw
+kwmax_done:
+        rts
+
+kwmax_restore:
+        ; ── restore depuis maximisée : recharge coords sauvegardées ───────
+        ; Calcule slot*10 → sauve dans WM_CRH_TMP
+        lda DP_TMP
+        jsr kernel_wm_offset     ; X = slot*10
+        stx WM_CRH_TMP           ; sauve slot*10
+        ; Calcule slot*8 → X (index long,X pour WM_SAVED_RECTS)
+        lda DP_TMP
+        asl a
+        asl a
+        asl a                    ; slot × 8
+        tax                      ; X = slot*8
+        ; Lit x,y,w,h depuis WM_SAVED_RECTS via LDA f:WM_SAVED_RECTS,X ($BF)
+        rep #$20
+        lda f:WM_SAVED_RECTS+0,X ; win.x sauvé
+        sta WM_DP_TMP            ; tmp = x
+        lda f:WM_SAVED_RECTS+2,X ; win.y sauvé
+        pha
+        lda f:WM_SAVED_RECTS+4,X ; win.w sauvé
+        pha
+        lda f:WM_SAVED_RECTS+6,X ; win.h sauvé
+        pha
+        sep #$20
+        ; Restaure X = slot*10 pour écrire dans WM_TABLE
+        ldx WM_CRH_TMP
+        rep #$20
+        lda WM_DP_TMP
+        sta WM_TABLE+WM_OFF_X,X  ; restore x
+        pla
+        sta WM_TABLE+WM_OFF_H,X  ; restore h (dépilé en ordre inverse)
+        pla
+        sta WM_TABLE+WM_OFF_W,X  ; restore w
+        pla
+        sta WM_TABLE+WM_OFF_Y,X  ; restore y
+        sep #$20
+        lda DP_TMP
+        tax
+        lda #WM_STATE_NORMAL
+        sta WM_STATES,X
+        jsr kernel_wm_redraw
+        rts
+
+; ── kernel_wm_minimize : minimise une fenêtre (cache, SP-3.h) ────────
+; A = id. Clear WM_F_VISIBLE, état HIDDEN. Focus redistribué si besoin.
+; Modifie A, X, Y.
+.export kernel_wm_minimize
+kernel_wm_minimize:
+        cmp #WM_MAX
+        bcs kwmin_done
+        sta DP_TMP
+        jsr kernel_wm_offset     ; X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq kwmin_done           ; slot libre → no-op
+        ; Clear WM_F_VISIBLE
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #($FF ^ WM_F_VISIBLE) ; clear bit visible
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        ; WM_STATES[slot] = WM_STATE_HIDDEN
+        lda DP_TMP
+        tax
+        lda #WM_STATE_HIDDEN
+        sta WM_STATES,X
+        ; Si la fenêtre avait le focus → redistribuer
+        lda DP_TMP
+        cmp WM_FOCUS
+        bne kwmin_redraw
+        lda #$FF
+        sta WM_FOCUS
+        ; Cherche premier slot USED+VISIBLE pour le nouveau focus
+        ldy #$00
+kwmin_find_focus:
+        tya
+        cmp #WM_MAX
+        bcs kwmin_redraw
+        jsr kernel_wm_offset     ; X = y*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #(WM_F_USED | WM_F_VISIBLE)
+        cmp #(WM_F_USED | WM_F_VISIBLE)
+        bne kwmin_next_focus
+        tya
+        sta WM_FOCUS
+        bra kwmin_redraw
+kwmin_next_focus:
+        iny
+        bra kwmin_find_focus
+kwmin_redraw:
+        jsr kernel_wm_redraw
+kwmin_done:
         rts
 
 ; ── kernel_gfx_fill_rect16 : FILL_RECT16 GPU (coords 16-bit, ADR-21 v0.2) ──
@@ -4844,6 +5098,92 @@ _wm_dtc_close:
         lda #$0C                 ; lightred : bouton X distinct du titre blanc
         sta GFX_COLOR
         jsr kernel_gfx_text16    ; SP-3.f v0.2 : dessine "X" bouton fermer
+
+        ; ── SP-3.h : bouton □ maximize (couleur yellow si maxed, white sinon) ──
+        ; Position : win_x + win_w - BTN_MAX_OFFSET (22), win_y + 3
+        lda WIN_SLOT
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sec
+        sbc #BTN_MAX_OFFSET      ; win_x + win_w - 22
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc #3
+        sta WM_ARG_Y             ; win_y + 3
+        sep #$20
+        ; Couleur : yellow ($0E) si maximisé, white ($0F) sinon
+        lda WIN_SLOT
+        tax
+        lda WM_STATES,X
+        cmp #WM_STATE_MAXED
+        bne _wm_dtc_max_white
+        lda #$0E                 ; yellow : fenêtre maximisée
+        bra _wm_dtc_max_draw
+_wm_dtc_max_white:
+        lda #$0F                 ; white : normal
+_wm_dtc_max_draw:
+        sta GFX_COLOR
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI
+        lda #<WM_MAX_STR
+        sta GFX_STR_LO
+        lda #>WM_MAX_STR
+        sta GFX_STR_MID
+        lda #$01
+        sta GFX_STR_HI           ; SDRAM $011090
+        jsr kernel_gfx_text16
+
+        ; ── SP-3.h : bouton _ minimize (seulement si non minimisée) ───────
+        ; Position : win_x + win_w - BTN_MIN_OFFSET (34), win_y + 3
+        ; (Une fenêtre minimisée n'est pas visible dans _wm_draw_windows,
+        ; donc ce code ne s'exécute que pour les fenêtres visibles.)
+        lda WIN_SLOT
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sec
+        sbc #BTN_MIN_OFFSET      ; win_x + win_w - 34
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc #3
+        sta WM_ARG_Y             ; win_y + 3
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI
+        lda #<WM_MIN_STR
+        sta GFX_STR_LO
+        lda #>WM_MIN_STR
+        sta GFX_STR_MID
+        lda #$01
+        sta GFX_STR_HI           ; SDRAM $0110A0
+        lda #$0F
+        sta GFX_COLOR            ; white
+        jsr kernel_gfx_text16
         rts
 
 ; ── kernel_wm_redraw_drag : redraw incrémental pour le drag ────────────
@@ -5125,6 +5465,23 @@ _tbh_got_slot:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
         beq _tbh_miss            ; slot libre → ignore
+        ; SP-3.h : si la fenêtre est minimisée (HIDDEN), la restaurer d'abord.
+        lda TB_I
+        tax
+        lda WM_STATES,X
+        cmp #WM_STATE_HIDDEN
+        bne _tbh_focus
+        ; Restore la fenêtre : set WM_F_VISIBLE + état NORMAL
+        lda TB_I
+        jsr kernel_wm_offset     ; X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        ora #WM_F_VISIBLE
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        lda TB_I
+        tax
+        lda #WM_STATE_NORMAL
+        sta WM_STATES,X
+_tbh_focus:
         ; Focus + redraw + taskbar.
         lda TB_I                 ; slot
         jsr kernel_wm_set_focus
@@ -5192,12 +5549,31 @@ wm_step_newclick:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_hit:
-        ; SP-3.f v0.2 : avant le focus/drag, tester si le clic touche le bouton X.
-        ; hit_test a retourné l'id en A. On le sauve et on teste la close zone.
+        ; SP-3.f v0.2 / SP-3.h : avant le focus/drag, tester les boutons chrome.
+        ; hit_test a retourné l'id en A. On le sauve et on teste les 3 boutons.
         sta WIN_SLOT             ; sauve id fenêtre hit
-        jsr _wm_close_btn_hit    ; teste si (MOUSE_X, MOUSE_Y) ∈ zone bouton X
+        jsr _wm_chrome_hit       ; A : 0=non, 1=close, 2=max, 3=min
         cmp #$00
         beq wm_step_normal_hit   ; non → traitement normal (focus/drag)
+        cmp #$01
+        beq wm_step_chrome_close
+        cmp #$02
+        beq wm_step_chrome_max
+        ; A=3 → minimize
+        lda WIN_SLOT
+        jsr kernel_wm_minimize
+        lda #$00
+        sta WM_DRAG_ARMED
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_chrome_max:
+        lda WIN_SLOT
+        jsr kernel_wm_maximize
+        lda #$00
+        sta WM_DRAG_ARMED
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_chrome_close:
         ; Clic sur le bouton X → ferme la fenêtre
         lda WIN_SLOT
         jsr kernel_wm_close
@@ -5246,52 +5622,97 @@ _iac_call:
         jsr (.loword(WG_CB_VEC),X)  ; appel indirect (opcode $FC, vecteur en PBR=1)
         rts
 
-; ── _wm_close_btn_hit : teste si (MOUSE_X,Y) touche le bouton X de WIN_SLOT ──
-; SP-3.f v0.2. Retourne A=1 si hit, A=0 sinon. Modifie A, X.
-; Zone bouton : x in [win_x+win_w-12 .. win_x+win_w-1], y in [win_y .. win_y+13]
+; ── _wm_close_btn_hit : compatibilité — appelle _wm_chrome_hit et teste retour=1 ──
+; SP-3.f v0.2 (conservé pour l'API existante). Retourne A=1 si close, A=0 sinon.
 _wm_close_btn_hit:
+        jsr _wm_chrome_hit
+        cmp #$01
+        beq _cbh_hit
+        lda #$00
+        rts
+_cbh_hit:
+        lda #$01
+        rts
+
+; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
+; SP-3.h. Retourne A : 0=pas touché, 1=close (×), 2=maximize (□), 3=minimize (_).
+; Zones (largeur 12px chacune, de droite à gauche) :
+;   × : [win_x+win_w-12 .. win_x+win_w-1]
+;   □ : [win_x+win_w-24 .. win_x+win_w-13]
+;   _ : [win_x+win_w-36 .. win_x+win_w-25]
+; Y titlebar : [win_y .. win_y+13]
+; Modifie A, X.
+_wm_chrome_hit:
         lda WIN_SLOT
         cmp #WM_MAX
-        bcs _cbh_no              ; slot invalide → no
+        bcs _crh_no              ; slot invalide → 0
         jsr kernel_wm_offset     ; X = slot*10
         rep #$20
-        ; close_btn_x = win_x + win_w - 12
-        lda WM_TABLE+WM_OFF_X,X
-        clc
-        adc WM_TABLE+WM_OFF_W,X
-        sec
-        sbc #12
-        sta WM_DP_TMP            ; close_btn_x_left
-        ; MOUSE_X >= close_btn_x_left ?
-        lda MOUSE_X
-        cmp WM_DP_TMP
-        bcc _cbh_no16            ; mouse < btn_x_left → no
-        ; MOUSE_X <= win_x+win_w-1 (= close_btn_x_left+11) ?
-        lda WM_DP_TMP
-        clc
-        adc #11
-        sta WM_DP_TMP+1          ; close_btn_x_right+1 (= win_x+win_w)
-        lda MOUSE_X
-        cmp WM_DP_TMP+1
-        bcs _cbh_no16            ; mouse >= right → no
-        ; MOUSE_Y >= win_y ?
+        ; Vérifie d'abord MOUSE_Y dans la titlebar [win_y .. win_y+13]
         lda MOUSE_Y
         cmp WM_TABLE+WM_OFF_Y,X
-        bcc _cbh_no16            ; mouse_y < win_y → no
-        ; MOUSE_Y <= win_y+13 (titlebar h=12, zone 0..13) ?
+        bcc _crh_no16            ; mouse_y < win_y → no
         lda WM_TABLE+WM_OFF_Y,X
         clc
         adc #13
         sta WM_DP_TMP
         lda MOUSE_Y
         cmp WM_DP_TMP
-        bcs _cbh_no16            ; mouse_y > win_y+13 → no
+        bcs _crh_no16            ; mouse_y > win_y+13 → no
+        ; Calcule win_x + win_w (bord droit exclus)
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sta WM_DP_TMP            ; win_right = win_x + win_w
+        ; MOUSE_X < win_right ? (à droite totalement → no)
+        lda MOUSE_X
+        cmp WM_DP_TMP
+        bcs _crh_no16
+        ; Test zone × : [win_right-12 .. win_right-1]
+        lda WM_DP_TMP
+        sec
+        sbc #12
+        sta WM_CRH_TMP           ; close_left = win_right - 12
+        lda MOUSE_X
+        cmp WM_CRH_TMP
+        bcc _crh_test_max        ; mouse_x < close_left → test □
+        ; mouse_x >= close_left et < win_right → × hit
         sep #$20
-        lda #$01                 ; hit !
+        lda #$01
         rts
-_cbh_no16:
+_crh_test_max:
+        ; Test zone □ : [win_right-24 .. win_right-13]
+        ; Note : atteint depuis rep #$20 (M=0) par bcc, mais le sep #$20
+        ; juste avant trompe ca65. Forcer 16-bit explicitement.
+        rep #$20
+        lda WM_CRH_TMP           ; close_left = win_right-12
+        sec
+        sbc #12
+        sta WM_CRH_TMP+2         ; max_left = win_right-24
+        lda MOUSE_X
+        cmp WM_CRH_TMP+2
+        bcc _crh_test_min        ; mouse_x < max_left → test _
+        ; mouse_x >= max_left et < close_left → □ hit
         sep #$20
-_cbh_no:
+        lda #$02
+        rts
+_crh_test_min:
+        ; Test zone _ : [win_right-36 .. win_right-25]
+        rep #$20
+        lda WM_CRH_TMP+2         ; max_left = win_right-24
+        sec
+        sbc #12
+        sta WM_CRH_TMP+4         ; min_left = win_right-36
+        lda MOUSE_X
+        cmp WM_CRH_TMP+4
+        bcc _crh_no16            ; mouse_x < min_left → no
+        ; mouse_x >= min_left et < max_left → _ hit
+        sep #$20
+        lda #$03
+        rts
+_crh_no16:
+        sep #$20
+_crh_no:
         lda #$00
         rts
 

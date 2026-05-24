@@ -181,6 +181,14 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       `_wm_close_btn_hit` : hit-test zone close. `kernel_wm_close` : efface
       slot, décrémente `WM_COUNT`, rebind focus. Fenêtres "OricOS"/"Editor".
       Tests : `test_wm_window_title` + `test_wm_close_button`. 549 tests verts.
+- [x] **SP-3.h — Maximize/minimize** : `kernel_wm_maximize` (bascule normale↔max,
+      sauvegarde coords dans `WM_SAVED_RECTS` via `STA f:WM_SAVED_RECTS,X`) +
+      `kernel_wm_minimize` (cache fenêtre, `WM_STATE_HIDDEN`) + restore depuis
+      taskbar. `_wm_chrome_hit` hit-test 3 zones chrome (×/□/_). Drag désactivé
+      sur fenêtre maximisée. Fix critique : `rep #$20` explicite dans
+      `_crh_test_max/_crh_test_min` (bug tracking mode ca65 → 8-bit tronqué
+      corrompait ZP $22-$24). Tests : `test_wm_states_init`, `test_wm_maximize`,
+      `test_wm_minimize_restore`. 554 tests verts.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).
