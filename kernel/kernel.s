@@ -1145,7 +1145,7 @@ kernel_entry:
         sta VRAM_OP_ADDR_LO
         lda #>WM_CLOSE_STR
         sta VRAM_OP_ADDR_MID
-        lda #$00
+        lda #$01
         sta VRAM_OP_ADDR_HI      ; SDRAM $011080
         lda #$02                 ; len = 2 ("X" + null)
         sta VRAM_OP_LEN_LO
