@@ -4807,8 +4807,21 @@ kernel_wm_move_focused:
         lda WM_TABLE+WM_OFF_X,X
         clc
         adc WM_ARG_DX
-        bpl wm_mv_x_ok           ; résultat >= 0 → ok
-        lda #$0000               ; clamp à 0 (bord gauche)
+        bpl wm_mv_x_pos          ; résultat >= 0 → pas de wrap négatif
+        lda #$0000               ; clamp bord gauche
+        bra wm_mv_x_ok
+wm_mv_x_pos:
+        ; clamp bord droit : x <= 1024 - w
+        pha
+        lda #1024
+        sec
+        sbc WM_TABLE+WM_OFF_W,X  ; max_x = 1024 - w
+        sta WM_CRH_TMP           ; sauve max_x (2B, WM_CRH_TMP=$25)
+        pla
+        cmp WM_CRH_TMP           ; x > max_x ?
+        bcc wm_mv_x_ok           ; non → ok
+        beq wm_mv_x_ok
+        lda WM_CRH_TMP           ; clamp bord droit
 wm_mv_x_ok:
         sta WM_TABLE+WM_OFF_X,X
         lda WM_TABLE+WM_OFF_Y,X
