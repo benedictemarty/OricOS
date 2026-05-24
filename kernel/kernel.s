@@ -5457,7 +5457,9 @@ wm_rd_loop:
         bcs wm_rd_pass2
         cmp WM_FOCUS            ; fenêtre focus → réservée pour passe 2
         beq wm_rd_next
+        phy                     ; _wm_draw_one clobbe Y via GPU → sauvegarder
         jsr _wm_draw_one        ; A = slot id
+        ply                     ; restaurer le compteur de boucle
 wm_rd_next:
         iny
         bra wm_rd_loop
