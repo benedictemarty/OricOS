@@ -6112,12 +6112,16 @@ wm_step_hit:
         beq wm_step_chrome_max
         ; A=3 → minimize
         lda WIN_SLOT
+        jsr kernel_wm_set_focus  ; focus → WIN_SLOT (Z-order correct au redraw)
+        lda WIN_SLOT
         jsr kernel_wm_minimize
         lda #$00
         sta WM_DRAG_ARMED
         jsr kernel_wm_draw_cursor
         rts
 wm_step_chrome_max:
+        lda WIN_SLOT
+        jsr kernel_wm_set_focus  ; focus → WIN_SLOT avant maximize (Z-order correct)
         lda WIN_SLOT
         jsr kernel_wm_maximize
         lda #$00
