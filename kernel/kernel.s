@@ -5445,28 +5445,49 @@ kernel_wm_redraw:
 ; ── _wm_draw_windows : dessine toutes les fenêtres visibles (corps + titre).
 ;    Réutilisé par kernel_wm_redraw (clear plein) et kernel_wm_redraw_drag
 ;    (efface seulement l'ancien rect). Modifie A, X, Y.
+; ── _wm_draw_windows : deux passes pour Z-order correct ─────────────────
+; Passe 1 : fenêtres non-focus (slot 0..N-1 sauf WM_FOCUS).
+; Passe 2 : fenêtre focus en dernier = visuellement au-dessus de toutes.
+; Modifie A, X, Y.
 _wm_draw_windows:
         ldy #$00
 wm_rd_loop:
         tya
         cmp WM_COUNT
-        bcs wm_rd_done
-        jsr kernel_wm_offset    ; X = id*10
+        bcs wm_rd_pass2
+        cmp WM_FOCUS            ; fenêtre focus → réservée pour passe 2
+        beq wm_rd_next
+        jsr _wm_draw_one        ; A = slot id
+wm_rd_next:
+        iny
+        bra wm_rd_loop
+wm_rd_pass2:
+        ; Passe 2 : fenêtre focus
+        lda WM_FOCUS
+        cmp #$FF
+        beq wm_rd_done          ; pas de focus → rien
+        jsr _wm_draw_one        ; A = slot id (WM_FOCUS)
+wm_rd_done:
+        jmp kernel_menu_draw    ; menu par-dessus tout
+
+; ── _wm_draw_one : dessine une fenêtre (corps + titlebar + titre + widgets).
+; Entrée : A = slot id. Modifie A, X, Y.
+_wm_draw_one:
+        sta WIN_SLOT            ; mémorise le slot (stable vis-à-vis de kernel_wm_offset)
+        jsr kernel_wm_offset    ; X = slot*10
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #(WM_F_USED | WM_F_VISIBLE)
         cmp #(WM_F_USED | WM_F_VISIBLE)
-        bne wm_rd_next
-        phy                     ; sauve compteur id
-        ; v0.8 : couleur titlebar selon focus (Y = id, encore valide ici car
-        ; kernel_gfx_fill_rect16 clobbera Y plus bas).
-        tya
+        bne _wdo_done
+        ; Couleur titlebar selon focus (v0.8)
+        lda WIN_SLOT
         cmp WM_FOCUS
-        bne wm_rd_unfocus
+        bne _wdo_unfocus
         lda #WIN_TITLE_FOCUS
-        bra wm_rd_setcol
-wm_rd_unfocus:
+        bra _wdo_setcol
+_wdo_unfocus:
         lda #WIN_TITLE_NORMAL
-wm_rd_setcol:
+_wdo_setcol:
         sta WM_TITLE_COL
         ; Copie x/y/w/h (16-bit) de la fenêtre → WM_ARG_*.
         rep #$20
@@ -5479,7 +5500,7 @@ wm_rd_setcol:
         lda WM_TABLE+WM_OFF_H,X
         sta WM_ARG_H
         sep #$20
-        ; base $100000 + corps lightgray (7).
+        ; Corps lightgray (7), base SDRAM $100000.
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
@@ -5488,38 +5509,21 @@ wm_rd_setcol:
         lda #$07
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
-        ; Title bar : même x/y/w, h=12, couleur selon focus (v0.8).
+        ; Title bar : même x/y/w, h=12, couleur selon focus.
         rep #$20
         lda #12
         sta WM_ARG_H
         sep #$20
-        lda WM_TITLE_COL        ; lightblue (focus) ou darkgray (non focus)
+        lda WM_TITLE_COL
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
-
-        ; ── SP-3.f v0.1 : titre dans la titlebar ─────────────────────
-        ; Lit le pointer titre du slot Y (encore valide ici).
-        ; Utilise WIN_SLOT pour passer le slot à _wm_draw_title (Y clobbé).
-        tya
-        sta WIN_SLOT
-
-        ; ── SP-3.f v0.2 : bouton fermer "×" en haut à droite ─────────
-        ; Position : x = WIN_X + WIN_W - 10, y = WIN_Y + 3.
-        ; Dessine via TEXT16 avec string WM_CLOSE_STR "×\0" (uploadé au boot).
-        ; Rappel : WM_ARG_X/Y/W/H posés pour la titlebar (h=12, x=win_x...).
-        ; On réutilise WM_ARG_X (= win_x) + WM_ARG_W (= win_w) via lecture table.
-        ; Calcul abs simplifié : utilise les valeurs ZP WM_ARG_X/W.
-        jsr _wm_draw_title_and_close  ; dessine titre + bouton X (SP-3.f)
-        ; dessine les widgets de cette fenêtre avant de passer à la suivante
-        ; → z-order correct : fenêtre N+1 couvre les widgets de la fenêtre N
-        tya
+        ; Titre + bouton fermer (SP-3.f) — WIN_SLOT déjà posé.
+        jsr _wm_draw_title_and_close
+        ; Widgets de ce slot (Z-order : la fenêtre suivante couvrira les siens).
+        lda WIN_SLOT
         jsr _wm_draw_widgets_for_slot
-        ply
-wm_rd_next:
-        iny
-        bra wm_rd_loop
-wm_rd_done:
-        jmp kernel_menu_draw   ; menu par-dessus tout (plus de passe globale widgets)
+_wdo_done:
+        rts
 
 ; ── _wm_draw_title_and_close : dessine le titre + bouton × dans la titlebar ──
 ; SP-3.f v0.1 (titre) + v0.2 (bouton fermer).
