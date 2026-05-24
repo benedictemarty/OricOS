@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-25
 
+### SP-3 bugfix — Session 2026-05-25 : WM robustesse complète
+
+#### Fixed
+- **Z-order fenêtres** : `_wm_draw_windows` refactorisé en deux passes
+  (non-focus d'abord, focus en dernier). Extrait `_wm_draw_one`. PHY/PLY
+  ajouté autour de l'appel dans la boucle (Y clobbé par GPU).
+- **focus avant maximize/minimize** : `wm_step_chrome_max/min` appellent
+  `kernel_wm_set_focus` avant l'action → Z-order correct au redraw.
+- **Trous après close (WM_COUNT vs WM_MAX)** : `_wm_draw_windows`,
+  `kernel_wm_hit_test`, `kernel_taskbar_draw` passent de `cmp WM_COUNT`
+  à `cmp #WM_MAX`. `kernel_wm_add` cherche le premier slot libre au lieu
+  d'utiliser `WM_COUNT` comme id.
+- **Taskbar compacte** : `kernel_taskbar_draw` n'avance `TB_BTN_X` que
+  pour les slots UTILISÉS. `kernel_taskbar_hit` reproduit le même calcul
+  d'itération (suppression de la division fixe par TB_BTN_STRIDE).
+- **Maximize + marge 20 px** : `w_max = 1004` (au lieu de 1024) réserve
+  le bord droit pour les boutons chrome visibles et la future taskbar verticale.
+- **WM_STATE_HIDDEN_MAXED ($03)** : minimiser une fenêtre maximisée mémorise
+  l'état. La taskbar restaure à MAXED (dims + WM_SAVED_RECTS intacts) → □
+  fonctionne correctement après restore.
+
 ### SP-3 bugfix — Fantômes widget/titre lors du resize + icônes drag
 
 #### Fixed
