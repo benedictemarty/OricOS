@@ -68,9 +68,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`kernel_wm_mouse_step`** redessine desktop + curseur sur **tout** événement
   souris (y compris simple mouvement) → le curseur suit la souris.
 
+#### Fixed
+- **Drag fenêtre borné** : `WM_DRAG_ARMED` — le drag n'est armé que si le clic a
+  atterri **sur** une fenêtre (hit-test). Avant, un clic sur le vide + glissé
+  déplaçait quand même la fenêtre focus. Désarmé au relâchement.
+
 #### Note
 - Côté Phosphoric : relative-mode SDL (pointeur capturé/confiné, curseur OS hôte
-  masqué) en mode `--xvga` ; bascule capture via **LCtrl+RShift**.
+  masqué) en mode `--xvga` ; bascule capture via **LCtrl+RShift**. Fix : la
+  capture est (ré)activée après le resize XVGA (sinon annulée).
 - v0.6 reporté : backing-store DMA + redraw incrémental (dirty rects) au lieu du
   full-clear par événement (le curseur force un redraw complet à chaque mouvement).
 

@@ -392,6 +392,7 @@ MOUSE_BTN        = $015934       ; 1B boutons courants
 MOUSE_PREV_BTN   = $015935       ; 1B boutons frame précédente (edge-detect clic)
 MOUSE_DX         = $015936       ; 1B delta X signé par événement (lu de MOU2_DX)
 MOUSE_DY         = $015937       ; 1B delta Y signé par événement
+WM_DRAG_ARMED    = $015938       ; 1B : 1 si le clic a atterri sur une fenêtre (drag autorisé)
 WM_TEST_RES      = $015940       ; sentinelle test SP-3.e (12 octets)
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
@@ -3586,11 +3587,16 @@ kernel_wm_mouse_step:
         ; Bouton gauche pressé ?
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
-        beq wm_step_render       ; pas de bouton (motion) → redessine + curseur
+        bne wm_step_pressed
+        ; pas de bouton (motion ou relâché) → désarme le drag, redessine + curseur
+        lda #$00
+        sta WM_DRAG_ARMED
+        bra wm_step_render
+wm_step_pressed:
         ; bouton gauche tenu. Était-il déjà tenu (drag) ou nouveau clic ?
         lda MOUSE_PREV_BTN
         and #MOU2_BTN_LEFT
-        bne wm_step_drag         ; déjà tenu → drag
+        bne wm_step_drag         ; déjà tenu → drag (si armé)
         ; Nouveau clic → focus la fenêtre sous le curseur.
         rep #$20
         lda MOUSE_X
@@ -3600,10 +3606,20 @@ kernel_wm_mouse_step:
         sep #$20
         jsr kernel_wm_hit_test   ; A = id ou $FF
         cmp #$FF
-        beq wm_step_render
+        bne wm_step_hit
+        ; Clic sur le vide → pas de focus, drag désarmé.
+        lda #$00
+        sta WM_DRAG_ARMED
+        bra wm_step_render
+wm_step_hit:
         jsr kernel_wm_set_focus
+        lda #$01                 ; clic sur une fenêtre → arme le drag
+        sta WM_DRAG_ARMED
         bra wm_step_render
 wm_step_drag:
+        ; Drag autorisé seulement si le clic initial a touché une fenêtre.
+        lda WM_DRAG_ARMED
+        beq wm_step_render
         ; Drag : déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY,
         ; lu par kernel_mouse_read → delta propre par IRQ, pas d'accumulation).
         lda MOUSE_DX
