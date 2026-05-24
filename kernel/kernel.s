@@ -473,9 +473,10 @@ TB_I             = $015A9C       ; 1B : index boucle taskbar
 TB_BTN_X         = $015A9E       ; 2B : btn_x courant (4 + i*124)
 TB_WIN_SCRATCH   = $015AA0       ; 5B : "WinN\0" en bank 1 RAM (source pour upload)
 ; ── SP-3.h : états maximize/minimize + rects sauvegardés ──────────────
-WM_STATE_NORMAL  = $00           ; état fenêtre : normal
-WM_STATE_MAXED   = $01           ; état fenêtre : maximisée
-WM_STATE_HIDDEN  = $02           ; état fenêtre : minimisée (invisible)
+WM_STATE_NORMAL      = $00       ; état fenêtre : normal
+WM_STATE_MAXED       = $01       ; état fenêtre : maximisée
+WM_STATE_HIDDEN      = $02       ; état fenêtre : minimisée depuis état normal
+WM_STATE_HIDDEN_MAXED= $03       ; état fenêtre : minimisée depuis état maximisé
 WM_STATES        = $015AA5       ; 4 × 1B : état par slot ($AA5-$AA8)
 WM_SAVED_RECTS   = $015AA9       ; 4 × 8B : x(2)+y(2)+w(2)+h(2) avant maximize ($AA9-$AC8)
 WM_H_TEST_RES    = $015AC9       ; sentinelle test SP-3.h (5 octets)
@@ -5333,11 +5334,19 @@ kernel_wm_minimize:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #($FF ^ WM_F_VISIBLE) ; clear bit visible
         sta WM_TABLE+WM_OFF_FLAGS,X
-        ; WM_STATES[slot] = WM_STATE_HIDDEN
+        ; WM_STATES[slot] = HIDDEN ou HIDDEN_MAXED selon l'état courant
         lda DP_TMP
-        tax
+        tax                         ; X = slot
+        lda WM_STATES,X
+        cmp #WM_STATE_MAXED
+        bne kwmin_hidden_normal
+        lda #WM_STATE_HIDDEN_MAXED  ; était maximisée → mémorise
+        sta WM_STATES,X             ; X = slot encore valide
+        bra kwmin_hidden_done
+kwmin_hidden_normal:
         lda #WM_STATE_HIDDEN
         sta WM_STATES,X
+kwmin_hidden_done:
         ; Si la fenêtre avait le focus → redistribuer
         lda DP_TMP
         cmp WM_FOCUS
@@ -6029,13 +6038,17 @@ _tbh_got_slot:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
         beq _tbh_miss            ; slot libre → ignore
-        ; SP-3.h : si la fenêtre est minimisée (HIDDEN), la restaurer d'abord.
+        ; SP-3.h : si la fenêtre est minimisée, la restaurer à l'état d'avant.
         lda TB_I
         tax
         lda WM_STATES,X
         cmp #WM_STATE_HIDDEN
-        bne _tbh_focus
-        ; Restore la fenêtre : set WM_F_VISIBLE + état NORMAL
+        beq _tbh_restore_normal
+        cmp #WM_STATE_HIDDEN_MAXED
+        beq _tbh_restore_maxed
+        bra _tbh_focus           ; déjà visible → juste focus
+_tbh_restore_normal:
+        ; Restore normal : WM_F_VISIBLE + état NORMAL
         lda TB_I
         jsr kernel_wm_offset     ; X = slot*10
         lda WM_TABLE+WM_OFF_FLAGS,X
@@ -6044,6 +6057,18 @@ _tbh_got_slot:
         lda TB_I
         tax
         lda #WM_STATE_NORMAL
+        sta WM_STATES,X
+        bra _tbh_focus
+_tbh_restore_maxed:
+        ; Restore maximisée : WM_F_VISIBLE + état MAXED (dims déjà à 1004×741)
+        lda TB_I
+        jsr kernel_wm_offset     ; X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        ora #WM_F_VISIBLE
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        lda TB_I
+        tax
+        lda #WM_STATE_MAXED
         sta WM_STATES,X
 _tbh_focus:
         ; Focus + redraw + taskbar.
