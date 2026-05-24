@@ -161,8 +161,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       delta par événement → **drag fenêtre live**. v0.5 : **curseur dessiné**
       (`kernel_wm_draw_cursor`) + relative-mode SDL (LCtrl+RShift). v0.6 :
       **backing-store curseur** (`kernel_wm_cursor_blit` : motion = sauve/restaure
-      8×8 via VRAM I/O, plus de full-redraw par mouvement). v0.7 : backing-store
-      fenêtre (drag sans full-redraw) + dirty rects.
+      8×8 via VRAM I/O, plus de full-redraw par mouvement). v0.7 : **drag
+      incrémental** (`kernel_wm_redraw_drag` : efface l'ancien rect au lieu du
+      clear plein écran). v0.8 : couleur titlebar selon focus + multi-dirty-rect.
 - [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)

@@ -406,6 +406,11 @@ CUR_DRAW_X       = $015975       ; 2B : position de dessin clampée [0,1016]×[0
 CUR_DRAW_Y       = $015977       ; 2B
 CUR_XB           = $015979       ; 2B : temp x>>1
 CUR_MIDHI        = $01597B       ; 2B : temp (mid,hi) de l'adresse SDRAM
+; ── SP-3.e v0.7 : drag incrémental (efface l'ancien rect, pas tout l'écran) ──
+WM_DRAG_OLD_X    = $01597D       ; 2B : rect fenêtre AVANT déplacement (dirty rect)
+WM_DRAG_OLD_Y    = $01597F       ; 2B
+WM_DRAG_OLD_W    = $015981       ; 2B
+WM_DRAG_OLD_H    = $015983       ; 2B
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
 ; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
@@ -3543,7 +3548,12 @@ kernel_wm_redraw:
         lda #$01
         sta GFX_COLOR           ; desktop bleu
         jsr kernel_gfx_clear
-        ; Dessine chaque fenêtre visible.
+        ; fall-through : dessine les fenêtres.
+
+; ── _wm_draw_windows : dessine toutes les fenêtres visibles (corps + titre).
+;    Réutilisé par kernel_wm_redraw (clear plein) et kernel_wm_redraw_drag
+;    (efface seulement l'ancien rect). Modifie A, X, Y.
+_wm_draw_windows:
         ldy #$00
 wm_rd_loop:
         tya
@@ -3589,6 +3599,52 @@ wm_rd_next:
         iny
         bra wm_rd_loop
 wm_rd_done:
+        rts
+
+; ── kernel_wm_redraw_drag : redraw incrémental pour le drag ────────────
+; Efface seulement l'ancien rect de la fenêtre (WM_DRAG_OLD_*) en bleu,
+; puis redessine toutes les fenêtres. Évite le clear plein écran (393 Ko).
+; Modifie A, X, Y.
+.export kernel_wm_redraw_drag
+kernel_wm_redraw_drag:
+        rep #$20
+        lda WM_DRAG_OLD_X
+        sta WM_ARG_X
+        lda WM_DRAG_OLD_Y
+        sta WM_ARG_Y
+        lda WM_DRAG_OLD_W
+        sta WM_ARG_W
+        lda WM_DRAG_OLD_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$01                 ; desktop bleu
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        jmp _wm_draw_windows
+
+; ── _wm_capture_focused_rect : copie le rect de la fenêtre focus dans
+;    WM_DRAG_OLD_* (avant déplacement). No-op si pas de focus. Modifie A,X.
+_wm_capture_focused_rect:
+        lda WM_FOCUS
+        cmp #$FF
+        beq _wcr_done
+        jsr kernel_wm_offset     ; X = focus*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta WM_DRAG_OLD_X
+        lda WM_TABLE+WM_OFF_Y,X
+        sta WM_DRAG_OLD_Y
+        lda WM_TABLE+WM_OFF_W,X
+        sta WM_DRAG_OLD_W
+        lda WM_TABLE+WM_OFF_H,X
+        sta WM_DRAG_OLD_H
+        sep #$20
+_wcr_done:
         rts
 
 ; ── kernel_wm_mouse_step : 1 itération event loop (clic → focus,
@@ -3642,8 +3698,12 @@ wm_step_drag:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_do_drag:
-        ; Drag : déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY,
-        ; lu par kernel_mouse_read → delta propre par IRQ, pas d'accumulation).
+        ; v0.7 : drag incrémental (pas de clear plein écran).
+        ; 1. capture le rect actuel (avant déplacement) = dirty rect à effacer.
+        jsr _wm_capture_focused_rect
+        ; 2. efface l'ancien curseur (restaure le fond) avant repaint.
+        jsr kernel_wm_cursor_restore
+        ; 3. déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY).
         lda MOUSE_DX
         jsr _sext8_to16          ; WM_ARG_DX = sign-extend(MOUSE_DX)
         sta WM_ARG_DX
@@ -3653,8 +3713,9 @@ wm_step_do_drag:
         sta WM_ARG_DY
         stx WM_ARG_DY+1
         jsr kernel_wm_move_focused
-        ; Fenêtre déplacée → desktop modifié → full-redraw + curseur.
-        jsr kernel_wm_redraw
+        ; 4. redraw incrémental : efface l'ancien rect + redessine les fenêtres.
+        jsr kernel_wm_redraw_drag
+        ; 5. curseur : backing périmé après repaint → invalide, sauve, dessine.
         jsr kernel_wm_draw_cursor
         rts
 

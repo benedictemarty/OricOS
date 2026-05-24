@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### SP-3.e v0.7 — Drag incrémental (dirty rect, plus de full-clear)
+
+#### Added
+- **`kernel_wm_redraw_drag`** : efface uniquement l'ancien rectangle de la
+  fenêtre (`WM_DRAG_OLD_*`) en bleu via FILL_RECT16, puis redessine les fenêtres
+  (`_wm_draw_windows` factorisé) — au lieu du `kernel_gfx_clear` plein écran 393 Ko.
+- **`_wm_capture_focused_rect`** : capture le rect de la fenêtre focus avant
+  déplacement (dirty rect à effacer).
+
+#### Changed
+- **`kernel_wm_mouse_step`** (drag) : capture rect ancien → restaure le curseur
+  (efface) → déplace → `kernel_wm_redraw_drag` → `kernel_wm_draw_cursor`. Le drag
+  ne fait plus de clear plein écran → fluide.
+- `kernel_wm_redraw` factorisé : clear plein + `_wm_draw_windows` (partagé).
+
+#### Note
+- Coût drag : efface ~ rect fenêtre (80×60 ≈ 2.4 Ko) + redessine N fenêtres, vs
+  393 Ko avant. Côté Phosphoric : test `wm_drag_no_ghost` (pas de fantôme).
+
 ### Licence — EUPL-1.2 (2026-05-24)
 
 - OricOS passe sous **EUPL-1.2** © 2026 Bénédicte Marty (cohérent workspace +
