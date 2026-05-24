@@ -430,6 +430,10 @@ WIDGET_COUNT     = $015A80       ; 1B : nb widgets
 WIDGET_ACTIVE    = $015A81       ; 1B : widget bouton cliqué (actif) ou $FF
 TK_BTN_PRESSED   = $015A82       ; 1B : 0=normal 1=pressé (face couleur)
 TK_COL_BTN_PRESS = $08           ; bouton pressé : face darkgray
+; ── SP-3.d v0.4 : callbacks de bouton ─────────────────────────────────
+WG_CB            = $015A83       ; 2B : input add_widget (offset callback bank1, 0=aucun)
+WG_CB_VEC        = $015A85       ; 2B : vecteur pour jsr (abs,X) indirect
+CB_FLAG          = $015A87       ; 1B : compteur démo (clics sur "OK")
 WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
@@ -1208,6 +1212,7 @@ kernel_entry:
         ; Enregistrés AVANT le redraw → dessinés avec la fenêtre, persistent
         ; au drag (suivent la fenêtre). Label noir + bouton "OK".
         lda #$00
+        sta CB_FLAG                     ; v0.4 : compteur clics démo
         sta WG_PARENT                   ; fenêtre 0
         lda #WG_TYPE_LABEL
         sta WG_TYPE
@@ -1220,6 +1225,8 @@ kernel_entry:
         sta WM_ARG_W
         lda #0
         sta WM_ARG_H
+        lda #0
+        sta WG_CB                       ; label : pas de callback
         sep #$20
         lda #$00                        ; label noir sur corps lightgray
         sta GFX_COLOR
@@ -1228,7 +1235,7 @@ kernel_entry:
         lda #>tk_demo_os
         sta DP_PCPTR+1
         jsr kernel_wm_add_widget
-        ; bouton "OK" rel(6,34, 44×18)
+        ; bouton "OK" rel(6,34, 44×18), callback = demo_ok_cb
         lda #$00
         sta WG_PARENT
         lda #WG_TYPE_BUTTON
@@ -1243,6 +1250,10 @@ kernel_entry:
         lda #18
         sta WM_ARG_H
         sep #$20
+        lda #<demo_ok_cb                ; v0.4 : callback du bouton
+        sta WG_CB
+        lda #>demo_ok_cb
+        sta WG_CB+1
         lda #<tk_demo_ok
         sta DP_PCPTR
         lda #>tk_demo_ok
@@ -3562,6 +3573,10 @@ kernel_wm_add_widget:
         sta WIDGET_TABLE+12,X
         lda DP_PCPTR+1
         sta WIDGET_TABLE+13,X
+        lda WG_CB                ; v0.4 : callback (offset bank1, 0=aucun)
+        sta WIDGET_TABLE+14,X
+        lda WG_CB+1
+        sta WIDGET_TABLE+15,X
         lda WIDGET_COUNT
         inc a
         sta WIDGET_COUNT
@@ -4301,9 +4316,44 @@ wm_step_hit:
         sta WM_DRAG_ARMED
         ; v0.3 : bouton sous le curseur → WIDGET_ACTIVE (sinon $FF).
         jsr _wm_widget_hit
+        ; v0.4 : si un bouton est actif et a un callback non nul, l'invoquer.
+        jsr _wm_invoke_active_cb
         ; Focus changé → desktop modifié → full-redraw + curseur.
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
+        rts
+
+; ── _wm_invoke_active_cb : appelle le callback du bouton WIDGET_ACTIVE ──
+; (offset bank1 stocké à entry+14/+15). No-op si pas de bouton actif ou
+; callback nul. Le callback s'exécute en bank 1 (PBR=1). Modifie A,X. v0.4
+_wm_invoke_active_cb:
+        lda WIDGET_ACTIVE
+        cmp #$FF
+        bne _iac_go
+        rts
+_iac_go:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; offset entrée du bouton actif
+        lda WIDGET_TABLE+14,X
+        sta WG_CB_VEC
+        lda WIDGET_TABLE+15,X
+        sta WG_CB_VEC+1
+        ora WG_CB_VEC            ; callback == 0 ?
+        bne _iac_call
+        rts
+_iac_call:
+        ldx #$00
+        jsr (.loword(WG_CB_VEC),X)  ; appel indirect (opcode $FC, vecteur en PBR=1)
+        rts
+
+; ── demo_ok_cb : callback démo du bouton "OK" — incrémente CB_FLAG. ────
+demo_ok_cb:
+        lda CB_FLAG
+        inc a
+        sta CB_FLAG
         rts
 wm_step_drag:
         ; Drag autorisé seulement si le clic initial a touché une fenêtre.

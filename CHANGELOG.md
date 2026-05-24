@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.4 — Callbacks de bouton (action au clic)
+
+#### Added
+- Widget bouton : champ **callback** (offset bank1 à entry+14/+15), passé via
+  `WG_CB` à `kernel_wm_add_widget`.
+- **`_wm_invoke_active_cb`** : après le hit-test, si un bouton actif a un
+  callback non nul, l'invoque via `jsr (vecteur,X)` (opcode `$FC`, exécuté en
+  bank 1). Appelé par `kernel_wm_mouse_step`.
+- Démo : le bouton "OK" a un callback `demo_ok_cb` qui incrémente `CB_FLAG`.
+
+
 ### Sprint 3.d v0.3 — Bouton cliquable (retour visuel pressé)
 
 #### Added
