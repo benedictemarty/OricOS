@@ -4807,10 +4807,21 @@ kernel_wm_move_focused:
         lda WM_TABLE+WM_OFF_X,X
         clc
         adc WM_ARG_DX
+        bpl wm_mv_x_ok           ; résultat >= 0 → ok
+        lda #$0000               ; clamp à 0 (bord gauche)
+wm_mv_x_ok:
         sta WM_TABLE+WM_OFF_X,X
         lda WM_TABLE+WM_OFF_Y,X
         clc
         adc WM_ARG_DY
+        bpl wm_mv_y_pos          ; résultat >= 0 ?
+        lda #MENU_BAR_H          ; négatif → clamp au bord haut
+        bra wm_mv_y_ok
+wm_mv_y_pos:
+        cmp #MENU_BAR_H          ; y < barre de menu ?
+        bcs wm_mv_y_ok
+        lda #MENU_BAR_H          ; clamp au bord haut
+wm_mv_y_ok:
         sta WM_TABLE+WM_OFF_Y,X
         sep #$20
 wm_mv_done:
