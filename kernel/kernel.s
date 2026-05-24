@@ -394,6 +394,15 @@ MOUSE_DX         = $015936       ; 1B delta X signé par événement (lu de MOU2
 MOUSE_DY         = $015937       ; 1B delta Y signé par événement
 WM_DRAG_ARMED    = $015938       ; 1B : 1 si le clic a atterri sur une fenêtre (drag autorisé)
 WM_TEST_RES      = $015940       ; sentinelle test SP-3.e (12 octets)
+; ── SP-3.e v0.6 : backing-store curseur (évite le full-redraw par mouvement) ──
+CURSOR_SAVE      = $015950       ; 32B : pixels sauvés sous le curseur (8px×8 = 4B×8)
+CURSOR_OLD_X     = $015970       ; 2B : position du backing courant (clampée)
+CURSOR_OLD_Y     = $015972       ; 2B
+CURSOR_VALID     = $015974       ; 1B : 1 si CURSOR_SAVE/OLD valides
+CUR_DRAW_X       = $015975       ; 2B : position de dessin clampée [0,1016]×[0,760]
+CUR_DRAW_Y       = $015977       ; 2B
+CUR_XB           = $015979       ; 2B : temp x>>1
+CUR_MIDHI        = $01597B       ; 2B : temp (mid,hi) de l'adresse SDRAM
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
 ; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
@@ -3588,10 +3597,12 @@ kernel_wm_mouse_step:
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
         bne wm_step_pressed
-        ; pas de bouton (motion ou relâché) → désarme le drag, redessine + curseur
+        ; Motion seule (pas de bouton) → désarme le drag + curseur léger
+        ; (backing-store : PAS de full-redraw du desktop).
         lda #$00
         sta WM_DRAG_ARMED
-        bra wm_step_render
+        jsr kernel_wm_cursor_blit
+        rts
 wm_step_pressed:
         ; bouton gauche tenu. Était-il déjà tenu (drag) ou nouveau clic ?
         lda MOUSE_PREV_BTN
@@ -3607,19 +3618,27 @@ wm_step_pressed:
         jsr kernel_wm_hit_test   ; A = id ou $FF
         cmp #$FF
         bne wm_step_hit
-        ; Clic sur le vide → pas de focus, drag désarmé.
+        ; Clic sur le vide → pas de focus ni changement desktop → curseur léger.
         lda #$00
         sta WM_DRAG_ARMED
-        bra wm_step_render
+        jsr kernel_wm_cursor_blit
+        rts
 wm_step_hit:
         jsr kernel_wm_set_focus
         lda #$01                 ; clic sur une fenêtre → arme le drag
         sta WM_DRAG_ARMED
-        bra wm_step_render
+        ; Focus changé → desktop modifié → full-redraw + curseur.
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
 wm_step_drag:
         ; Drag autorisé seulement si le clic initial a touché une fenêtre.
         lda WM_DRAG_ARMED
-        beq wm_step_render
+        bne wm_step_do_drag
+        ; bouton tenu hors fenêtre → curseur léger uniquement.
+        jsr kernel_wm_cursor_blit
+        rts
+wm_step_do_drag:
         ; Drag : déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY,
         ; lu par kernel_mouse_read → delta propre par IRQ, pas d'accumulation).
         lda MOUSE_DX
@@ -3631,20 +3650,62 @@ wm_step_drag:
         sta WM_ARG_DY
         stx WM_ARG_DY+1
         jsr kernel_wm_move_focused
-wm_step_render:
-        ; Tout événement souris : redessine le desktop + le curseur par-dessus.
+        ; Fenêtre déplacée → desktop modifié → full-redraw + curseur.
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
         rts
 
-; ── kernel_wm_draw_cursor : dessine le curseur (6×8 blanc) à (MOUSE_X,Y) ──
-; Par-dessus le desktop (appeler après kernel_wm_redraw). Modifie A.
+; ── kernel_wm_draw_cursor : après un full-redraw du desktop ────────────
+; Le fond sous le curseur a été repeint → l'ancien backing est périmé.
+; Invalide, capture le nouveau fond, dessine le curseur. Modifie A,X,Y.
 .export kernel_wm_draw_cursor
 kernel_wm_draw_cursor:
+        lda #$00
+        sta CURSOR_VALID         ; ancien backing périmé (desktop repeint)
+        jsr _cursor_save_and_draw
+        rts
+
+; ── kernel_wm_cursor_blit : déplacement léger du curseur (motion) ──────
+; Restaure le fond sous l'ancien curseur, capture le nouveau, dessine.
+; PAS de redraw desktop. Modifie A,X,Y.
+.export kernel_wm_cursor_blit
+kernel_wm_cursor_blit:
+        jsr kernel_wm_cursor_restore
+        jsr _cursor_save_and_draw
+        rts
+
+; clampe MOUSE_X/Y → CUR_DRAW_X/Y dans [0,1016]×[0,760], sauve le fond,
+; dessine le curseur. Met CURSOR_OLD/VALID à jour. Modifie A,X,Y.
+_cursor_save_and_draw:
+        jsr _cursor_clamp
+        jsr kernel_wm_cursor_save
+        jsr _cursor_draw
+        rts
+
+; clampe MOUSE → CUR_DRAW (zone 8×8 toujours dans l'écran).
+_cursor_clamp:
         rep #$20
         lda MOUSE_X
-        sta WM_ARG_X
+        cmp #1017
+        bcc _cc_x_ok
+        lda #1016
+_cc_x_ok:
+        sta CUR_DRAW_X
         lda MOUSE_Y
+        cmp #761
+        bcc _cc_y_ok
+        lda #760
+_cc_y_ok:
+        sta CUR_DRAW_Y
+        sep #$20
+        rts
+
+; dessine le curseur 6×8 blanc à CUR_DRAW via FILL_RECT16.
+_cursor_draw:
+        rep #$20
+        lda CUR_DRAW_X
+        sta WM_ARG_X
+        lda CUR_DRAW_Y
         sta WM_ARG_Y
         lda #6
         sta WM_ARG_W
@@ -3659,6 +3720,121 @@ kernel_wm_draw_cursor:
         lda #$0F                 ; blanc
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+        rts
+
+; calcule l'adresse SDRAM de la 1re ligne de la zone curseur (8px×8) à
+; partir de CUR_DRAW_X/Y → VRAM_OP_ADDR_LO/MID/HI.
+;   addr = $100000 + y*512 + (x>>1)   (BPL XVGA = 512, 4bpp 2px/octet)
+; Astuce : y*512 = (y*2)<<8 → octet0=0, (mid,hi)16 = y*2. base ajoute $1000
+; aux (mid,hi). x>>1 ≤ 508 : octet0 = lo, retenue (≤1) ajoutée aux (mid,hi).
+_cursor_calc_addr:
+        rep #$20
+        lda CUR_DRAW_X
+        lsr a                    ; xb = x>>1
+        sta CUR_XB
+        lda CUR_DRAW_Y
+        asl a                    ; y*2
+        clc
+        adc #$1000               ; + contribution base $100000 aux (mid,hi)
+        sta CUR_MIDHI
+        lda CUR_XB
+        xba                      ; octets échangés → low = xb>>8 (0 ou 1)
+        and #$00FF
+        clc
+        adc CUR_MIDHI
+        sta CUR_MIDHI
+        sep #$20
+        lda CUR_XB               ; octet bas de xb
+        sta VRAM_OP_ADDR_LO
+        lda CUR_MIDHI            ; octet bas = mid
+        sta VRAM_OP_ADDR_MID
+        lda CUR_MIDHI+1          ; octet haut = hi
+        sta VRAM_OP_ADDR_HI
+        rts
+
+; sauve la zone 8×8 (4 octets × 8 lignes) sous CUR_DRAW → CURSOR_SAVE,
+; met CURSOR_OLD = CUR_DRAW, VALID = 1.
+.export kernel_wm_cursor_save
+kernel_wm_cursor_save:
+        jsr _cursor_calc_addr
+        lda #<CURSOR_SAVE
+        sta DP_PCPTR
+        lda #>CURSOR_SAVE
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        ldx #$08
+_csv_row:
+        lda #$04
+        sta VRAM_OP_LEN_LO
+        stz VRAM_OP_LEN_HI
+        phx
+        jsr kernel_vram_read_block
+        plx
+        jsr _cursor_next_row
+        dex
+        bne _csv_row
+        rep #$20
+        lda CUR_DRAW_X
+        sta CURSOR_OLD_X
+        lda CUR_DRAW_Y
+        sta CURSOR_OLD_Y
+        sep #$20
+        lda #$01
+        sta CURSOR_VALID
+        rts
+
+; restaure le fond sous l'ancien curseur (CURSOR_OLD) depuis CURSOR_SAVE.
+; No-op si CURSOR_VALID = 0.
+.export kernel_wm_cursor_restore
+kernel_wm_cursor_restore:
+        lda CURSOR_VALID
+        bne _crst_go
+        rts
+_crst_go:
+        rep #$20
+        lda CURSOR_OLD_X
+        sta CUR_DRAW_X
+        lda CURSOR_OLD_Y
+        sta CUR_DRAW_Y
+        sep #$20
+        jsr _cursor_calc_addr
+        lda #<CURSOR_SAVE
+        sta DP_PCPTR
+        lda #>CURSOR_SAVE
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        ldx #$08
+_crst_row:
+        lda #$04
+        sta VRAM_OP_LEN_LO
+        stz VRAM_OP_LEN_HI
+        phx
+        jsr kernel_vram_write_block
+        plx
+        jsr _cursor_next_row
+        dex
+        bne _crst_row
+        rts
+
+; avance VRAM_OP_ADDR d'une ligne (+512 = mid+=2, carry hi) et DP_PCPTR de
+; 4 octets (ligne suivante du buffer CURSOR_SAVE).
+_cursor_next_row:
+        lda VRAM_OP_ADDR_MID
+        clc
+        adc #$02
+        sta VRAM_OP_ADDR_MID
+        bcc _cnr_nc
+        inc VRAM_OP_ADDR_HI
+_cnr_nc:
+        lda DP_PCPTR
+        clc
+        adc #$04
+        sta DP_PCPTR
+        bcc _cnr_np
+        inc DP_PCPTR+1
+_cnr_np:
         rts
 
 ; helper : A = octet signé → A=low, X=high (sign-extension). Modifie A,X.

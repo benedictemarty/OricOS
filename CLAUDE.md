@@ -160,7 +160,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       (desktop XVGA visible). v0.4 : **main loop persistant** (`NO_STP_FLAG`) +
       delta par événement → **drag fenêtre live**. v0.5 : **curseur dessiné**
       (`kernel_wm_draw_cursor`) + relative-mode SDL (LCtrl+RShift). v0.6 :
-      backing-store DMA + redraw incrémental.
+      **backing-store curseur** (`kernel_wm_cursor_blit` : motion = sauve/restaure
+      8×8 via VRAM I/O, plus de full-redraw par mouvement). v0.7 : backing-store
+      fenêtre (drag sans full-redraw) + dirty rects.
 - [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)

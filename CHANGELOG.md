@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### SP-3.e v0.6 — Backing-store curseur (pas de full-redraw par motion)
+
+#### Added
+- **`kernel_wm_cursor_save`/`restore`/`blit`** + `_cursor_calc_addr`/`clamp`/
+  `draw` : sauvegarde/restauration de la zone 8×8 (4 octets × 8 lignes) sous le
+  curseur via VRAM I/O (`kernel_vram_read_block`/`write_block`). État en bank 1
+  `$5950` (CURSOR_SAVE 32B, OLD_X/Y, VALID, CUR_DRAW_X/Y).
+- Adresse SDRAM calculée `$100000 + y*512 + x>>1` (BPL XVGA 512, 4bpp).
+
+#### Changed
+- **`kernel_wm_mouse_step`** : sur **motion seule** → `kernel_wm_cursor_blit`
+  (restaure ancien fond, sauve nouveau, dessine) **sans** full-redraw du desktop.
+  Le full-redraw (`kernel_wm_redraw` + `kernel_wm_draw_cursor`) n'est conservé que
+  sur **clic-focus** et **drag** (le desktop change réellement).
+- `kernel_wm_draw_cursor` : invalide l'ancien backing (desktop repeint), capture
+  le nouveau fond, dessine.
+
+#### Note
+- Gain : un mouvement de souris ne redessine plus 393 Ko mais ~64 octets de
+  VRAM I/O → curseur fluide. Le drag reste un full-redraw (backing-store fenêtre
+  reporté). Côté Phosphoric : fix du masque reg VRAM I/O (`& 0x0F` → `& 0x3F`)
+  qui empêchait les ports VRAM de fonctionner. Test `cursor_backing_store`.
+
 ### SP-3.e v0.1 — Driver souris + window manager (ADR-24)
 
 #### Added
