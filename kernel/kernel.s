@@ -483,6 +483,9 @@ WM_H_TEST_RES    = $015AC9       ; sentinelle test SP-3.h (5 octets)
 WM_RESIZE_ARMED  = $015ACE       ; 1B : 1 si resize armé (bouton tenu sur bord)
 WM_RESIZE_EDGE   = $015ACF       ; 1B : 1=droit, 2=bas, 3=coin
 WM_I_TEST_RES    = $015AD0       ; sentinelle test SP-3.i (5 octets)
+; ── SP-3.j : dialog modal ──────────────────────────────────────────────
+WM_MODAL         = $015AD5       ; 1B : slot fenêtre modale ($FF = aucune)
+WM_J_TEST_RES    = $015AD6       ; sentinelle test SP-3.j (4 octets)
 RESIZE_MARGIN    = 6             ; px de marge bord pour hit-test resize
 RESIZE_MIN_W     = 60            ; largeur minimale fenêtre
 RESIZE_MIN_H     = 40            ; hauteur minimale fenêtre
@@ -4539,6 +4542,9 @@ kernel_wm_init:
         ; SP-3.i : init WM_RESIZE_ARMED / WM_RESIZE_EDGE à 0
         sta WM_RESIZE_ARMED
         sta WM_RESIZE_EDGE
+        ; SP-3.j : init WM_MODAL à $FF (aucune fenêtre modale)
+        lda #$FF
+        sta WM_MODAL
         ldx #$00
 wm_init_sr:
         sta WM_SAVED_RECTS,X
@@ -4751,6 +4757,13 @@ kernel_wm_close:
         beq wm_close_done
         dec a
         sta WM_COUNT
+        ; SP-3.j : si la fenêtre fermée était modale → clear WM_MODAL
+        lda DP_TMP
+        cmp WM_MODAL
+        bne wm_close_not_modal
+        lda #$FF
+        sta WM_MODAL
+wm_close_not_modal:
         ; Mise à jour focus : si la fenêtre fermée avait le focus →
         ; chercher le premier slot USED, sinon garder.
         lda DP_TMP
@@ -4775,6 +4788,24 @@ wm_close_next:
         iny
         bra wm_close_find_focus
 wm_close_done:
+        rts
+
+; ── kernel_wm_set_modal : A = slot → WM_MODAL = slot. SP-3.j ────────
+; Appeler après kernel_wm_add pour rendre la fenêtre modale.
+; Les clics hors de cette fenêtre seront ignorés par le WM.
+.export kernel_wm_set_modal
+kernel_wm_set_modal:
+        cmp #WM_MAX
+        bcs _sm_done             ; slot invalide → no-op
+        sta WM_MODAL
+_sm_done:
+        rts
+
+; ── kernel_wm_clear_modal : WM_MODAL = $FF (libère le modal). SP-3.j ──
+.export kernel_wm_clear_modal
+kernel_wm_clear_modal:
+        lda #$FF
+        sta WM_MODAL
         rts
 
 ; ── kernel_wm_maximize : bascule maximize/restore d'une fenêtre (SP-3.h) ──
@@ -5691,6 +5722,14 @@ wm_step_chrome_close:
         jsr kernel_wm_draw_cursor
         rts
 wm_step_normal_hit:
+        ; SP-3.j : si une fenêtre modale est active et que le clic n'est pas
+        ; sur cette fenêtre → ignorer (curseur léger uniquement).
+        lda WM_MODAL
+        cmp #$FF
+        beq wm_step_modal_ok     ; pas de modal → proceed
+        cmp WIN_SLOT             ; WM_MODAL == WIN_SLOT ?
+        bne wm_step_modal_block  ; non → bloquer
+wm_step_modal_ok:
         lda WIN_SLOT
         jsr kernel_wm_set_focus
         ; SP-3.i : teste d'abord si le clic est sur un bord resize.
@@ -5718,6 +5757,13 @@ wm_step_arm_drag:
         ; Focus changé → desktop modifié → full-redraw + curseur.
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
+        rts
+wm_step_modal_block:
+        ; SP-3.j : clic hors de la fenêtre modale → ignorer, curseur léger.
+        lda #$00
+        sta WM_DRAG_ARMED
+        sta WM_RESIZE_ARMED
+        jsr kernel_wm_cursor_blit
         rts
 
 ; ── _wm_invoke_active_cb : appelle le callback du bouton WIDGET_ACTIVE ──

@@ -189,6 +189,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       `_crh_test_max/_crh_test_min` (bug tracking mode ca65 → 8-bit tronqué
       corrompait ZP $22-$24). Tests : `test_wm_states_init`, `test_wm_maximize`,
       `test_wm_minimize_restore`. 554 tests verts.
+- [x] **SP-3.j — Dialog modal** : `WM_MODAL` (`$015AD5`) + `kernel_wm_set_modal` /
+      `kernel_wm_clear_modal`. Auto-clear dans `kernel_wm_close`. Blocage des clics
+      hors modal dans `wm_step_normal_hit`. 3 tests. 560 tests verts.
 - [x] **SP-3.i — Resize fenêtres** : `_wm_resize_hit` (bord droit/bas,
       `RESIZE_MARGIN=6 px`, désactivé si maximisée) + `_wm_do_resize` (DX→w,
       DY→h, clamp `RESIZE_MIN_W=60/RESIZE_MIN_H=40`, redraw incrémental).

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.j — Dialog modal (SP-3.j)
+
+#### Added
+- **`WM_MODAL`** (`$015AD5`, 1B) : slot de la fenêtre modale active (`$FF` = aucune).
+  Initialisé à `$FF` dans `kernel_wm_init`.
+- **`kernel_wm_set_modal(slot)`** : déclare une fenêtre comme modale. Bloque les
+  clics sur toutes les autres fenêtres tant qu'elle est active.
+- **`kernel_wm_clear_modal()`** : libère le modal.
+- **Auto-clear dans `kernel_wm_close`** : si la fenêtre fermée est la fenêtre modale,
+  `WM_MODAL` est automatiquement remis à `$FF`.
+- **Comportement dans `wm_step_normal_hit`** : si `WM_MODAL != $FF` et clic hors
+  du slot modal → `wm_step_modal_block` (désarme drag/resize, curseur léger, ignore).
+  Les boutons chrome (×/□/_) de n'importe quelle fenêtre restent actifs.
+- 3 tests : `test_wm_modal_init`, `test_wm_modal_block`, `test_wm_modal_close_clears`.
+  560 tests verts.
+
 ### Sprint 3.i — Resize des fenêtres par les bords (SP-3.i)
 
 #### Added
