@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-25
 
+### SP-3 bugfix — Fantômes widget/titre lors du resize + icônes drag
+
+#### Fixed
+- **Fantôme widget/titre au resize** : `_wm_do_resize` utilisait `kernel_wm_redraw_drag`
+  (redraw incrémental), qui n'effaçait pas les pixels TEXT16 de l'ancien titre/boutons
+  (TEXT16 = pixels lit uniquement, pas de fond). Corrigé : `_wm_do_resize` appelle
+  désormais `kernel_wm_redraw` (full redraw avec clear desktop).
+- **Corruption `WM_DP_TMP` dans `_wm_draw_widgets_for_slot`** : `kernel_wm_offset`
+  (appelé pour calculer le décalage en table) écrasait `WM_DP_TMP` (2×slot), corrompant
+  le test de parent au prochain tour de boucle pour les slots ≥ 1. Corrigé : le slot
+  cible est désormais sauvé dans `WIN_SLOT` (non touché par `kernel_wm_offset`) et
+  `WIN_SLOT` est utilisé pour le test et l'appel `kernel_wm_offset`.
+- **Icônes disparaissant lors du drag** : `kernel_wm_redraw_drag` (redraw incrémental)
+  n'appelait pas `kernel_icon_draw_all`. Corrigé : appel ajouté avant `_wm_draw_windows`.
+
 ### Sprint 3.k — Icônes desktop (SP-3.k)
 
 #### Added

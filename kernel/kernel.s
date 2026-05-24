@@ -3825,6 +3825,7 @@ _waw_full:
 ;    Modifie A, X, Y. Préserve rien (appelant sauve Y via phy/ply).
 _wm_draw_widgets_for_slot:
         sta WM_DP_TMP           ; WM_DP_TMP = slot cible (1B utilisé)
+        sta WIN_SLOT            ; WIN_SLOT = slot cible (stable, non clobbé par kernel_wm_offset)
         lda #$00
         sta WG_I
 _wdws_loop:
@@ -3844,7 +3845,7 @@ _wdws_go:
         jmp _wdws_next          ; slot libre
 _wdws_check_parent:
         lda WIDGET_TABLE+1,X    ; parent slot
-        cmp WM_DP_TMP           ; == slot cible ?
+        cmp WIN_SLOT            ; == slot cible ? (WIN_SLOT stable, WM_DP_TMP serait écrasé par kernel_wm_offset)
         beq _wdws_draw
         jmp _wdws_next
 _wdws_draw:
@@ -3870,7 +3871,7 @@ _wdws_draw:
         lda #$01
         sta DP_PCPTR+2
         ; coords absolues = win.xy + rel.xy
-        lda WM_DP_TMP
+        lda WIN_SLOT            ; WIN_SLOT stable (WM_DP_TMP écrasé par kernel_wm_offset)
         jsr kernel_wm_offset    ; X = slot*10
         rep #$20
         lda WM_TABLE+WM_OFF_X,X
@@ -5723,6 +5724,7 @@ kernel_wm_redraw_drag:
         lda #$01                 ; desktop bleu
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+        jsr kernel_icon_draw_all ; icônes redessinées lors du drag (sinon disparaissent)
         jmp _wm_draw_windows
 
 ; ── _wm_capture_focused_rect : copie le rect de la fenêtre focus dans
@@ -6471,7 +6473,7 @@ _dr_h_ok:
         sta WM_TABLE+WM_OFF_H,X
 _dr_skip_dy:
         sep #$20
-        jsr kernel_wm_redraw_drag
+        jsr kernel_wm_redraw    ; full redraw : efface titre/widgets fantômes lors du resize
         jsr kernel_wm_draw_cursor
 _dr_done:
         rts
