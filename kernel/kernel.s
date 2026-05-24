@@ -349,6 +349,7 @@ GPU_INT_CTRL_IO  = $00034F
 
 GPU_OP_CLEAR     = $01
 GPU_OP_FILL_RECT = $02
+GPU_OP_FILL_RECT16 = $06         ; coords 16-bit packed (ADR-21 v0.2)
 GPU_OP_BLIT      = $03
 GPU_OP_LINE      = $04
 GPU_OP_TEXT      = $05
@@ -1137,6 +1138,10 @@ kernel_entry:
         sep #$20
         lda MOUSE_BTN
         sta WM_TEST_RES+10
+
+        ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres de la table) via GPU
+        ; FILL_RECT16 à SDRAM $000000. Visible avec --xvga / --xvga-screenshot.
+        jsr kernel_wm_redraw
 
         jsr kernel_clear_screen
         jsr kernel_console_init
@@ -3425,6 +3430,145 @@ kernel_wm_move_focused:
 wm_mv_done:
         rts
 
+; ── kernel_gfx_fill_rect16 : FILL_RECT16 GPU (coords 16-bit, ADR-21 v0.2) ──
+; Args : WM_ARG_X/Y/W/H (16-bit), GFX_BASE (24-bit), GFX_COLOR. Packing 12-bit :
+; ARG2 = y<<12|x, ARG3 = h<<12|w. Modifie A. Préserve X, Y.
+.export kernel_gfx_fill_rect16
+kernel_gfx_fill_rect16:
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        ; ARG2 = pack(x, y)
+        lda WM_ARG_X            ; x_lo
+        sta GPU_ARG2_LO_IO
+        lda WM_ARG_X+1          ; x[11:8]
+        and #$0F
+        sta DP_TMP
+        lda WM_ARG_Y            ; y[3:0]<<4
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG2_MID_IO
+        lda WM_ARG_Y            ; y[7:4]
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_Y+1          ; y[11:8]<<4
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG2_HI_IO
+        ; ARG3 = pack(w, h)
+        lda WM_ARG_W            ; w_lo
+        sta GPU_ARG3_LO_IO
+        lda WM_ARG_W+1
+        and #$0F
+        sta DP_TMP
+        lda WM_ARG_H
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG3_MID_IO
+        lda WM_ARG_H
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_H+1
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG3_HI_IO
+        lda GFX_COLOR
+        sta GPU_ARG4_LO_IO
+        lda #GPU_OP_FILL_RECT16
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        rts
+
+; ── kernel_wm_redraw : efface le desktop + dessine toutes les fenêtres ──
+; (peinture back-to-front via FILL_RECT16, coords 16-bit). Framebuffer XVGA
+; à SDRAM $000000 (ADR-20). Modifie A, X, Y.
+.export kernel_wm_redraw
+kernel_wm_redraw:
+        ; Clear desktop (bleu 1) : gfx_clear(base=$100000, size=$060000, color=1).
+        ; Base $100000 (1 MiB) : hors des démos GPU legacy ($004000-$00C000).
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$00
+        sta GFX_ARG2_LO         ; size_lo
+        lda #$00
+        sta GFX_ARG2_MID
+        lda #$06
+        sta GFX_ARG2_HI         ; size = $060000 (393216)
+        lda #$01
+        sta GFX_COLOR           ; desktop bleu
+        jsr kernel_gfx_clear
+        ; Dessine chaque fenêtre visible.
+        ldy #$00
+wm_rd_loop:
+        tya
+        cmp WM_COUNT
+        bcs wm_rd_done
+        jsr kernel_wm_offset    ; X = id*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #(WM_F_USED | WM_F_VISIBLE)
+        cmp #(WM_F_USED | WM_F_VISIBLE)
+        bne wm_rd_next
+        phy                     ; sauve compteur id
+        ; Copie x/y/w/h (16-bit) de la fenêtre → WM_ARG_*.
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        sta WM_ARG_Y
+        lda WM_TABLE+WM_OFF_W,X
+        sta WM_ARG_W
+        lda WM_TABLE+WM_OFF_H,X
+        sta WM_ARG_H
+        sep #$20
+        ; base $100000 + corps lightgray (7).
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$07
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; Title bar : même x/y/w, h=12, couleur focus (12) ou normal (9).
+        rep #$20
+        lda #12
+        sta WM_ARG_H
+        sep #$20
+        ; Title bar lightblue (9). Couleur selon focus reportée v0.3.
+        lda #$09
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ply
+wm_rd_next:
+        iny
+        bra wm_rd_loop
+wm_rd_done:
+        rts
+
 ; ── kernel_wm_mouse_step : 1 itération event loop (clic → focus,
 ;    bouton tenu + mouvement → drag fenêtre focus). Lit MOUSE_*. ─────
 ; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
@@ -3449,6 +3593,7 @@ kernel_wm_mouse_step:
         cmp #$FF
         beq wm_step_done
         jsr kernel_wm_set_focus
+        jsr kernel_wm_redraw     ; focus changé → redessine
         rts
 wm_step_drag:
         ; Drag : déplace la fenêtre focus du delta souris (MOU2 DX/DY).
@@ -3461,6 +3606,7 @@ wm_step_drag:
         sta WM_ARG_DY
         stx WM_ARG_DY+1
         jsr kernel_wm_move_focused
+        jsr kernel_wm_redraw     ; fenêtre déplacée → redessine
 wm_step_done:
         rts
 

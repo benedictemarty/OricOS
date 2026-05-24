@@ -33,9 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`kernel_mouse_init`/`read`** activent l'IRQ MOU2 (`MOU2_CT_IRQ_EN`). Fin
   du polling v0.1 : la souris est event-driven.
 
+### SP-3.e v0.3 — Coords GPU 16-bit + redraw multi-fenêtre
+
+#### Added
+- **`kernel_gfx_fill_rect16`** : FILL_RECT16 GPU (opcode $06, ADR-21 v0.2) avec
+  packing 12-bit des coords 16-bit (fenêtres plein écran XVGA, hors limite 8-bit).
+- **`kernel_wm_redraw`** : efface le desktop (clear bleu) + dessine toutes les
+  fenêtres de la table (corps + titlebar) via FILL_RECT16, peinture back-to-front.
+  Framebuffer XVGA à SDRAM $100000. Appelé au boot + sur clic/drag (`wm_mouse_step`).
+- `GPU_OP_FILL_RECT16` = $06.
+
 #### Note
-- v0.3 reporté : **drag live + backing-store DMA** (VRAM cold) + redraw
-  multi-fenêtre (bloqué par l'affichage XVGA en SDL + coords GPU 16-bit).
+- Desktop XVGA visible : fenêtres aux positions 16-bit de la table (ex. (100,100),
+  (300,300)). v0.4 reporté : backing-store DMA (VRAM cold) + redraw incrémental
+  (dirty rects) au lieu du full-clear, couleur titlebar selon focus, drag interactif
+  continu (nécessite un main loop kernel persistant au lieu du STP démo).
 
 ### OS-perf — Copie charset via MVN (block move)
 
