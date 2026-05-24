@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### SP-3.e v0.8 — Couleur titlebar selon focus
+
+#### Added
+- **Couleur de titlebar selon le focus** dans `_wm_draw_windows` : la fenêtre
+  ayant le focus (`WM_FOCUS`) reçoit `WIN_TITLE_FOCUS` (lightblue 9), les autres
+  `WIN_TITLE_NORMAL` (darkgray 8). Couleur calculée par fenêtre (`WM_TITLE_COL`)
+  pendant la boucle de dessin.
+
+#### Note
+- **Aucun nouveau redraw** : le changement de focus déclenche déjà
+  `kernel_wm_redraw` (clic) et le drag `kernel_wm_redraw_drag`, tous deux via
+  `_wm_draw_windows` → les titlebars sont repeintes avec la bonne couleur au
+  redraw déjà en place. C'est pourquoi le **multi-dirty-rect est inutile** : un
+  changement de focus fait un full-redraw qui repeint correctement les 2 titlebars.
+
 ### SP-3.e v0.7 — Drag incrémental (dirty rect, plus de full-clear)
 
 #### Added

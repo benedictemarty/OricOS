@@ -163,7 +163,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       **backing-store curseur** (`kernel_wm_cursor_blit` : motion = sauve/restaure
       8×8 via VRAM I/O, plus de full-redraw par mouvement). v0.7 : **drag
       incrémental** (`kernel_wm_redraw_drag` : efface l'ancien rect au lieu du
-      clear plein écran). v0.8 : couleur titlebar selon focus + multi-dirty-rect.
+      clear plein écran). v0.8 : **couleur titlebar selon focus**
+      (`WM_TITLE_COL`, focus=lightblue/non-focus=darkgray ; multi-dirty-rect
+      jugé inutile — le focus-change fait déjà un full-redraw correct).
 - [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)

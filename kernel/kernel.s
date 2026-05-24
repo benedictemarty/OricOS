@@ -411,6 +411,9 @@ WM_DRAG_OLD_X    = $01597D       ; 2B : rect fenêtre AVANT déplacement (dirty 
 WM_DRAG_OLD_Y    = $01597F       ; 2B
 WM_DRAG_OLD_W    = $015981       ; 2B
 WM_DRAG_OLD_H    = $015983       ; 2B
+WM_TITLE_COL     = $015985       ; 1B : couleur titlebar courante (focus/non-focus)
+WIN_TITLE_FOCUS  = $09           ; titlebar fenêtre focus : lightblue vif
+WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
 ; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
@@ -3565,6 +3568,17 @@ wm_rd_loop:
         cmp #(WM_F_USED | WM_F_VISIBLE)
         bne wm_rd_next
         phy                     ; sauve compteur id
+        ; v0.8 : couleur titlebar selon focus (Y = id, encore valide ici car
+        ; kernel_gfx_fill_rect16 clobbera Y plus bas).
+        tya
+        cmp WM_FOCUS
+        bne wm_rd_unfocus
+        lda #WIN_TITLE_FOCUS
+        bra wm_rd_setcol
+wm_rd_unfocus:
+        lda #WIN_TITLE_NORMAL
+wm_rd_setcol:
+        sta WM_TITLE_COL
         ; Copie x/y/w/h (16-bit) de la fenêtre → WM_ARG_*.
         rep #$20
         lda WM_TABLE+WM_OFF_X,X
@@ -3585,13 +3599,12 @@ wm_rd_loop:
         lda #$07
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
-        ; Title bar : même x/y/w, h=12, couleur focus (12) ou normal (9).
+        ; Title bar : même x/y/w, h=12, couleur selon focus (v0.8).
         rep #$20
         lda #12
         sta WM_ARG_H
         sep #$20
-        ; Title bar lightblue (9). Couleur selon focus reportée v0.3.
-        lda #$09
+        lda WM_TITLE_COL        ; lightblue (focus) ou darkgray (non focus)
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
         ply
