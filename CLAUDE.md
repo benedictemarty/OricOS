@@ -158,7 +158,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] Event loop : `kernel_wm_mouse_step` IRQ-driven (clic→focus, drag→move
       + redraw). v0.3 : coords GPU 16-bit (FILL_RECT16) + `kernel_wm_redraw`
       (desktop XVGA visible). v0.4 : **main loop persistant** (`NO_STP_FLAG`) +
-      delta par événement → **drag fenêtre live**. v0.5 : backing-store DMA.
+      delta par événement → **drag fenêtre live**. v0.5 : **curseur dessiné**
+      (`kernel_wm_draw_cursor`) + relative-mode SDL (LCtrl+RShift). v0.6 :
+      backing-store DMA + redraw incrémental.
 - [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)

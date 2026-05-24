@@ -59,8 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Note
 - Le drag live est fonctionnel : souris IRQ → `wm_mouse_step` (clic→focus,
   drag→move + `wm_redraw`) → fenêtre déplacée visible (`--kernel --xvga`).
-- v0.5 reporté : backing-store DMA + redraw incrémental (dirty rects) au lieu
-  du full-clear à chaque événement ; couleur titlebar selon focus.
+
+### SP-3.e v0.5 — Curseur dessiné par l'OS
+
+#### Added
+- **`kernel_wm_draw_cursor`** : dessine un curseur 6×8 blanc à (`MOUSE_X`,`MOUSE_Y`)
+  via FILL_RECT16, par-dessus le desktop. Curseur initial dessiné au boot.
+- **`kernel_wm_mouse_step`** redessine desktop + curseur sur **tout** événement
+  souris (y compris simple mouvement) → le curseur suit la souris.
+
+#### Note
+- Côté Phosphoric : relative-mode SDL (pointeur capturé/confiné, curseur OS hôte
+  masqué) en mode `--xvga` ; bascule capture via **LCtrl+RShift**.
+- v0.6 reporté : backing-store DMA + redraw incrémental (dirty rects) au lieu du
+  full-clear par événement (le curseur force un redraw complet à chaque mouvement).
 
 ### OS-perf — Copie charset via MVN (block move)
 

@@ -1143,8 +1143,9 @@ kernel_entry:
         sta WM_TEST_RES+10
 
         ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres de la table) via GPU
-        ; FILL_RECT16 à SDRAM $000000. Visible avec --xvga / --xvga-screenshot.
+        ; FILL_RECT16 à SDRAM $100000. Visible avec --xvga / --xvga-screenshot.
         jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor       ; v0.5 : curseur initial
 
         jsr kernel_clear_screen
         jsr kernel_console_init
@@ -3582,10 +3583,10 @@ wm_rd_done:
 ; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
 .export kernel_wm_mouse_step
 kernel_wm_mouse_step:
-        ; Edge-detect : bouton gauche vient d'être pressé ?
+        ; Bouton gauche pressé ?
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
-        beq wm_step_done         ; bouton relâché → rien (v0.1 : pas de release)
+        beq wm_step_render       ; pas de bouton (motion) → redessine + curseur
         ; bouton gauche tenu. Était-il déjà tenu (drag) ou nouveau clic ?
         lda MOUSE_PREV_BTN
         and #MOU2_BTN_LEFT
@@ -3599,10 +3600,9 @@ kernel_wm_mouse_step:
         sep #$20
         jsr kernel_wm_hit_test   ; A = id ou $FF
         cmp #$FF
-        beq wm_step_done
+        beq wm_step_render
         jsr kernel_wm_set_focus
-        jsr kernel_wm_redraw     ; focus changé → redessine
-        rts
+        bra wm_step_render
 wm_step_drag:
         ; Drag : déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY,
         ; lu par kernel_mouse_read → delta propre par IRQ, pas d'accumulation).
@@ -3615,8 +3615,34 @@ wm_step_drag:
         sta WM_ARG_DY
         stx WM_ARG_DY+1
         jsr kernel_wm_move_focused
-        jsr kernel_wm_redraw     ; fenêtre déplacée → redessine
-wm_step_done:
+wm_step_render:
+        ; Tout événement souris : redessine le desktop + le curseur par-dessus.
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
+
+; ── kernel_wm_draw_cursor : dessine le curseur (6×8 blanc) à (MOUSE_X,Y) ──
+; Par-dessus le desktop (appeler après kernel_wm_redraw). Modifie A.
+.export kernel_wm_draw_cursor
+kernel_wm_draw_cursor:
+        rep #$20
+        lda MOUSE_X
+        sta WM_ARG_X
+        lda MOUSE_Y
+        sta WM_ARG_Y
+        lda #6
+        sta WM_ARG_W
+        lda #8
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$0F                 ; blanc
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
         rts
 
 ; helper : A = octet signé → A=low, X=high (sign-extension). Modifie A,X.
