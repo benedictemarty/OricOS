@@ -466,6 +466,25 @@ WG_RELX          = $015A94       ; 2B
 WG_RELY          = $015A96       ; 2B
 WG_RELW          = $015A98       ; 2B
 WG_RELH          = $015A9A       ; 2B
+
+; ─── SP-3.g : taskbar (band y=755..767 du desktop XVGA) ─────────────
+; Fond + séparateur dessinés par kernel_taskbar_draw, clic par kernel_taskbar_hit.
+TB_I             = $015A9C       ; 1B : index boucle taskbar
+TB_BTN_X         = $015A9E       ; 2B : btn_x courant (4 + i*124)
+TB_WIN_SCRATCH   = $015AA0       ; 5B : "WinN\0" en bank 1 RAM (source pour upload)
+TB_WIN_SDRAM     = $011100       ; adresse SDRAM du scratch "WinN\0" (5 bytes)
+
+; Taskbar layout (ADR-20 XVGA 1024×768)
+TB_Y_SEP         = 755           ; y du séparateur blanc (1 px)
+TB_Y_FILL        = 755           ; y du fond (inclut séparateur)
+TB_H             = 13            ; h fond (y=755..767)
+TB_BTN_Y         = 757           ; y du bouton
+TB_BTN_H         = 10            ; h du bouton
+TB_BTN_TY        = 758           ; y du texte bouton
+TB_BTN_W         = 120           ; largeur bouton
+TB_BTN_SP        = 4             ; spacing gauche initial
+TB_BTN_STRIDE    = 124           ; 120 + 4px entre boutons
+
 WIN_TITLE_FOCUS  = $09           ; titlebar fenêtre focus : lightblue vif
 WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
@@ -3810,7 +3829,7 @@ _mdl_drop:
         lda MENU_OPEN
         cmp #$FF
         bne _mdl_open
-        rts
+        jmp kernel_taskbar_draw  ; SP-3.g : taskbar en dernier
 _mdl_open:
         sta MENU_I
         jsr _menu_setbase
@@ -3901,7 +3920,7 @@ _mdl_open:
         lda #$01
         sta DP_PCPTR+2
         jsr kernel_tk_label
-        rts
+        jmp kernel_taskbar_draw  ; SP-3.g : taskbar en dernier (après dropdown)
 
 ; ── kernel_menu_handle_click : ouvre/ferme + invoque l'item. ──────────
 ; Lit MOUSE_X/Y. A=1 si consommé, A=0 sinon. (SP-3.d v0.6, table-driven)
@@ -4873,6 +4892,252 @@ _wm_capture_focused_rect:
 _wcr_done:
         rts
 
+; ════════════════��═══════════════════════════════════════════════════
+;  SP-3.g — Taskbar : bande bas desktop (y=755..767), boutons par fenêtre.
+; ═════════════════════��═══════════════════════════════════��══════════
+
+; ── kernel_taskbar_draw : dessine la taskbar complète. ────────────────
+; Appelé en fin de kernel_menu_draw (dernière étape du rendu GUI).
+; Base SDRAM $100000 (framebuffer XVGA ADR-20). Modifie A, X, Y.
+.export kernel_taskbar_draw
+kernel_taskbar_draw:
+        ; ── Fond taskbar (0, 755, 1024, 13) darkgray ($08) ────────────
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda #0
+        sta WM_ARG_X
+        lda #TB_Y_FILL
+        sta WM_ARG_Y
+        lda #1024
+        sta WM_ARG_W
+        lda #TB_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$08                 ; darkgray
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; ── Séparateur haut (0, 755, 1024, 1) blanc ($0F) ─────────────
+        rep #$20
+        lda #0
+        sta WM_ARG_X
+        lda #TB_Y_SEP
+        sta WM_ARG_Y
+        lda #1024
+        sta WM_ARG_W
+        lda #1
+        sta WM_ARG_H
+        sep #$20
+        lda #$0F                 ; white
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; ── Boucle slots fenêtres ──────────────────────────────────────
+        ; Initialise TB_BTN_X = TB_BTN_SP (4).
+        rep #$20
+        lda #TB_BTN_SP
+        sta TB_BTN_X
+        sep #$20
+        lda #$00
+        sta TB_I
+_tb_draw_loop:
+        lda TB_I
+        cmp WM_COUNT
+        bcc _tb_draw_check       ; i < count → vérifie le slot
+        jmp _tb_draw_done
+_tb_draw_check:
+        ; Offset table = TB_I * WM_ENTSZ
+        jsr kernel_wm_offset     ; A = TB_I → X = TB_I*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        bne _tb_draw_slot_used   ; slot occupé → dessine bouton
+        jmp _tb_draw_advance     ; slot libre → avance btn_x
+_tb_draw_slot_used:
+        ; Couleur bouton : lightblue ($09) si focus, darkgray ($08) sinon.
+        lda TB_I
+        cmp WM_FOCUS
+        bne _tb_unfocus
+        lda #$09                 ; lightblue (focus)
+        bra _tb_setcol
+_tb_unfocus:
+        lda #$08                 ; darkgray (non-focus)
+_tb_setcol:
+        sta GFX_COLOR
+        ; FILL_RECT16 bouton (TB_BTN_X, TB_BTN_Y, TB_BTN_W, TB_BTN_H).
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda TB_BTN_X
+        sta WM_ARG_X
+        lda #TB_BTN_Y
+        sta WM_ARG_Y
+        lda #TB_BTN_W
+        sta WM_ARG_W
+        lda #TB_BTN_H
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_gfx_fill_rect16
+        ; ── Texte titre ────────────────────────────────────────────────
+        ; Vérifie WM_TITLES[TB_I] : $01 → titre SDRAM $012000+slot*$100.
+        ; $00 → génère "WinN\0" en bank 1 TB_WIN_SCRATCH, upload SDRAM.
+        lda TB_I
+        tax
+        lda WM_TITLES,X
+        beq _tb_no_title
+        ; Titre présent.
+        lda TB_I
+        clc
+        adc #WM_SDRAM_TITLE_BASE_MID  ; $20 + slot
+        sta GFX_STR_MID
+        lda #$00
+        sta GFX_STR_LO
+        lda #$01
+        sta GFX_STR_HI           ; STR addr = $01_(20+slot)_00
+        bra _tb_do_text
+_tb_no_title:
+        ; Génère "WinN\0" (5 bytes) dans TB_WIN_SCRATCH (bank 1 RAM).
+        lda #'W'
+        sta TB_WIN_SCRATCH+0
+        lda #'i'
+        sta TB_WIN_SCRATCH+1
+        lda #'n'
+        sta TB_WIN_SCRATCH+2
+        lda TB_I
+        clc
+        adc #'0'
+        sta TB_WIN_SCRATCH+3     ; '0'+slot
+        lda #$00
+        sta TB_WIN_SCRATCH+4
+        ; Upload vers SDRAM TB_WIN_SDRAM ($011100).
+        lda #<TB_WIN_SCRATCH
+        sta DP_PCPTR
+        lda #>TB_WIN_SCRATCH
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #<TB_WIN_SDRAM
+        sta VRAM_OP_ADDR_LO
+        lda #>TB_WIN_SDRAM
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI
+        lda #$05
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+        lda #<TB_WIN_SDRAM
+        sta GFX_STR_LO
+        lda #>TB_WIN_SDRAM
+        sta GFX_STR_MID
+        lda #$00
+        sta GFX_STR_HI
+_tb_do_text:
+        ; TEXT16 à (TB_BTN_X+4, TB_BTN_TY), blanc, fonte TK_FONT_ADDR.
+        rep #$20
+        lda TB_BTN_X
+        clc
+        adc #4
+        sta WM_ARG_X
+        lda #TB_BTN_TY
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI
+        lda #$0F                 ; blanc
+        sta GFX_COLOR
+        jsr kernel_gfx_text16
+_tb_draw_advance:
+        ; Avance TB_BTN_X += TB_BTN_STRIDE (124).
+        rep #$20
+        lda TB_BTN_X
+        clc
+        adc #TB_BTN_STRIDE
+        sta TB_BTN_X
+        sep #$20
+        lda TB_I
+        inc a
+        sta TB_I
+        jmp _tb_draw_loop
+_tb_draw_done:
+        rts
+
+; ── kernel_taskbar_hit : teste clic dans la taskbar. ─────────────────
+; Pré-cond : MOUSE_X/Y/BTN à jour (kernel_mouse_read appelé avant).
+; Si MOUSE_Y >= TB_Y_SEP et MOUSE_BTN & LEFT : calcule slot = (X-4)/124.
+; Si slot valide et WM_F_USED → kernel_wm_set_focus(slot) + redraw.
+; Retour : A=1 si consommé (taskbar hit), A=0 sinon. Modifie A, X, Y.
+.export kernel_taskbar_hit
+kernel_taskbar_hit:
+        ; Test MOUSE_BTN & LEFT.
+        lda MOUSE_BTN
+        and #MOU2_BTN_LEFT
+        beq _tbh_miss
+        ; Test MOUSE_Y >= TB_Y_SEP (755). Comparaison 16-bit.
+        rep #$20
+        lda MOUSE_Y
+        cmp #TB_Y_SEP
+        sep #$20
+        bcc _tbh_miss            ; y < 755 → pas la taskbar
+        ; Calcule slot = (MOUSE_X - TB_BTN_SP) / TB_BTN_STRIDE.
+        ; Division par soustraction répétée (max 4 itérations pour WM_MAX=4).
+        rep #$20
+        lda MOUSE_X
+        sec
+        sbc #TB_BTN_SP           ; offset_x = MOUSE_X - 4
+        bcc _tbh_miss16          ; MOUSE_X < 4 → hors zone
+        ldx #$00                 ; slot = 0
+_tbh_div_loop:
+        ; X = slot count (8-bit dans X.lo, X mode 8-bit ici via sep plus tard)
+        ; cmp X to WM_MAX : we need 8-bit, but X is 8-bit in WM_MAX context.
+        ; Stay 16-bit for the loop; X is used as counter.
+        cpx #WM_MAX              ; slot >= 4 → hors zone (8-bit compare ok)
+        bcs _tbh_miss16
+        cmp #TB_BTN_STRIDE       ; offset_x < 124 ?
+        bcc _tbh_got_slot        ; oui → slot = X
+        sec
+        sbc #TB_BTN_STRIDE
+        inx
+        bra _tbh_div_loop
+_tbh_got_slot:
+        ; X = slot (8-bit value, 16-bit mode active).
+        sep #$20
+        txa                      ; A = slot
+        ; Vérifie slot < WM_COUNT et WM_F_USED.
+        cmp WM_COUNT
+        bcs _tbh_miss            ; slot >= WM_COUNT → hors zone
+        sta TB_I                 ; sauve slot pour après kernel_wm_offset
+        jsr kernel_wm_offset     ; A = slot → X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq _tbh_miss            ; slot libre → ignore
+        ; Focus + redraw + taskbar.
+        lda TB_I                 ; slot
+        jsr kernel_wm_set_focus
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        lda #$01                 ; consommé
+        rts
+_tbh_miss16:
+        sep #$20
+_tbh_miss:
+        lda #$00
+        rts
+
 ; ── kernel_wm_mouse_step : 1 itération event loop (clic → focus,
 ;    bouton tenu + mouvement → drag fenêtre focus). Lit MOUSE_*. ─────
 ; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
@@ -4895,6 +5160,13 @@ wm_step_pressed:
         beq wm_step_not_drag     ; pas déjà tenu → nouveau clic
         jmp wm_step_drag         ; déjà tenu → drag (si armé)
 wm_step_not_drag:
+        ; SP-3.g : la taskbar intercepte le nouveau clic en priorité absolue.
+        jsr kernel_taskbar_hit
+        cmp #$00
+        beq wm_step_no_taskbar   ; non consommé → traitement menu/fenêtre
+        ; consommé par la taskbar → déjà redraw+curseur dans kernel_taskbar_hit
+        rts
+wm_step_no_taskbar:
         ; v0.5 : le menu intercepte le nouveau clic en priorité.
         jsr kernel_menu_handle_click
         cmp #$00

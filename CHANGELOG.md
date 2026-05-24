@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.g — Taskbar fixe bas desktop XVGA
+
+#### Added
+- **`kernel_taskbar_draw`** : dessine la taskbar (fond darkgray `(0,755,1024,13)`,
+  séparateur blanc `y=755`, boutons par fenêtre `WM_F_USED`). `btn_x = 4 + i×124`,
+  `w=120`, `h=10`, `y=757`. Couleur bouton : lightblue ($09) si focus, darkgray ($08)
+  sinon. Texte titre lu depuis SDRAM `$012000+slot×$100` si `WM_TITLES[slot]=$01`,
+  sinon fallback `"WinN\0"` (généré en bank 1 `TB_WIN_SCRATCH=$015AA0`, uploadé en
+  SDRAM `TB_WIN_SDRAM=$011100`). `TB_BTN_X` avance de `TB_BTN_STRIDE=124` par slot.
+- **`kernel_taskbar_hit`** : reçoit `MOUSE_BTN & LEFT` + `MOUSE_Y ≥ 755`. Calcule
+  `slot = (MOUSE_X - 4) / 124` par soustraction répétée (≤ 4 itérations).
+  Vérifie `slot < WM_COUNT` et `WM_F_USED`. Appelle `kernel_wm_set_focus(slot)`
+  + `kernel_wm_redraw` + `kernel_wm_draw_cursor`. Retourne A=1 si consommé.
+- **Intégration render** : `kernel_menu_draw` se termine par `jmp kernel_taskbar_draw`
+  (deux points de sortie remplacés : menu fermé + après dropdown). Taskbar toujours
+  au-dessus du dropdown dans l'ordre de rendu.
+- **Intégration event loop** : `wm_step_not_drag` appelle `kernel_taskbar_hit` en
+  priorité absolue avant le menu. Si consommé, retour immédiat.
+- **Constantes SP-3.g** : `TB_I=$015A9C`, `TB_BTN_X=$015A9E`, `TB_WIN_SCRATCH=$015AA0`,
+  `TB_WIN_SDRAM=$011100`, `TB_Y_SEP=755`, `TB_H=13`, `TB_BTN_Y=757`, `TB_BTN_H=10`,
+  `TB_BTN_W=120`, `TB_BTN_SP=4`, `TB_BTN_STRIDE=124`.
+
+---
+
 ### Sprint 3.f — Chrome de fenêtre : titre + bouton fermer
 
 #### Added
