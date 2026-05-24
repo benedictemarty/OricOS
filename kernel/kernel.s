@@ -434,6 +434,9 @@ TK_COL_BTN_PRESS = $08           ; bouton pressé : face darkgray
 WG_CB            = $015A83       ; 2B : input add_widget (offset callback bank1, 0=aucun)
 WG_CB_VEC        = $015A85       ; 2B : vecteur pour jsr (abs,X) indirect
 CB_FLAG          = $015A87       ; 1B : compteur démo (clics sur "OK")
+; ── SP-3.d v0.5 : barre de menu déroulant (1 menu "System") ───────────
+MENU_OPEN        = $015A88       ; 1B : 0=fermé, 1=déroulé
+MENU_BAR_H       = 14            ; hauteur barre de menu (px)
 WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
@@ -3593,7 +3596,7 @@ _wdw_loop:
         lda WG_I
         cmp WIDGET_COUNT
         bcc _wdw_go
-        rts                      ; plus de widget → fin
+        jmp kernel_menu_draw     ; plus de widget → barre de menu par-dessus
 _wdw_go:
         asl a
         asl a
@@ -3674,7 +3677,194 @@ _wdw_next:
         sta WG_I
         jmp _wdw_loop
 _wdw_done:
+        jmp kernel_menu_draw     ; v0.5 : barre de menu par-dessus tout
+
+; ── kernel_menu_draw : barre de menu (haut) + dropdown si ouvert ───────
+; Dessinée en dernier (par-dessus fenêtres + widgets). Modifie A,X,Y.
+.export kernel_menu_draw
+kernel_menu_draw:
+        ; barre (0,0,1024,14) darkgray
+        rep #$20
+        lda #0
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        lda #1024
+        sta WM_ARG_W
+        lda #MENU_BAR_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$08                 ; darkgray
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; titre "System" (4,3) blanc
+        rep #$20
+        lda #4
+        sta WM_ARG_X
+        lda #3
+        sta WM_ARG_Y
+        sep #$20
+        lda #$0F
+        sta GFX_COLOR
+        lda #<menu_t_system
+        sta DP_PCPTR
+        lda #>menu_t_system
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        ; dropdown si ouvert
+        lda MENU_OPEN
+        bne _mdraw_open
         rts
+_mdraw_open:
+        ; fond (4,14,64,24) lightgray + cadre blanc
+        rep #$20
+        lda #4
+        sta WM_ARG_X
+        lda #MENU_BAR_H
+        sta WM_ARG_Y
+        lda #64
+        sta WM_ARG_W
+        lda #24
+        sta WM_ARG_H
+        sep #$20
+        lda #$07
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        rep #$20
+        lda #4
+        sta WM_ARG_X
+        lda #MENU_BAR_H
+        sta WM_ARG_Y
+        lda #64
+        sta WM_ARG_W
+        lda #24
+        sta WM_ARG_H
+        sep #$20
+        lda #$0F
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; item "About" (8,16) noir
+        rep #$20
+        lda #8
+        sta WM_ARG_X
+        lda #16
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        lda #<menu_i_about
+        sta DP_PCPTR
+        lda #>menu_i_about
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        ; item "Clear" (8,26) noir
+        rep #$20
+        lda #8
+        sta WM_ARG_X
+        lda #26
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        lda #<menu_i_clear
+        sta DP_PCPTR
+        lda #>menu_i_clear
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        rts
+
+; ── kernel_menu_handle_click : traite un clic vis-à-vis du menu. ───────
+; Lit MOUSE_X/Y. Retour : A=1 si le clic est consommé par le menu, A=0 sinon.
+; Ouvre/ferme le menu, invoque le callback de l'item cliqué. (SP-3.d v0.5)
+.export kernel_menu_handle_click
+kernel_menu_handle_click:
+        lda MENU_OPEN
+        bne _mhc_isopen
+        ; fermé : clic dans la barre (y < 14) ?
+        rep #$20
+        lda MOUSE_Y
+        cmp #MENU_BAR_H
+        sep #$20
+        bcc _mhc_inbar
+        lda #$00                 ; hors barre → non consommé
+        rts
+_mhc_inbar:
+        ; titre "System" (x 4..60) ? → ouvrir
+        rep #$20
+        lda MOUSE_X
+        cmp #4
+        bcc _mhc_bar_only
+        cmp #60
+        bcs _mhc_bar_only
+        sep #$20
+        lda #$01
+        sta MENU_OPEN
+        lda #$01
+        rts
+_mhc_bar_only:
+        sep #$20
+        lda #$01                 ; clic barre vide → consommé
+        rts
+_mhc_isopen:
+        ; ouvert : clic dans le dropdown (x 4..68, y 14..38) ?
+        rep #$20
+        lda MOUSE_X
+        cmp #4
+        bcc _mhc_close
+        cmp #68
+        bcs _mhc_close
+        lda MOUSE_Y
+        cmp #MENU_BAR_H
+        bcc _mhc_close
+        cmp #38
+        bcs _mhc_close
+        ; item 0 (y 14..25) ou item 1 (y 26..37) ?
+        lda MOUSE_Y
+        cmp #26
+        sep #$20
+        bcs _mhc_item1
+        jsr menu_about_cb
+        bra _mhc_done
+_mhc_item1:
+        jsr menu_clear_cb
+_mhc_done:
+        lda #$00
+        sta MENU_OPEN
+        lda #$01
+        rts
+_mhc_close:
+        sep #$20
+        lda #$00
+        sta MENU_OPEN
+        lda #$01                 ; ferme + consomme
+        rts
+
+; callbacks démo du menu
+menu_about_cb:
+        lda #$AA
+        sta CB_FLAG
+        rts
+menu_clear_cb:
+        lda #$00
+        sta CB_FLAG
+        rts
+
+menu_t_system:
+        .byte "System", $00
+menu_i_about:
+        .byte "About", $00
+menu_i_clear:
+        .byte "Clear", $00
 
 ; ── _wm_widget_hit : cherche un widget BOUTON sous (MOUSE_X,MOUSE_Y) ───
 ; Position absolue = fenêtre parente + offset relatif. Écrit WIDGET_ACTIVE
@@ -3942,6 +4132,8 @@ kernel_wm_init:
         lda #$FF
         sta WM_FOCUS
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
+        lda #$00
+        sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé
         ldx #$00
 wm_init_lp:
         lda #$00
@@ -4295,6 +4487,15 @@ wm_step_pressed:
         lda MOUSE_PREV_BTN
         and #MOU2_BTN_LEFT
         bne wm_step_drag         ; déjà tenu → drag (si armé)
+        ; v0.5 : le menu intercepte le nouveau clic en priorité.
+        jsr kernel_menu_handle_click
+        cmp #$00
+        beq wm_step_newclick     ; non consommé → traitement fenêtre
+        ; consommé par le menu → redessine + curseur
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_newclick:
         ; Nouveau clic → focus la fenêtre sous le curseur.
         rep #$20
         lda MOUSE_X

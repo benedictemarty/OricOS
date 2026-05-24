@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.5 — Barre de menu déroulant
+
+#### Added
+- **`kernel_menu_draw`** : barre de menu en haut (darkgray, full width) + titre
+  "System" ; si ouvert, dropdown (fond lightgray + cadre + items "About"/"Clear").
+  Dessinée en dernier dans le redraw (par-dessus fenêtres + widgets).
+- **`kernel_menu_handle_click`** : ouvre/ferme le menu, hit-test des items →
+  invoque leur callback. Retourne « consommé » pour intercepter le clic avant
+  le window manager.
+- `kernel_wm_mouse_step` : le menu intercepte le nouveau clic en priorité.
+  Callbacks démo `menu_about_cb`/`menu_clear_cb`. `MENU_OPEN` reset par wm_init.
+
+
 ### Sprint 3.d v0.4 — Callbacks de bouton (action au clic)
 
 #### Added
