@@ -5185,7 +5185,7 @@ _ih_none:
 ; ── kernel_wm_maximize : bascule maximize/restore d'une fenêtre (SP-3.h) ──
 ; A = id de la fenêtre. Si normale → maximise. Si maximisée → restore.
 ; WM_SAVED_RECTS[slot×8] = {x(2),y(2),w(2),h(2)} sauvegardé avant maximize.
-; Dimensions desktop XVGA : x=0, y=MENU_BAR_H=14, w=1024, h=TB_Y_SEP-MENU_BAR_H=741.
+; Dimensions maximize : x=0, y=MENU_BAR_H=14, w=1004, h=741 (20px marge bord droit).
 ; Stratégie adressage WM_SAVED_RECTS : STA/LDA f:WM_SAVED_RECTS,X avec X=slot*8
 ; (opcode $9F/$BF = long,X — seul mode indexé long valide en 65C816).
 ; WM_CRH_TMP ($25-$26) : sauvegarde temporaire de l'offset WM_TABLE (slot*10).
@@ -5236,13 +5236,14 @@ kernel_wm_maximize:
         ; Restaure X = slot*10 pour écrire les nouvelles coords dans WM_TABLE
         ldx WM_CRH_TMP           ; slot*10 depuis ZP
         rep #$20
-        ; Écrit les nouvelles coords : x=0, y=14, w=1024, h=741
+        ; Coords maximize : x=0, y=14, w=1004, h=741
+        ; 20px réservés à droite (future taskbar verticale + marge boutons chrome)
         lda #$0000
         sta WM_TABLE+WM_OFF_X,X  ; x = 0
         lda #14
         sta WM_TABLE+WM_OFF_Y,X  ; y = 14
-        lda #1024
-        sta WM_TABLE+WM_OFF_W,X  ; w = 1024
+        lda #1004
+        sta WM_TABLE+WM_OFF_W,X  ; w = 1004 (marge 20px bord droit)
         lda #741
         sta WM_TABLE+WM_OFF_H,X  ; h = 741
         sep #$20
