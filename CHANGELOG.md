@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Licence — EUPL-1.2 (2026-05-24)
 
 - OricOS passe sous **EUPL-1.2** © 2026 Bénédicte Marty (cohérent workspace +
-  Phosphoric). Fichier `LICENSE` ajouté, README mis à jour.
+  Phosphoric). Fichier `LICENSE` ajouté, README mis à jour. En-têtes
+  **SPDX-License-Identifier: EUPL-1.2** ajoutés au kernel + apps.
 
 
 ### SP-3.e v0.6 — Backing-store curseur (pas de full-redraw par motion)

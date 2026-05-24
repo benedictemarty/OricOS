@@ -1,3 +1,6 @@
+; SPDX-License-Identifier: EUPL-1.2
+; Copyright (c) 2026 Bénédicte Marty
+
 ; ============================================================
 ; OricOS — Kernel core (Sprint 1.b — scheduler préemptif 2 tâches)
 ; ============================================================
