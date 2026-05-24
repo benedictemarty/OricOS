@@ -23,10 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Self-test boot : 2 fenêtres, hit-test, focus, move, lecture souris →
   sentinelle `WM_TEST_RES` (`$015940`).
 
+### SP-3.e v0.2 — Event loop IRQ-driven (ADR-24)
+
+#### Changed
+- **`kernel_irq_handler`** : traite l'**event souris MOU2** en tête (lit
+  `MOU2_STATUS` ; si event → `kernel_mouse_read` + `kernel_wm_mouse_step`),
+  puis **gate le scheduler sur T1 réellement présent** (`VIA_IFR` bit6) —
+  une IRQ souris/clavier seule ne compte plus un faux tick.
+- **`kernel_mouse_init`/`read`** activent l'IRQ MOU2 (`MOU2_CT_IRQ_EN`). Fin
+  du polling v0.1 : la souris est event-driven.
+
 #### Note
-- v0.2 reporté : event loop IRQ-driven, **drag live + backing-store DMA**
-  (VRAM cold) + redraw multi-fenêtre. v0.1 pose la table + la logique WM + le
-  driver souris polled, validés par tests déterministes.
+- v0.3 reporté : **drag live + backing-store DMA** (VRAM cold) + redraw
+  multi-fenêtre (bloqué par l'affichage XVGA en SDL + coords GPU 16-bit).
 
 ### OS-perf — Copie charset via MVN (block move)
 

@@ -155,8 +155,9 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] Compositor logique au-dessus du HW (B4 + GPU blitter ADR-21).
 - [~] Window manager basique : `kernel_window_draw` (SP-3.c) + **window table
       N fenêtres / focus / hit-test / move** (SP-3.e v0.1, ADR-24 souris).
-- [~] Event loop : `kernel_wm_mouse_step` (clic→focus, drag) v0.1 polled ;
-      IRQ-driven + backing-store DMA reportés v0.2.
+- [~] Event loop : `kernel_wm_mouse_step` (clic→focus, drag) **IRQ-driven**
+      (v0.2 : IRQ MOU2 dans le handler, scheduler gaté sur T1). Backing-store
+      DMA + drag live visible reportés v0.3 (bloqué affichage XVGA SDL).
 - [ ] Toolkit minimal (frame, label, button) — SP-3.d.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)

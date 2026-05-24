@@ -3243,16 +3243,15 @@ kernel_window_draw:
 ; ════════════════════════════════════════════════════════════════════
 ; Pré-cond toutes routines : mode N M=X=1, DBR=0.
 
-; ── kernel_mouse_init : reset état souris ──────────────────────────
-; v0.1 : driver POLLED (lecture explicite via kernel_mouse_read), pas
-; d'IRQ MOU2 (le dispatch IRQ ne gère pas encore MOU2 → l'activer
-; bouclerait après CLI). IRQ-driven reporté v0.2.
+; ── kernel_mouse_init : reset état + active l'IRQ MOU2 ─────────────
+; SP-3.e v0.2 : event-driven. Le handler IRQ (kernel_irq_handler) traite
+; l'event MOU2 (lit + clear) → kernel_wm_mouse_step. clear+IRQ enable.
 .export kernel_mouse_init
 kernel_mouse_init:
         lda #$00
         sta MOUSE_BTN
         sta MOUSE_PREV_BTN
-        lda #$02                 ; CTRL bit1 = clear event (IRQ off)
+        lda #(MOU2_CT_IRQ_EN | $02)  ; IRQ enable + clear event initial
         sta MOU2_CTRL
         rts
 
@@ -3271,7 +3270,7 @@ kernel_mouse_read:
         sep #$20
         lda MOU2_BUTTONS
         sta MOUSE_BTN
-        lda #$02                 ; bit1 = clear event (v0.1 polled, IRQ off)
+        lda #(MOU2_CT_IRQ_EN | $02)  ; clear event (deassert IRQ) + IRQ reste enable
         sta MOU2_CTRL
         rts
 
@@ -3709,11 +3708,30 @@ kernel_irq_handler:
         phx
         phy
 
+        ; ── SP-3.e v0.2 : souris MOU2 event-driven (ADR-24) ────────
+        ; Si event souris en attente : lit + traite (clic→focus, drag).
+        ; kernel_mouse_read clear l'event (deassert IRQF_MOU2).
+        lda MOU2_STATUS
+        and #$80                ; bit7 = event
+        beq irq_no_mou
+        jsr kernel_mouse_read
+        jsr kernel_wm_mouse_step
+irq_no_mou:
+        ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring ───────────
+        jsr kernel_kbd_poll
+
+        ; ── VIA T1 présent ? (sinon IRQ MOU2/KBD2 seule : pas de tick) ──
+        lda VIA_IFR
+        and #$40                ; bit6 = T1
+        bne irq_t1
+        ; Pas de T1 : restaure la MÊME tâche (aucun tick/context switch).
+        ply
+        plx
+        pla
+        rti
+irq_t1:
         ; ── Ack VIA T1 IRQ (lecture T1C-L clear T1 IFR) ────────────
         lda VIA_T1CL
-
-        ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring à chaque tick ──
-        jsr kernel_kbd_poll
 
         ; ── Increment tick counter ─────────────────────────────────
         lda TICK_COUNTER
