@@ -5834,7 +5834,7 @@ _tb_draw_check:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
         bne _tb_draw_slot_used   ; slot occupé → dessine bouton
-        jmp _tb_draw_advance     ; slot libre → avance btn_x
+        jmp _tb_skip_slot        ; slot libre → avance TB_I seulement (pas btn_x)
 _tb_draw_slot_used:
         ; Couleur bouton : lightblue ($09) si focus, darkgray ($08) sinon.
         lda TB_I
@@ -5943,13 +5943,15 @@ _tb_do_text:
         sta GFX_COLOR
         jsr kernel_gfx_text16
 _tb_draw_advance:
-        ; Avance TB_BTN_X += TB_BTN_STRIDE (124).
+        ; Avance TB_BTN_X uniquement pour les slots UTILISÉS (boutons contigus).
         rep #$20
         lda TB_BTN_X
         clc
         adc #TB_BTN_STRIDE
         sta TB_BTN_X
         sep #$20
+_tb_skip_slot:
+        ; Incrémente TB_I (slot libre : pas d'avance de btn_x).
         lda TB_I
         inc a
         sta TB_I
@@ -5967,40 +5969,61 @@ kernel_taskbar_hit:
         ; Test MOUSE_BTN & LEFT.
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
-        beq _tbh_miss
+        bne _tbh_btn_ok
+        jmp _tbh_miss
+_tbh_btn_ok:
         ; Test MOUSE_Y >= TB_Y_SEP (755). Comparaison 16-bit.
         rep #$20
         lda MOUSE_Y
         cmp #TB_Y_SEP
         sep #$20
-        bcc _tbh_miss            ; y < 755 → pas la taskbar
-        ; Calcule slot = (MOUSE_X - TB_BTN_SP) / TB_BTN_STRIDE.
-        ; Division par soustraction répétée (max 4 itérations pour WM_MAX=4).
+        bcs _tbh_y_ok
+        jmp _tbh_miss            ; y < 755 → pas la taskbar
+_tbh_y_ok:
+        ; Itère les slots en reproduisant le btn_x du draw (boutons contigus).
+        rep #$20
+        lda #TB_BTN_SP
+        sta TB_BTN_X             ; btn_x courant (même init que draw)
+        sep #$20
+        lda #$00
+        sta TB_I
+_tbh_loop:
+        lda TB_I
+        cmp #WM_MAX
+        bcc _tbh_check
+        jmp _tbh_miss            ; tous les slots parcourus → miss
+_tbh_check:
+        jsr kernel_wm_offset     ; X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq _tbh_next_slot       ; slot libre → ne contribue pas à btn_x
+        ; Vérifie MOUSE_X ∈ [btn_x .. btn_x+TB_BTN_W[
         rep #$20
         lda MOUSE_X
-        sec
-        sbc #TB_BTN_SP           ; offset_x = MOUSE_X - 4
-        bcc _tbh_miss16          ; MOUSE_X < 4 → hors zone
-        ldx #$00                 ; slot = 0
-_tbh_div_loop:
-        ; X = slot count (8-bit dans X.lo, X mode 8-bit ici via sep plus tard)
-        ; cmp X to WM_MAX : we need 8-bit, but X is 8-bit in WM_MAX context.
-        ; Stay 16-bit for the loop; X is used as counter.
-        cpx #WM_MAX              ; slot >= 4 → hors zone (8-bit compare ok)
-        bcs _tbh_miss16
-        cmp #TB_BTN_STRIDE       ; offset_x < 124 ?
-        bcc _tbh_got_slot        ; oui → slot = X
-        sec
-        sbc #TB_BTN_STRIDE
-        inx
-        bra _tbh_div_loop
-_tbh_got_slot:
-        ; X = slot (8-bit value, 16-bit mode active).
+        cmp TB_BTN_X
+        bcc _tbh_advance         ; mouse_x < btn_x → pas ce bouton
+        lda TB_BTN_X
+        clc
+        adc #TB_BTN_W
+        sta WM_DP_TMP
+        lda MOUSE_X
+        cmp WM_DP_TMP
+        bcs _tbh_advance         ; mouse_x >= btn_x+w → pas ce bouton
         sep #$20
-        txa                      ; A = slot
-        ; Vérifie slot < WM_COUNT et WM_F_USED.
-        cmp WM_COUNT
-        bcs _tbh_miss            ; slot >= WM_COUNT → hors zone
+        lda TB_I                 ; hit → slot trouvé
+        bra _tbh_got_slot
+_tbh_advance:
+        lda TB_BTN_X
+        clc
+        adc #TB_BTN_STRIDE
+        sta TB_BTN_X
+        sep #$20
+_tbh_next_slot:
+        lda TB_I
+        inc a
+        sta TB_I
+        jmp _tbh_loop
+_tbh_got_slot:
         sta TB_I                 ; sauve slot pour après kernel_wm_offset
         jsr kernel_wm_offset     ; A = slot → X = slot*10
         lda WM_TABLE+WM_OFF_FLAGS,X
@@ -6030,8 +6053,6 @@ _tbh_focus:
         jsr kernel_wm_draw_cursor
         lda #$01                 ; consommé
         rts
-_tbh_miss16:
-        sep #$20
 _tbh_miss:
         lda #$00
         rts
