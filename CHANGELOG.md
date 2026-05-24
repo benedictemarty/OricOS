@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.i — Resize des fenêtres par les bords (SP-3.i)
+
+#### Added
+- **`_wm_resize_hit`** : hit-test bord droit / bord bas de la fenêtre focus
+  (`RESIZE_MARGIN = 6 px`). Retourne 0 (rien), 1 (droit), 2 (bas), 3 (coin).
+  Désactivé sur fenêtre maximisée.
+- **`_wm_do_resize`** : applique `MOUSE_DX/DY` à `w` / `h` selon l'arête hit.
+  Clamp : `w >= RESIZE_MIN_W = 60`, `h >= RESIZE_MIN_H = 40`. Redraw incrémental
+  via `kernel_wm_redraw_drag`.
+- **`WM_RESIZE_ARMED`** (`$015ACE`, 1B) et **`WM_RESIZE_EDGE`** (`$015ACF`, 1B) :
+  nouveaux flags armement/arête, initialisés à 0 dans `kernel_wm_init`.
+- **Intégration `kernel_wm_mouse_step`** : nouveau clic → `_wm_resize_hit` avant
+  drag, si bord → arme resize ; drag = branche vers `_wm_do_resize` si armé.
+- **Désarmement** dans le chemin "bouton relâché" (en même temps que `WM_DRAG_ARMED`).
+- **3 tests** `test_wm_resize_init`, `test_wm_resize_right_edge`,
+  `test_wm_resize_bottom_edge` dans `test_oricos_boot.c`. 557 tests verts.
+
 ### Sprint 3.h — Maximize/minimize fenêtres (SP-3.h)
 
 #### Added

@@ -479,6 +479,13 @@ WM_STATE_HIDDEN  = $02           ; état fenêtre : minimisée (invisible)
 WM_STATES        = $015AA5       ; 4 × 1B : état par slot ($AA5-$AA8)
 WM_SAVED_RECTS   = $015AA9       ; 4 × 8B : x(2)+y(2)+w(2)+h(2) avant maximize ($AA9-$AC8)
 WM_H_TEST_RES    = $015AC9       ; sentinelle test SP-3.h (5 octets)
+; ── SP-3.i : resize des fenêtres (bord droit + bas) ──────────────────
+WM_RESIZE_ARMED  = $015ACE       ; 1B : 1 si resize armé (bouton tenu sur bord)
+WM_RESIZE_EDGE   = $015ACF       ; 1B : 1=droit, 2=bas, 3=coin
+WM_I_TEST_RES    = $015AD0       ; sentinelle test SP-3.i (5 octets)
+RESIZE_MARGIN    = 6             ; px de marge bord pour hit-test resize
+RESIZE_MIN_W     = 60            ; largeur minimale fenêtre
+RESIZE_MIN_H     = 40            ; hauteur minimale fenêtre
 ; Strings boutons max/min uploadées en SDRAM au boot
 WM_MAX_STR       = $011090       ; "O\0" uploadé au boot (□ simplifié)
 WM_MIN_STR       = $0110A0       ; "_\0" uploadé au boot
@@ -4529,6 +4536,9 @@ kernel_wm_init:
         sta WM_STATES+1
         sta WM_STATES+2
         sta WM_STATES+3
+        ; SP-3.i : init WM_RESIZE_ARMED / WM_RESIZE_EDGE à 0
+        sta WM_RESIZE_ARMED
+        sta WM_RESIZE_EDGE
         ldx #$00
 wm_init_sr:
         sta WM_SAVED_RECTS,X
@@ -5601,10 +5611,11 @@ kernel_wm_mouse_step:
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
         bne wm_step_pressed
-        ; Motion seule (pas de bouton) → désarme le drag + curseur léger
+        ; Motion seule (pas de bouton) → désarme drag + resize + curseur léger
         ; (backing-store : PAS de full-redraw du desktop).
         lda #$00
         sta WM_DRAG_ARMED
+        sta WM_RESIZE_ARMED
         jsr kernel_wm_cursor_blit
         rts
 wm_step_pressed:
@@ -5682,8 +5693,24 @@ wm_step_chrome_close:
 wm_step_normal_hit:
         lda WIN_SLOT
         jsr kernel_wm_set_focus
-        lda #$01                 ; clic sur une fenêtre → arme le drag
+        ; SP-3.i : teste d'abord si le clic est sur un bord resize.
+        jsr _wm_resize_hit       ; A : 0=non, 1=droit, 2=bas, 3=coin
+        cmp #$00
+        beq wm_step_arm_drag
+        ; Bord resize → arme le resize, pas le drag.
+        sta WM_RESIZE_EDGE
+        lda #$01
+        sta WM_RESIZE_ARMED
+        lda #$00
         sta WM_DRAG_ARMED
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_arm_drag:
+        lda #$01                 ; clic intérieur → arme le drag
+        sta WM_DRAG_ARMED
+        lda #$00
+        sta WM_RESIZE_ARMED
         ; v0.3 : bouton sous le curseur → WIDGET_ACTIVE (sinon $FF).
         jsr _wm_widget_hit
         ; v0.4 : si un bouton est actif et a un callback non nul, l'invoquer.
@@ -5813,6 +5840,93 @@ _crh_no:
         lda #$00
         rts
 
+; ── _wm_resize_hit : hit-test bords resize de WIN_SLOT. SP-3.i ────────
+; Retourne A : 0=non, 1=bord droit, 2=bord bas, 3=coin bas-droit.
+; Pré-cond : WIN_SLOT valide. Ne modifie pas WIN_SLOT. Modifie A, X.
+; Scratch 16-bit : WM_DP_TMP=win_right, WM_ARG_DX=win_bottom,
+;   WM_CRH_TMP+2=right_lo, WM_CRH_TMP+4=bot_lo, WM_CRH_TMP(1B)=right_hit.
+_wm_resize_hit:
+        ; Fenêtre maximisée → pas de resize
+        lda WIN_SLOT
+        tax
+        lda WM_STATES,X          ; WM_STATES[slot]
+        cmp #WM_STATE_MAXED
+        bne _rh_skip_max
+        jmp _rh_no
+_rh_skip_max:
+        ; Calculer win_right et win_bottom
+        lda WIN_SLOT
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sta WM_DP_TMP            ; win_right = win_x + win_w
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        sta WM_ARG_DX            ; win_bottom = win_y + win_h
+        lda WM_DP_TMP
+        sec
+        sbc #RESIZE_MARGIN
+        sta WM_CRH_TMP+2         ; right_lo = win_right - MARGIN
+        lda WM_ARG_DX
+        sec
+        sbc #RESIZE_MARGIN
+        sta WM_CRH_TMP+4         ; bot_lo = win_bottom - MARGIN
+        sep #$20
+        lda #$00
+        sta WM_CRH_TMP           ; right_hit = 0
+        rep #$20
+        ; ── Test bord droit : mouse_x in [right_lo, win_right), mouse_y in [win_y+14, win_bottom) ─
+        lda MOUSE_X
+        cmp WM_CRH_TMP+2         ; mouse_x >= right_lo ?
+        bcc _rh_test_bottom
+        cmp WM_DP_TMP            ; mouse_x < win_right ?
+        bcs _rh_test_bottom
+        ; Test Y : mouse_y in [win_y+14, win_bottom)
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc #14
+        sta WM_CRH_TMP+2         ; win_y+14 (right_lo not needed anymore)
+        lda MOUSE_Y
+        cmp WM_CRH_TMP+2         ; mouse_y >= win_y+14 ?
+        bcc _rh_test_bottom
+        cmp WM_ARG_DX            ; mouse_y < win_bottom ?
+        bcs _rh_test_bottom
+        sep #$20
+        lda #$01
+        sta WM_CRH_TMP           ; right_hit = 1
+        rep #$20
+_rh_test_bottom:
+        ; ── Test bord bas : mouse_y in [bot_lo, win_bottom), mouse_x in [win_x, win_right) ─
+        lda MOUSE_Y
+        cmp WM_CRH_TMP+4         ; mouse_y >= bot_lo ?
+        bcc _rh_done
+        cmp WM_ARG_DX            ; mouse_y < win_bottom ?
+        bcs _rh_done
+        lda MOUSE_X
+        cmp WM_TABLE+WM_OFF_X,X  ; mouse_x >= win_x ?
+        bcc _rh_done
+        cmp WM_DP_TMP            ; mouse_x < win_right ?
+        bcs _rh_done
+        sep #$20
+        lda WM_CRH_TMP           ; right_hit ?
+        beq _rh_bottom_only
+        lda #$03                 ; coin bas-droit
+        rts
+_rh_bottom_only:
+        lda #$02                 ; bord bas seul
+        rts
+_rh_done:
+        sep #$20
+        lda WM_CRH_TMP           ; right_hit (0 ou 1)
+        rts
+_rh_no:
+        lda #$00
+        rts
+
+
 ; ── demo_ok_cb : callback démo du bouton "OK" — incrémente CB_FLAG. ────
 demo_ok_cb:
         lda CB_FLAG
@@ -5820,6 +5934,9 @@ demo_ok_cb:
         sta CB_FLAG
         rts
 wm_step_drag:
+        ; SP-3.i : si le resize est armé, priorité resize.
+        lda WM_RESIZE_ARMED
+        bne wm_step_do_resize
         ; Drag autorisé seulement si le clic initial a touché une fenêtre.
         lda WM_DRAG_ARMED
         bne wm_step_do_drag
@@ -5846,6 +5963,68 @@ wm_step_do_drag:
         jsr kernel_wm_redraw_drag
         ; 5. curseur : backing périmé après repaint → invalide, sauve, dessine.
         jsr kernel_wm_draw_cursor
+        rts
+
+wm_step_do_resize:
+        jsr _wm_do_resize
+        rts
+
+; ── _wm_do_resize : SP-3.i — applique le delta souris à w/h fenêtre focus. ──
+; WM_RESIZE_EDGE : 1=droit, 2=bas, 3=coin. Clamp min. Modifie A, X.
+_wm_do_resize:
+        lda WM_FOCUS
+        cmp #$FF
+        beq _dr_done
+        ; Capture rect avant modif (dirty rect pour redraw incrémental)
+        jsr _wm_capture_focused_rect
+        jsr kernel_wm_cursor_restore
+        ; Sign-extend deltas (trashent X)
+        lda MOUSE_DX
+        jsr _sext8_to16
+        sta WM_ARG_DX
+        stx WM_ARG_DX+1
+        lda MOUSE_DY
+        jsr _sext8_to16
+        sta WM_ARG_DY
+        stx WM_ARG_DY+1
+        ; Reload X = focus*10
+        lda WM_FOCUS
+        jsr kernel_wm_offset     ; X = focus*10
+        rep #$20
+        ; ── DX → W si bord droit (edge ≠ 2) ─────────────────────────
+        sep #$20
+        lda WM_RESIZE_EDGE
+        cmp #$02
+        rep #$20
+        beq _dr_skip_dx          ; edge=2 (bas seul) → pas de DX
+        lda WM_TABLE+WM_OFF_W,X
+        clc
+        adc WM_ARG_DX
+        cmp #RESIZE_MIN_W
+        bcs _dr_w_ok
+        lda #RESIZE_MIN_W
+_dr_w_ok:
+        sta WM_TABLE+WM_OFF_W,X
+_dr_skip_dx:
+        ; ── DY → H si bord bas (edge ≠ 1) ───────────────────────────
+        sep #$20
+        lda WM_RESIZE_EDGE
+        cmp #$01
+        rep #$20
+        beq _dr_skip_dy          ; edge=1 (droit seul) → pas de DY
+        lda WM_TABLE+WM_OFF_H,X
+        clc
+        adc WM_ARG_DY
+        cmp #RESIZE_MIN_H
+        bcs _dr_h_ok
+        lda #RESIZE_MIN_H
+_dr_h_ok:
+        sta WM_TABLE+WM_OFF_H,X
+_dr_skip_dy:
+        sep #$20
+        jsr kernel_wm_redraw_drag
+        jsr kernel_wm_draw_cursor
+_dr_done:
         rts
 
 ; ── kernel_wm_draw_cursor : après un full-redraw du desktop ────────────

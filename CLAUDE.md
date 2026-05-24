@@ -189,6 +189,12 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       `_crh_test_max/_crh_test_min` (bug tracking mode ca65 → 8-bit tronqué
       corrompait ZP $22-$24). Tests : `test_wm_states_init`, `test_wm_maximize`,
       `test_wm_minimize_restore`. 554 tests verts.
+- [x] **SP-3.i — Resize fenêtres** : `_wm_resize_hit` (bord droit/bas,
+      `RESIZE_MARGIN=6 px`, désactivé si maximisée) + `_wm_do_resize` (DX→w,
+      DY→h, clamp `RESIZE_MIN_W=60/RESIZE_MIN_H=40`, redraw incrémental).
+      `WM_RESIZE_ARMED` (`$015ACE`) + `WM_RESIZE_EDGE` (`$015ACF`) initialisés
+      dans `kernel_wm_init`. Tests : `test_wm_resize_init`, `test_wm_resize_right_edge`,
+      `test_wm_resize_bottom_edge`. 557 tests verts.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).
