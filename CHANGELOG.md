@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Added
+- **CI GitHub Actions** (`.github/workflows/ci.yml`) : build du kernel (cc65) à
+  chaque push/PR. Phase 1 assainissement.
+
 ### Sprint 3.d v0.6 — Barre de menu multi (table-driven)
 
 #### Changed

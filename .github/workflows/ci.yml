@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: EUPL-1.2
+# CI OricOS — build du kernel 65C816 (ca65/ld65). Sanity check à chaque push.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cc65 (ca65/ld65)
+        run: sudo apt-get update && sudo apt-get install -y cc65
+
+      - name: Build kernel
+        run: make
+
+      - name: Vérifier l'artefact
+        run: test -f build/kernel.bin && echo "kernel.bin OK ($(stat -c%s build/kernel.bin) octets)"
