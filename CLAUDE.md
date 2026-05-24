@@ -192,6 +192,12 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] **SP-3.j — Dialog modal** : `WM_MODAL` (`$015AD5`) + `kernel_wm_set_modal` /
       `kernel_wm_clear_modal`. Auto-clear dans `kernel_wm_close`. Blocage des clics
       hors modal dans `wm_step_normal_hit`. 3 tests. 560 tests verts.
+- [x] **SP-3.k — Icônes desktop** : `ICON_TABLE` (4 × 16B, `$015ADA`), `kernel_icon_add`
+      (upload label SDRAM `$011200+id×$10`), `kernel_icon_draw_all` (FILL_RECT16 32×32 +
+      TEXT16 label), `_icon_hit` (hit-test mouse), callback `jsr (WM_DP_TMP,X)` (X=0).
+      Intégré dans `kernel_wm_redraw` (icônes avant fenêtres) et `kernel_wm_mouse_step`
+      (clic vide → `_icon_hit` → `ICON_SELECTED`). 2 icônes démo ("Files"/"Prefs").
+      3 tests. 563 tests verts.
 - [x] **SP-3.i — Resize fenêtres** : `_wm_resize_hit` (bord droit/bas,
       `RESIZE_MARGIN=6 px`, désactivé si maximisée) + `_wm_do_resize` (DX→w,
       DY→h, clamp `RESIZE_MIN_W=60/RESIZE_MIN_H=40`, redraw incrémental).

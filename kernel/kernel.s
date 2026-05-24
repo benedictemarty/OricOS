@@ -486,6 +486,28 @@ WM_I_TEST_RES    = $015AD0       ; sentinelle test SP-3.i (5 octets)
 ; ── SP-3.j : dialog modal ──────────────────────────────────────────────
 WM_MODAL         = $015AD5       ; 1B : slot fenêtre modale ($FF = aucune)
 WM_J_TEST_RES    = $015AD6       ; sentinelle test SP-3.j (4 octets)
+; ── SP-3.k : icônes desktop ────────────────────────────────────────────
+; Entrée : flags(1) color(1) x(2) y(2) cb_lo(1) cb_hi(1) label(7+null=8) = 16B
+ICON_MAX         = 4
+ICON_ENTSZ       = 16
+ICON_TABLE       = $015ADA       ; 4 × 16B = 64B ($5ADA-$5B19)
+ICON_COUNT       = $015B1A       ; 1B : nb icônes actives
+ICON_SELECTED    = $015B1B       ; 1B : id sélectionné ($FF=aucun)
+ICON_K_TEST_RES  = $015B1C       ; sentinelle test SP-3.k (4 octets)
+; Offsets dans une entrée ICON_TABLE
+ICON_OFF_FLAGS   = 0             ; 1B : $00=libre, $01=utilisé, $03=sélectionné
+ICON_OFF_COLOR   = 1             ; 1B : couleur boîte (palette 0..15)
+ICON_OFF_X       = 2             ; 2B : x desktop
+ICON_OFF_Y       = 4             ; 2B : y desktop
+ICON_OFF_CB_LO   = 6             ; 1B : callback offset low (0=aucun)
+ICON_OFF_CB_HI   = 7             ; 1B : callback offset high
+ICON_OFF_LABEL   = 8             ; 8B : label ASCII null-terminé (max 7 chars)
+; SDRAM labels : $011200 + id*$10 (16B par icône)
+ICON_SDRAM_BASE_LO = $12         ; addr mid du bank 1 label base : $01_12_00
+ICON_SDRAM_BASE_HI = $01
+ICON_SIZE_PX     = 32            ; côté de la boîte icon en pixels
+ICON_F_USED      = $01
+ICON_F_SEL       = $03           ; used + selected
 RESIZE_MARGIN    = 6             ; px de marge bord pour hit-test resize
 RESIZE_MIN_W     = 60            ; largeur minimale fenêtre
 RESIZE_MIN_H     = 40            ; hauteur minimale fenêtre
@@ -1388,6 +1410,57 @@ kernel_entry:
         lda #>tk_demo_ok
         sta DP_PCPTR+1
         jsr kernel_wm_add_widget
+
+        ; ── SP-3.k : icônes desktop démo (SP-3.k) ───────────────────────
+        ; Icône 0 "Files" : x=20, y=20, couleur cyan (3), callback=0
+        rep #$20
+        lda #20
+        sta WM_ARG_X
+        sta WM_ARG_Y
+        lda #$00
+        sta WM_ARG_DX            ; callback = 0
+        sep #$20
+        lda #$03                 ; cyan
+        sta GFX_COLOR
+        lda #<str_icon_files
+        sta DP_PCPTR
+        lda #>str_icon_files
+        sta DP_PCPTR+1
+        jsr kernel_icon_add
+        sta ICON_K_TEST_RES+0    ; doit être 0
+        ; Icône 1 "Prefs" : x=20, y=80, couleur yellow (14), callback=0
+        rep #$20
+        lda #20
+        sta WM_ARG_X
+        lda #80
+        sta WM_ARG_Y
+        lda #$00
+        sta WM_ARG_DX            ; callback = 0
+        sep #$20
+        lda #$0E                 ; yellow
+        sta GFX_COLOR
+        lda #<str_icon_settings
+        sta DP_PCPTR
+        lda #>str_icon_settings
+        sta DP_PCPTR+1
+        jsr kernel_icon_add
+        sta ICON_K_TEST_RES+1    ; doit être 1
+        ; hit-test icône 0 (clic dans zone [20..51, 20..51])
+        rep #$20
+        lda #30
+        sta MOUSE_X
+        sta MOUSE_Y
+        sep #$20
+        jsr _icon_hit
+        sta ICON_K_TEST_RES+2    ; doit être 0
+        ; hit-test hors zone → $FF
+        rep #$20
+        lda #200
+        sta MOUSE_X
+        sta MOUSE_Y
+        sep #$20
+        jsr _icon_hit
+        sta ICON_K_TEST_RES+3    ; doit être $FF
 
         ; ── SP-3.h : sentinelle init (WM_STATES[0] = normal après init) ──
         ; Pas d'appel à kernel_wm_maximize ici — trop coûteux pour le boot,
@@ -3017,6 +3090,11 @@ str_max_o:
         .byte "O", $00           ; bouton □ maximize (O simplifié, fonte 8×8)
 str_min_und:
         .byte "_", $00           ; bouton _ minimize
+; SP-3.k : labels icônes desktop
+str_icon_files:
+        .byte "Files", $00
+str_icon_settings:
+        .byte "Prefs", $00
 
 ; kernel_fill_rect_aligned retiré en PH-cleanup-zombie (2026-05-09).
 ; Code legacy ADR-19 v2 (écrivait bank $80, plus visible compositor).
@@ -4545,6 +4623,15 @@ kernel_wm_init:
         ; SP-3.j : init WM_MODAL à $FF (aucune fenêtre modale)
         lda #$FF
         sta WM_MODAL
+        ; SP-3.k : init ICON_COUNT=0, ICON_SELECTED=$FF, table libre
+        lda #$00
+        sta f:ICON_COUNT
+        sta f:ICON_TABLE + 0*ICON_ENTSZ + ICON_OFF_FLAGS
+        sta f:ICON_TABLE + 1*ICON_ENTSZ + ICON_OFF_FLAGS
+        sta f:ICON_TABLE + 2*ICON_ENTSZ + ICON_OFF_FLAGS
+        sta f:ICON_TABLE + 3*ICON_ENTSZ + ICON_OFF_FLAGS
+        lda #$FF
+        sta f:ICON_SELECTED
         ldx #$00
 wm_init_sr:
         sta WM_SAVED_RECTS,X
@@ -4808,6 +4895,268 @@ kernel_wm_clear_modal:
         sta WM_MODAL
         rts
 
+
+; ════════════════════════════════════════════════════════════════════
+;  SP-3.k — Icônes desktop
+; ════════════════════════════════════════════════════════════════════
+;
+; Table ICON_TABLE ($015ADA, 4 × 16B). Entrée :
+;   +0  flags (1B : 0=libre, 1=utilisé, 3=sélectionné)
+;   +1  color (1B : palette 0..15)
+;   +2  x (2B)
+;   +4  y (2B)
+;   +6  cb_lo (1B) + cb_hi (1B) : callback en bank 1 (0=aucun)
+;   +8  label (8B : 7 chars + null)
+; Labels SDRAM : $011200 + id*$10.
+; ════════════════════════════════════════════════════════════════════
+
+; ── kernel_icon_add : ajoute une icône. SP-3.k ───────────────────────
+; Args (ZP) :
+;   WM_ARG_X ($14, 2B) = x, WM_ARG_Y ($16, 2B) = y
+;   GFX_COLOR ($D6, 1B) = color
+;   DP_PCPTR ($08, 2B) = pointeur bank-1 vers label string (null-term)
+;   WM_ARG_DX ($1C, 2B) = callback (0=aucun)
+; Retourne A = id (0..3) ou $FF (table pleine). Modifie A, X, Y.
+.export kernel_icon_add
+kernel_icon_add:
+        ; Chercher un slot libre
+        ldx #$00
+_kia_find:
+        lda ICON_TABLE+ICON_OFF_FLAGS,X
+        and #ICON_F_USED
+        beq _kia_found           ; flags & 1 == 0 → libre
+        txa
+        clc
+        adc #ICON_ENTSZ
+        tax
+        cpx #(ICON_MAX * ICON_ENTSZ)
+        bcc _kia_find
+        lda #$FF                 ; table pleine
+        rts
+_kia_found:
+        ; X = offset du slot libre. Calculer l'id = X / ICON_ENTSZ
+        txa
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; id = X >> 4 (ICON_ENTSZ = 16 = 2^4)
+        sta WM_DP_TMP            ; sauve l'id
+        ; Remplir l'entrée
+        lda #ICON_F_USED
+        sta ICON_TABLE+ICON_OFF_FLAGS,X
+        lda GFX_COLOR
+        sta ICON_TABLE+ICON_OFF_COLOR,X
+        lda WM_ARG_DX            ; cb_lo
+        sta ICON_TABLE+ICON_OFF_CB_LO,X
+        lda WM_ARG_DX+1          ; cb_hi
+        sta ICON_TABLE+ICON_OFF_CB_HI,X
+        rep #$20
+        lda WM_ARG_X
+        sta ICON_TABLE+ICON_OFF_X,X
+        lda WM_ARG_Y
+        sta ICON_TABLE+ICON_OFF_Y,X
+        sep #$20
+        ; Copier le label (max 7 chars + null) depuis DP_PCPTR vers ICON_TABLE+8,X
+        ldy #$00
+_kia_lbl:
+        lda (DP_PCPTR),Y         ; lit depuis bank-1 RAM
+        sta ICON_TABLE+ICON_OFF_LABEL,X
+        beq _kia_lbl_done        ; null terminator
+        inx
+        iny
+        cpy #8
+        bcc _kia_lbl
+        ; Forcer null-terminator (overflow)
+        lda #$00
+        sta ICON_TABLE+ICON_OFF_LABEL,X  ; écrit nul à ICON_TABLE+8+Y,X (last byte)
+        ; Note: X a bougé → restaurer
+        lda WM_DP_TMP
+        asl a
+        asl a
+        asl a
+        asl a                    ; id * 16 = offset original
+        tax
+_kia_lbl_done:
+        ; Upload label en SDRAM $011200 + id*$10
+        ; id = WM_DP_TMP, offset SDRAM = id << 4
+        lda WM_DP_TMP
+        asl a
+        asl a
+        asl a
+        asl a                    ; id*16 = SDRAM offset low byte
+        ; adresse complète = $011200 + id*16
+        ; LO = $00 + (id*16)  (toujours < $FF pour id=0..3)
+        ; MID = $12 + (id*16 >> 8) ≈ $12 (id≤3, offset≤48 = $30 → MID=$12)
+        sta f:VRAM_ADDR_LO_IO
+        lda #ICON_SDRAM_BASE_LO  ; $12
+        sta f:VRAM_ADDR_MID_IO
+        lda #ICON_SDRAM_BASE_HI  ; $01
+        sta f:VRAM_ADDR_HI_IO
+        ; Écrire le label byte à byte via VRAM_DATA_IO (auto-incr)
+        lda WM_DP_TMP
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; X = offset dans ICON_TABLE
+        ldy #$00
+_kia_sdram:
+        lda ICON_TABLE+ICON_OFF_LABEL,X
+        sta f:VRAM_DATA_IO
+        beq _kia_sdram_done
+        inx
+        iny
+        cpy #8
+        bcc _kia_sdram
+        lda #$00
+        sta f:VRAM_DATA_IO
+_kia_sdram_done:
+        ; Incrémenter ICON_COUNT
+        lda f:ICON_COUNT
+        inc a
+        sta f:ICON_COUNT
+        ; Retourner l'id
+        lda WM_DP_TMP
+        rts
+
+; ── kernel_icon_draw_all : dessine toutes les icônes. SP-3.k ─────────
+; Chaque icône : boîte FILL_RECT16 (32×32) + TEXT16 (label en dessous).
+; Modifie A, X, Y. Base SDRAM framebuffer $100000.
+.export kernel_icon_draw_all
+kernel_icon_draw_all:
+        lda ICON_COUNT
+        bne _kid_start
+        rts
+_kid_start:
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        ldx #$00
+_kid_loop:
+        lda ICON_TABLE+ICON_OFF_FLAGS,X
+        and #ICON_F_USED
+        beq _kid_next
+        ; Dessine la boîte : FILL_RECT16 (x, y, 32, 32, color)
+        rep #$20
+        lda ICON_TABLE+ICON_OFF_X,X
+        sta WM_ARG_X
+        lda ICON_TABLE+ICON_OFF_Y,X
+        sta WM_ARG_Y
+        lda #ICON_SIZE_PX
+        sta WM_ARG_W
+        sta WM_ARG_H
+        sep #$20
+        ; Couleur : sélectionné → lightcyan($0B), sinon couleur de l'icône
+        lda ICON_TABLE+ICON_OFF_FLAGS,X
+        cmp #ICON_F_SEL
+        bne _kid_use_own_color
+        lda #$0B                 ; lightcyan = sélectionné
+        bra _kid_set_color
+_kid_use_own_color:
+        lda ICON_TABLE+ICON_OFF_COLOR,X
+_kid_set_color:
+        sta GFX_COLOR
+        ; Sauve X avant jsr (qui peut le modifier via helpers)
+        txa
+        sta WM_CRH_TMP           ; sauve offset
+        jsr kernel_gfx_fill_rect16
+        ldx WM_CRH_TMP           ; restaure offset
+        ; Dessine le label : TEXT16 (label_sdram, x, y+34, white)
+        ; addr SDRAM label = $011200 + id*$10
+        ; id = X / 16
+        txa
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; id
+        asl a
+        asl a
+        asl a
+        asl a                    ; id * 16
+        ; SDRAM addr = $011200 + (id*16)
+        sta GFX_STR_LO
+        lda #ICON_SDRAM_BASE_LO  ; $12
+        sta GFX_STR_MID
+        lda #ICON_SDRAM_BASE_HI  ; $01
+        sta GFX_STR_HI
+        ; Position texte : (icon_x, icon_y + ICON_SIZE_PX + 2)
+        rep #$20
+        lda ICON_TABLE+ICON_OFF_X,X
+        sta WM_ARG_X
+        lda ICON_TABLE+ICON_OFF_Y,X
+        clc
+        adc #(ICON_SIZE_PX + 2)
+        sta WM_ARG_Y
+        sep #$20
+        lda #$0F                 ; white
+        sta GFX_COLOR
+        txa
+        sta WM_CRH_TMP
+        jsr kernel_gfx_text16
+        ldx WM_CRH_TMP
+_kid_next:
+        txa
+        clc
+        adc #ICON_ENTSZ
+        tax
+        cpx #(ICON_MAX * ICON_ENTSZ)
+        bcc _kid_loop
+_kid_done:
+        rts
+
+; ── _icon_hit : hit-test icônes sous (MOUSE_X, MOUSE_Y). SP-3.k ──────
+; Retourne A = id (0..3) ou $FF si aucune. Modifie A, X.
+_icon_hit:
+        lda ICON_COUNT
+        beq _ih_none
+        ldx #$00
+_ih_loop:
+        lda ICON_TABLE+ICON_OFF_FLAGS,X
+        and #ICON_F_USED
+        beq _ih_next
+        rep #$20
+        lda ICON_TABLE+ICON_OFF_X,X
+        sta WM_DP_TMP            ; icon_x
+        clc
+        adc #ICON_SIZE_PX
+        sta WM_ARG_DX            ; icon_right
+        lda MOUSE_X
+        cmp WM_DP_TMP            ; mouse_x >= icon_x ?
+        bcc _ih_next16
+        cmp WM_ARG_DX            ; mouse_x < icon_right ?
+        bcs _ih_next16
+        lda ICON_TABLE+ICON_OFF_Y,X
+        sta WM_DP_TMP            ; icon_y
+        clc
+        adc #ICON_SIZE_PX
+        sta WM_ARG_DX            ; icon_bottom
+        lda MOUSE_Y
+        cmp WM_DP_TMP            ; mouse_y >= icon_y ?
+        bcc _ih_next16
+        cmp WM_ARG_DX            ; mouse_y < icon_bottom ?
+        bcs _ih_next16
+        sep #$20
+        txa
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; id = X / ICON_ENTSZ (16)
+        rts
+_ih_next16:
+        sep #$20
+_ih_next:
+        txa
+        clc
+        adc #ICON_ENTSZ
+        tax
+        cpx #(ICON_MAX * ICON_ENTSZ)
+        bcc _ih_loop
+_ih_none:
+        lda #$FF
+        rts
+
 ; ── kernel_wm_maximize : bascule maximize/restore d'une fenêtre (SP-3.h) ──
 ; A = id de la fenêtre. Si normale → maximise. Si maximisée → restore.
 ; WM_SAVED_RECTS[slot×8] = {x(2),y(2),w(2),h(2)} sauvegardé avant maximize.
@@ -5063,6 +5412,8 @@ kernel_wm_redraw:
         lda #$01
         sta GFX_COLOR           ; desktop bleu
         jsr kernel_gfx_clear
+        ; SP-3.k : dessine les icônes du desktop (sous les fenêtres).
+        jsr kernel_icon_draw_all
         ; fall-through : dessine les fenêtres.
 
 ; ── _wm_draw_windows : dessine toutes les fenêtres visibles (corps + titre).
@@ -5682,6 +6033,34 @@ wm_step_newclick:
         jsr kernel_wm_hit_test   ; A = id ou $FF
         cmp #$FF
         bne wm_step_hit
+        ; Clic sur le vide → tester les icônes desktop (SP-3.k).
+        jsr _icon_hit            ; A = id icône ou $FF
+        cmp #$FF
+        beq wm_step_no_icon
+        ; Icône cliquée → invoque son callback, redraw curseur.
+        sta ICON_SELECTED
+        tax                      ; id = A
+        lda ICON_ENTSZ
+        ; calcule X * ICON_ENTSZ via TXA * 16
+        txa
+        asl a
+        asl a
+        asl a
+        asl a                    ; A = id * 16
+        tax
+        rep #$20
+        lda ICON_TABLE+ICON_OFF_CB_LO,X
+        sta WM_DP_TMP            ; vecteur callback
+        sep #$20
+        lda WM_DP_TMP
+        ora WM_DP_TMP+1
+        beq wm_step_icon_nocb   ; callback nul → skip
+        ldx #$00
+        jsr (WM_DP_TMP,X)       ; appel indirect via JSR (abs,X) avec X=0
+wm_step_icon_nocb:
+        jsr kernel_wm_cursor_blit
+        rts
+wm_step_no_icon:
         ; Clic sur le vide → pas de focus ni changement desktop → curseur léger.
         lda #$00
         sta WM_DRAG_ARMED

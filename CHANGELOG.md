@@ -5,7 +5,31 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-05-24
+## [Unreleased] - 2026-05-25
+
+### Sprint 3.k — Icônes desktop (SP-3.k)
+
+#### Added
+- **`ICON_TABLE`** (`$015ADA`, 4 × 16B) : table des icônes desktop. Entrée :
+  flags, color, x(2B), y(2B), cb_lo/hi (callback), label (8B).
+- **`ICON_COUNT`** (`$015B1A`) + **`ICON_SELECTED`** (`$015B1B`) : compteur et
+  sélection courante (initialisée à `$FF`).
+- **`kernel_icon_add`** : ajoute une icône (args ZP : `WM_ARG_X/Y`, `GFX_COLOR`,
+  `DP_PCPTR` label, `WM_ARG_DX` callback). Upload le label en SDRAM
+  `$011200 + id×$10`. Retourne l'id (0..3) ou `$FF` si plein.
+- **`kernel_icon_draw_all`** : dessine toutes les icônes via `FILL_RECT16`
+  (32×32, couleur icône ou lightcyan si sélectionnée) + `TEXT16` (label en
+  dessous, blanc). Appelée automatiquement dans `kernel_wm_redraw` après le
+  clear desktop, avant les fenêtres.
+- **`_icon_hit`** : hit-test des icônes sous `(MOUSE_X, MOUSE_Y)`. Retourne
+  l'id (0..3) ou `$FF`. Appelé dans `kernel_wm_mouse_step` quand aucune
+  fenêtre n'est touchée.
+- **Callback icône** : clic sur icône → `ICON_SELECTED = id` + appel callback
+  via `jsr (WM_DP_TMP,X)` (X=0, JSR indirect).
+- **Démo boot** : 2 icônes créées au démarrage : "Files" (cyan, x=20,y=20) et
+  "Prefs" (yellow, x=20,y=80). Sentinelles `ICON_K_TEST_RES` ($015B1C-$015B1F).
+- **3 tests** : `test_wm_icons_init`, `test_wm_icon_hit`, `test_wm_icon_click`.
+  563 tests verts.
 
 ### Sprint 3.j — Dialog modal (SP-3.j)
 
