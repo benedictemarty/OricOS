@@ -120,7 +120,10 @@ OricOS/
 
 ## Licence
 
-À finaliser (TBD — décision business). Cohérence probable avec Phosphoric (MIT). Ouvrir une issue pour la trancher.
+**EUPL-1.2** (European Union Public Licence) © 2026 Bénédicte Marty — voir
+[LICENSE](LICENSE).
+
+> Licensed under the EUPL
 
 ## Contact
 
