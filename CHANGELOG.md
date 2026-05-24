@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.f — Chrome de fenêtre : titre + bouton fermer
+
+#### Added
+- **SP-3.f v0.1 — Titre dans la titlebar** : `kernel_wm_add` reçoit deux
+  nouvelles ZP args (`WM_ARG_TITLE_LO/HI = $22/$23`) pointant vers la
+  chaîne de titre en bank 1. Le titre est uploadé en SDRAM via
+  `kernel_vram_write_block` à `$012000 + slot×$100`. Le flag
+  `WM_TITLES[slot]` (table `$015986`) est positionné à `$01`.
+  `_wm_draw_title_and_close` dessine le titre (couleur blanche, `TEXT16`)
+  dans la titlebar à `win_x+4, win_y+3`.
+- **SP-3.f v0.2 — Bouton fermer** : `_wm_draw_title_and_close` dessine
+  le texte "X" (lightred, `TEXT16`) en `win_x+win_w-10, win_y+3`.
+  La chaîne "X\0" (`WM_CLOSE_STR = $011080`) est uploadée en SDRAM au
+  boot. `_wm_close_btn_hit` : hit-test sur la zone
+  `[win_x+w-12..win_x+w-1, win_y..win_y+13]`. Retour $01 si touché.
+  `kernel_wm_close` : efface le slot (WM_F_USED=0), reset `WM_TITLES`,
+  décrémente `WM_COUNT`, cherche un nouveau focus. Intégré dans
+  `wm_step_hit` : le close button est prioritaire sur le focus/drag.
+- Fenêtres de démonstration baptisées **"OricOS"** (slot 0) et
+  **"Editor"** (slot 1).
+
+#### Fixed
+- **GFX_STR_HI** dans `_wm_dtc_close` : `$00` → `$01` (bank byte correct
+  pour `WM_CLOSE_STR = $01:1080` ; le GPU lisait auparavant `$001080`).
+
 ### Added (OS-2.f.v2 clos 2026-05-24)
 - **OS-2.f.v2 clos** : table dispatch syscall v0.2 déjà en production dans
   `kernel.s`. Tests C côté Phosphoric ajoutés :

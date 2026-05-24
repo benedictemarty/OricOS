@@ -412,6 +412,20 @@ WM_DRAG_OLD_Y    = $01597F       ; 2B
 WM_DRAG_OLD_W    = $015981       ; 2B
 WM_DRAG_OLD_H    = $015983       ; 2B
 WM_TITLE_COL     = $015985       ; 1B : couleur titlebar courante (focus/non-focus)
+; ── SP-3.f : table de flags de titres (4 fenêtres × 1B = 4B) ─────────
+; Slot : $01 = titre présent (uploadé en SDRAM $012000+slot*$100), $00 = pas de titre.
+; Les titres sont stockés en SDRAM : slot 0 → $012000, slot 1 → $012100,
+; slot 2 → $012200, slot 3 → $012300 (256 o max par titre, suffit pour 255 chars).
+; Uploadés au moment de kernel_wm_add (hors IRQ context, safe pour DP_PCPTR).
+WM_TITLES        = $015986       ; 4 × 1B = 4 octets ($5986-$5989)
+; ZP args pour kernel_wm_add (titre, bank1 pointer 16-bit)
+WM_ARG_TITLE_LO  = $22           ; low byte du pointer titre
+WM_ARG_TITLE_HI  = $23           ; high byte du pointer titre
+WIN_SLOT         = $24           ; slot courant pour kernel_window_draw (SP-3.f)
+; Base SDRAM pour les titres (4 slots × 256 octets = $400 = 1KiB)
+WM_SDRAM_TITLE_BASE_MID = $20    ; addr mid du slot 0 : $01_20_00 = $012000
+; Scratch SDRAM pour close button string "X\0" (8 octets alignés, hors scratch label $011000)
+WM_CLOSE_STR     = $011080       ; "X\0" uploadé au boot
 ; ── SP-3.d : temps toolkit (rect bouton + rect frame, distincts) ──────
 TK_X             = $015990       ; 2B : rect bouton
 TK_Y             = $015992       ; 2B
@@ -1100,6 +1114,26 @@ kernel_entry:
         ;    GPU TEXT/TEXT16 (toolkit). DP_PCPTR = bank1:CHARSET_SRC. ──────
         jsr kernel_tk_font_init
 
+        ; ── SP-3.f : upload string "X\0" en SDRAM WM_CLOSE_STR ($011080) ──
+        ; Utilisé par _wm_draw_title_and_close pour le bouton fermer.
+        lda #<str_close_x
+        sta DP_PCPTR
+        lda #>str_close_x
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2           ; bank 1 (segment CODE)
+        lda #<WM_CLOSE_STR
+        sta VRAM_OP_ADDR_LO
+        lda #>WM_CLOSE_STR
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI      ; SDRAM $011080
+        lda #$02                 ; len = 2 ("X" + null)
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+
         ; ── OS-2.e.2 : self-tests console (scroll + CR) AVANT clear_screen ──
         ; (le clear suivant efface l'écran ; les résultats vont en bank 1).
         ; Scroll : 'S' en ligne1/col1 ($BBA9) doit remonter ligne0/col1 ($BB81).
@@ -1138,7 +1172,7 @@ kernel_entry:
         ; ── SP-3.e self-test : window manager + souris (ADR-24) ──────
         jsr kernel_mouse_init
         jsr kernel_wm_init
-        ; fenêtre 0 @ (100,100, 80×60)
+        ; fenêtre 0 @ (100,100, 80×60) — titre "OricOS" (SP-3.f)
         rep #$20
         lda #100
         sta WM_ARG_X
@@ -1148,9 +1182,13 @@ kernel_entry:
         lda #60
         sta WM_ARG_H
         sep #$20
+        lda #<str_win0_title     ; SP-3.f : titre fenêtre 0 = "OricOS"
+        sta WM_ARG_TITLE_LO
+        lda #>str_win0_title
+        sta WM_ARG_TITLE_HI
         jsr kernel_wm_add
         sta WM_TEST_RES+0       ; id0 = 0
-        ; fenêtre 1 @ (300,300, 80×60)
+        ; fenêtre 1 @ (300,300, 80×60) — titre "Editor" (SP-3.f)
         rep #$20
         lda #300
         sta WM_ARG_X
@@ -1160,6 +1198,10 @@ kernel_entry:
         lda #60
         sta WM_ARG_H
         sep #$20
+        lda #<str_win1_title     ; SP-3.f : titre fenêtre 1 = "Editor"
+        sta WM_ARG_TITLE_LO
+        lda #>str_win1_title
+        sta WM_ARG_TITLE_HI
         jsr kernel_wm_add
         sta WM_TEST_RES+1       ; id1 = 1
         ; hit-test (110,110) → 0
@@ -2866,6 +2908,15 @@ tk_demo_ok:
 tk_demo_os:
         .byte "OricOS", $00
 
+; SP-3.f : chaînes de titre pour les fenêtres démo (bank 1, ASCII null-term).
+str_win0_title:
+        .byte "OricOS", $00
+str_win1_title:
+        .byte "Editor", $00
+; SP-3.f : string close button "X\0" (uploadé en SDRAM WM_CLOSE_STR au boot)
+str_close_x:
+        .byte "X", $00
+
 ; kernel_fill_rect_aligned retiré en PH-cleanup-zombie (2026-05-09).
 ; Code legacy ADR-19 v2 (écrivait bank $80, plus visible compositor).
 ; Rendu rectangles = SYS_GFX_FILL_RECT (ADR-17/21) via GPU blitter.
@@ -4283,6 +4334,12 @@ kernel_wm_init:
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
         lda #$FF
         sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
+        ; SP-3.f : vide la table des flags de titres (4 slots × 1B = $00)
+        lda #$00
+        sta WM_TITLES+0
+        sta WM_TITLES+1
+        sta WM_TITLES+2
+        sta WM_TITLES+3
         ldx #$00
 wm_init_lp:
         lda #$00
@@ -4295,7 +4352,8 @@ wm_init_lp:
         bcc wm_init_lp
         rts
 
-; ── kernel_wm_add : args WM_ARG_X/Y/W/H (16-bit) → A = id ou $FF ────
+; ── kernel_wm_add : args WM_ARG_X/Y/W/H (16-bit), WM_ARG_TITLE_LO/HI → A = id ou $FF ────
+; SP-3.f : WM_ARG_TITLE_LO/HI = pointer 16-bit vers chaîne titre en bank 1 ($0000 = pas de titre).
 .export kernel_wm_add
 kernel_wm_add:
         lda WM_COUNT
@@ -4317,6 +4375,43 @@ kernel_wm_add:
         lda WM_ARG_H
         sta WM_TABLE+WM_OFF_H,X
         sep #$20
+        ; SP-3.f : si titre fourni, uploader en SDRAM $012000+slot*$100, set flag.
+        ; WM_ARG_TITLE_LO/HI = 0 → pas de titre. != 0 → upload (hors IRQ = safe).
+        lda WM_ARG_TITLE_LO
+        ora WM_ARG_TITLE_HI
+        beq wm_add_notitle       ; pas de titre → flag = 0
+        ; Upload du titre (bank 1) vers SDRAM $012000 + id*$100.
+        ; DP_PCPTR = pointer titre (bank 1)
+        lda WM_ARG_TITLE_LO
+        sta DP_PCPTR
+        lda WM_ARG_TITLE_HI
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2           ; bank 1
+        ; SDRAM addr : LO=$00, MID=$20+id, HI=$01 → $012000+id*$100
+        lda #$00
+        sta VRAM_OP_ADDR_LO
+        lda DP_TMP               ; id
+        clc
+        adc #WM_SDRAM_TITLE_BASE_MID ; $20 + id = $20/$21/$22/$23
+        sta VRAM_OP_ADDR_MID
+        lda #$01
+        sta VRAM_OP_ADDR_HI      ; bank $01 SDRAM
+        lda #24                  ; max 24 chars + null (tronqué si plus long)
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+        ; Set flag titre = $01 (présent)
+        ldx DP_TMP               ; id
+        lda #$01
+        sta WM_TITLES,X
+        bra wm_add_done
+wm_add_notitle:
+        ldx DP_TMP               ; id
+        lda #$00
+        sta WM_TITLES,X          ; flag = $00 (pas de titre)
+wm_add_done:
         lda WM_COUNT
         inc a
         sta WM_COUNT
@@ -4414,6 +4509,60 @@ kernel_wm_move_focused:
         sta WM_TABLE+WM_OFF_Y,X
         sep #$20
 wm_mv_done:
+        rts
+
+; ── kernel_wm_close : ferme une fenêtre (SP-3.f v0.2) ─────────────────
+; A = id de la fenêtre à fermer. Retire le slot (flags=0) et met à jour
+; WM_COUNT, WM_FOCUS, WM_TITLES[slot].
+; Note v1 : pas de compaction de table — les slots restent en place,
+; WM_COUNT décrémenté. Hit-test/redraw sautent les slots sans WM_F_USED.
+; Modifie A, X.
+.export kernel_wm_close
+kernel_wm_close:
+        cmp #WM_MAX              ; id >= WM_MAX ? → ignore
+        bcs wm_close_done
+        sta DP_TMP               ; sauve id
+        jsr kernel_wm_offset     ; X = id*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq wm_close_done        ; déjà libre → no-op
+        ; Clear slot : flags = 0
+        lda #$00
+        sta WM_TABLE+WM_OFF_FLAGS,X
+        ; Efface le flag titre du slot (SP-3.f : 1B seulement)
+        lda DP_TMP
+        tax
+        lda #$00
+        sta WM_TITLES,X
+        ; Décrémente WM_COUNT (saturé à 0)
+        lda WM_COUNT
+        beq wm_close_done
+        dec a
+        sta WM_COUNT
+        ; Mise à jour focus : si la fenêtre fermée avait le focus →
+        ; chercher le premier slot USED, sinon garder.
+        lda DP_TMP
+        cmp WM_FOCUS
+        bne wm_close_done        ; pas le focus → fin
+        lda #$FF
+        sta WM_FOCUS             ; perd le focus par défaut
+        ; Cherche un nouveau focus (premier slot USED)
+        ldy #$00
+wm_close_find_focus:
+        tya
+        cmp #WM_MAX
+        bcs wm_close_done
+        jsr kernel_wm_offset     ; X = y*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq wm_close_next
+        tya
+        sta WM_FOCUS             ; nouveau focus = premier slot USED
+        bra wm_close_done
+wm_close_next:
+        iny
+        bra wm_close_find_focus
+wm_close_done:
         rts
 
 ; ── kernel_gfx_fill_rect16 : FILL_RECT16 GPU (coords 16-bit, ADR-21 v0.2) ──
@@ -4563,12 +4712,120 @@ wm_rd_setcol:
         lda WM_TITLE_COL        ; lightblue (focus) ou darkgray (non focus)
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+
+        ; ── SP-3.f v0.1 : titre dans la titlebar ─────────────────────
+        ; Lit le pointer titre du slot Y (encore valide ici).
+        ; Utilise WIN_SLOT pour passer le slot à _wm_draw_title (Y clobbé).
+        tya
+        sta WIN_SLOT
+
+        ; ── SP-3.f v0.2 : bouton fermer "×" en haut à droite ─────────
+        ; Position : x = WIN_X + WIN_W - 10, y = WIN_Y + 3.
+        ; Dessine via TEXT16 avec string WM_CLOSE_STR "×\0" (uploadé au boot).
+        ; Rappel : WM_ARG_X/Y/W/H posés pour la titlebar (h=12, x=win_x...).
+        ; On réutilise WM_ARG_X (= win_x) + WM_ARG_W (= win_w) via lecture table.
+        ; Calcul abs simplifié : utilise les valeurs ZP WM_ARG_X/W.
+        jsr _wm_draw_title_and_close  ; dessine titre + bouton X (SP-3.f)
         ply
 wm_rd_next:
         iny
         bra wm_rd_loop
 wm_rd_done:
         jmp _wm_draw_all_widgets   ; SP-3.d v0.2 : widgets après les fenêtres
+
+; ── _wm_draw_title_and_close : dessine le titre + bouton × dans la titlebar ──
+; SP-3.f v0.1 (titre) + v0.2 (bouton fermer).
+; Pré-cond : WIN_SLOT = id du slot courant. WM_ARG_X/Y/W posés (window coords).
+; GFX_BASE déjà set à $100000. Modifie A, X (Y clobbé par GPU helpers).
+_wm_draw_title_and_close:
+        ; ── Titre (v0.1) ──────────────────────────────────────────────
+        ; Vérifie le flag WM_TITLES[slot] (1B : $01=titre présent, $00=absent).
+        ; Le titre est en SDRAM $012000 + slot*$100 (uploadé par kernel_wm_add,
+        ; hors IRQ context : pas de corruption de DP_PCPTR depuis l'IRQ handler).
+        lda WIN_SLOT
+        tax
+        lda WM_TITLES,X          ; flag : $01 = titre présent
+        beq _wm_dtc_close        ; $00 → pas de titre → bouton X direct
+
+        ; TEXT16 : dessine le titre depuis SDRAM $012000+slot*$100 à (win_x+4, win_y+3).
+        ; Calcule l'adresse SDRAM du titre : MID = $20 + slot, LO = $00, HI = $01.
+        lda WIN_SLOT
+        clc
+        adc #WM_SDRAM_TITLE_BASE_MID ; $20 + slot
+        sta GFX_STR_MID
+        lda #$00
+        sta GFX_STR_LO
+        lda #$01
+        sta GFX_STR_HI           ; str = $012000 + slot*$100
+
+        ; Coords TEXT16 : win_x+4, win_y+3 (lus depuis WM_TABLE)
+        lda WIN_SLOT
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc #4
+        sta WM_ARG_X             ; win_x + 4
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc #3
+        sta WM_ARG_Y             ; win_y + 3
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI          ; base = $100000 (XVGA desktop)
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI          ; font = $010000 (bank 1)
+        lda #$0F
+        sta GFX_COLOR            ; white
+        jsr kernel_gfx_text16    ; GPU_OP_TEXT16 (WM_ARG_X/Y = coords 16-bit)
+
+_wm_dtc_close:
+        ; ── Bouton fermer "X" (v0.2) ──────────────────────────────────
+        ; Position : x = win_x + win_w - 10, y = win_y + 3.
+        ; Relit depuis la table.
+        lda WIN_SLOT
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X  ; win_x
+        clc
+        adc WM_TABLE+WM_OFF_W,X  ; + win_w
+        sec
+        sbc #10                  ; -10 = bouton x
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X  ; win_y
+        clc
+        adc #3
+        sta WM_ARG_Y             ; win_y + 3
+        sep #$20
+        ; TEXT16 avec string WM_CLOSE_STR "X\0" (uploadé au boot en SDRAM)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI
+        lda #<WM_CLOSE_STR
+        sta GFX_STR_LO
+        lda #>WM_CLOSE_STR
+        sta GFX_STR_MID
+        lda #$01
+        sta GFX_STR_HI           ; bank $01 → WM_CLOSE_STR = $011080
+        lda #$0C                 ; lightred : bouton X distinct du titre blanc
+        sta GFX_COLOR
+        jsr kernel_gfx_text16    ; SP-3.f v0.2 : dessine "X" bouton fermer
+        rts
 
 ; ── kernel_wm_redraw_drag : redraw incrémental pour le drag ────────────
 ; Efface seulement l'ancien rect de la fenêtre (WM_DRAG_OLD_*) en bleu,
@@ -4635,7 +4892,9 @@ wm_step_pressed:
         ; bouton gauche tenu. Était-il déjà tenu (drag) ou nouveau clic ?
         lda MOUSE_PREV_BTN
         and #MOU2_BTN_LEFT
-        bne wm_step_drag         ; déjà tenu → drag (si armé)
+        beq wm_step_not_drag     ; pas déjà tenu → nouveau clic
+        jmp wm_step_drag         ; déjà tenu → drag (si armé)
+wm_step_not_drag:
         ; v0.5 : le menu intercepte le nouveau clic en priorité.
         jsr kernel_menu_handle_click
         cmp #$00
@@ -4661,6 +4920,22 @@ wm_step_newclick:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_hit:
+        ; SP-3.f v0.2 : avant le focus/drag, tester si le clic touche le bouton X.
+        ; hit_test a retourné l'id en A. On le sauve et on teste la close zone.
+        sta WIN_SLOT             ; sauve id fenêtre hit
+        jsr _wm_close_btn_hit    ; teste si (MOUSE_X, MOUSE_Y) ∈ zone bouton X
+        cmp #$00
+        beq wm_step_normal_hit   ; non → traitement normal (focus/drag)
+        ; Clic sur le bouton X → ferme la fenêtre
+        lda WIN_SLOT
+        jsr kernel_wm_close
+        lda #$00
+        sta WM_DRAG_ARMED        ; désarme le drag
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_normal_hit:
+        lda WIN_SLOT
         jsr kernel_wm_set_focus
         lda #$01                 ; clic sur une fenêtre → arme le drag
         sta WM_DRAG_ARMED
@@ -4697,6 +4972,55 @@ _iac_go:
 _iac_call:
         ldx #$00
         jsr (.loword(WG_CB_VEC),X)  ; appel indirect (opcode $FC, vecteur en PBR=1)
+        rts
+
+; ── _wm_close_btn_hit : teste si (MOUSE_X,Y) touche le bouton X de WIN_SLOT ──
+; SP-3.f v0.2. Retourne A=1 si hit, A=0 sinon. Modifie A, X.
+; Zone bouton : x in [win_x+win_w-12 .. win_x+win_w-1], y in [win_y .. win_y+13]
+_wm_close_btn_hit:
+        lda WIN_SLOT
+        cmp #WM_MAX
+        bcs _cbh_no              ; slot invalide → no
+        jsr kernel_wm_offset     ; X = slot*10
+        rep #$20
+        ; close_btn_x = win_x + win_w - 12
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sec
+        sbc #12
+        sta WM_DP_TMP            ; close_btn_x_left
+        ; MOUSE_X >= close_btn_x_left ?
+        lda MOUSE_X
+        cmp WM_DP_TMP
+        bcc _cbh_no16            ; mouse < btn_x_left → no
+        ; MOUSE_X <= win_x+win_w-1 (= close_btn_x_left+11) ?
+        lda WM_DP_TMP
+        clc
+        adc #11
+        sta WM_DP_TMP+1          ; close_btn_x_right+1 (= win_x+win_w)
+        lda MOUSE_X
+        cmp WM_DP_TMP+1
+        bcs _cbh_no16            ; mouse >= right → no
+        ; MOUSE_Y >= win_y ?
+        lda MOUSE_Y
+        cmp WM_TABLE+WM_OFF_Y,X
+        bcc _cbh_no16            ; mouse_y < win_y → no
+        ; MOUSE_Y <= win_y+13 (titlebar h=12, zone 0..13) ?
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc #13
+        sta WM_DP_TMP
+        lda MOUSE_Y
+        cmp WM_DP_TMP
+        bcs _cbh_no16            ; mouse_y > win_y+13 → no
+        sep #$20
+        lda #$01                 ; hit !
+        rts
+_cbh_no16:
+        sep #$20
+_cbh_no:
+        lda #$00
         rts
 
 ; ── demo_ok_cb : callback démo du bouton "OK" — incrémente CB_FLAG. ────

@@ -174,6 +174,13 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       **callbacks de bouton** (`_wm_invoke_active_cb`, `jsr (vec,X)` en bank 1).
       v0.5 : **barre de menu déroulant** ; v0.6 : **multi-menu table-driven**
       (`menu_defs`, N menus : System/View).
+- [x] Chrome de fenêtre — SP-3.f : **titre dans titlebar** (v0.1) +
+      **bouton fermer** (v0.2). `kernel_wm_add` uploade le titre en SDRAM
+      (`WM_ARG_TITLE_LO/HI → $012000+slot×$100`), `WM_TITLES[slot]=$01`.
+      `_wm_draw_title_and_close` : TEXT16 titre blanc + "X" lightred.
+      `_wm_close_btn_hit` : hit-test zone close. `kernel_wm_close` : efface
+      slot, décrémente `WM_COUNT`, rebind focus. Fenêtres "OricOS"/"Editor".
+      Tests : `test_wm_window_title` + `test_wm_close_button`. 549 tests verts.
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).
