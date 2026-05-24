@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Added (OS-2.f.v2 clos 2026-05-24)
+- **OS-2.f.v2 clos** : table dispatch syscall v0.2 déjà en production dans
+  `kernel.s`. Tests C côté Phosphoric ajoutés :
+  `test_syscall_dispatch_invalid`, `test_syscall_yield`, `test_syscall_table_size`.
+  64 entrées × 2B à `$01:5750`, 18 syscalls câblés + 45 × `sys_invalid`.
+
 ### Added
 - **CI GitHub Actions** (`.github/workflows/ci.yml`) : build du kernel (cc65) à
   chaque push/PR. Phase 1 assainissement.
