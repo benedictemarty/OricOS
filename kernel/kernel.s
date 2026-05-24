@@ -4657,9 +4657,28 @@ wm_init_lp:
 kernel_wm_add:
         lda WM_COUNT
         cmp #WM_MAX
-        bcs wm_add_full
-        sta DP_TMP               ; id = WM_COUNT
+        bcc wm_add_scan_start
+        jmp wm_add_full
+wm_add_scan_start:
+        ; Cherche le premier slot libre (WM_F_USED=0) pour éviter les trous.
+        lda #$00
+wm_add_scan:
+        pha
         jsr kernel_wm_offset     ; X = id*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        bne wm_add_scan_next     ; occupé → suivant
+        pla
+        sta DP_TMP               ; id = premier slot libre
+        jsr kernel_wm_offset     ; X = id*10
+        bra wm_add_init
+wm_add_scan_next:
+        pla
+        inc a
+        cmp #WM_MAX
+        bcc wm_add_scan
+        bra wm_add_full          ; (ne devrait pas arriver si WM_COUNT < WM_MAX)
+wm_add_init:
         lda #(WM_F_USED | WM_F_VISIBLE)
         sta WM_TABLE+WM_OFF_FLAGS,X
         lda DP_TMP
@@ -4728,7 +4747,7 @@ kernel_wm_hit_test:
         ldy #$00
 wm_ht_loop:
         tya
-        cmp WM_COUNT             ; CMP abs long (CPY ne supporte pas le long)
+        cmp #WM_MAX              ; scan tous les slots (pas WM_COUNT : trous après close)
         bcs wm_ht_done
         jsr kernel_wm_offset     ; A=id → X = id*10
         lda WM_TABLE+WM_OFF_FLAGS,X
@@ -5453,7 +5472,7 @@ _wm_draw_windows:
         ldy #$00
 wm_rd_loop:
         tya
-        cmp WM_COUNT
+        cmp #WM_MAX              ; scan tous les slots (pas WM_COUNT : trous après close)
         bcs wm_rd_pass2
         cmp WM_FOCUS            ; fenêtre focus → réservée pour passe 2
         beq wm_rd_next
@@ -5806,8 +5825,8 @@ kernel_taskbar_draw:
         sta TB_I
 _tb_draw_loop:
         lda TB_I
-        cmp WM_COUNT
-        bcc _tb_draw_check       ; i < count → vérifie le slot
+        cmp #WM_MAX              ; scan tous les slots (pas WM_COUNT : trous après close)
+        bcc _tb_draw_check       ; i < WM_MAX → vérifie le slot
         jmp _tb_draw_done
 _tb_draw_check:
         ; Offset table = TB_I * WM_ENTSZ
