@@ -166,7 +166,8 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       clear plein écran). v0.8 : **couleur titlebar selon focus**
       (`WM_TITLE_COL`, focus=lightblue/non-focus=darkgray ; multi-dirty-rect
       jugé inutile — le focus-change fait déjà un full-redraw correct).
-- [ ] Toolkit minimal (frame, label, button) — SP-3.d.
+- [x] Toolkit minimal (frame, label, button) — SP-3.d v0.1 (`kernel_tk_label`/
+      `frame`/`button` + GPU TEXT16 coords 16-bit).
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).

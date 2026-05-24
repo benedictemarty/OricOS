@@ -412,6 +412,15 @@ WM_DRAG_OLD_Y    = $01597F       ; 2B
 WM_DRAG_OLD_W    = $015981       ; 2B
 WM_DRAG_OLD_H    = $015983       ; 2B
 WM_TITLE_COL     = $015985       ; 1B : couleur titlebar courante (focus/non-focus)
+; ── SP-3.d : temps toolkit (rect bouton + rect frame, distincts) ──────
+TK_X             = $015990       ; 2B : rect bouton
+TK_Y             = $015992       ; 2B
+TK_W             = $015994       ; 2B
+TK_H             = $015996       ; 2B
+TKF_X            = $015998       ; 2B : rect frame (distinct, frame appelé par bouton)
+TKF_Y            = $01599A       ; 2B
+TKF_W            = $01599C       ; 2B
+TKF_H            = $01599E       ; 2B
 WIN_TITLE_FOCUS  = $09           ; titlebar fenêtre focus : lightblue vif
 WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
@@ -460,6 +469,14 @@ GFX_FONT_HI      = $7B
 GFX_STR_LO       = $7C           ; string_addr 24-bit (null-terminated)
 GFX_STR_MID      = $7D
 GFX_STR_HI       = $7E
+
+; ── SP-3.d : toolkit (label/frame/button) — adresses SDRAM ─────────────
+TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)
+TK_STR_SCRATCH   = $011000       ; scratch SDRAM pour les chaînes de label
+GPU_OP_TEXT16    = $07           ; texte coords 16-bit (ADR-21, SP-3.d)
+TK_COL_BORDER    = $0F           ; frame : blanc
+TK_COL_BTN_FACE  = $07           ; bouton : lightgray
+TK_COL_BTN_TEXT  = $00           ; bouton : texte noir
 
 ; ─── VRAM cold device I/O (ADR-19, Sprint VRAM-2) ──────────────────
 ; Ports $0330-$033C en bank 0 (DBR=0).
@@ -1048,6 +1065,9 @@ kernel_entry:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
+        ; ── SP-3.d : upload la fonte (charset ASCII, 1024 o) en SDRAM pour le
+        ;    GPU TEXT/TEXT16 (toolkit). DP_PCPTR = bank1:CHARSET_SRC. ──────
+        jsr kernel_tk_font_init
 
         ; ── OS-2.e.2 : self-tests console (scroll + CR) AVANT clear_screen ──
         ; (le clear suivant efface l'écran ; les résultats vont en bank 1).
@@ -1166,6 +1186,40 @@ kernel_entry:
         ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres de la table) via GPU
         ; FILL_RECT16 à SDRAM $100000. Visible avec --xvga / --xvga-screenshot.
         jsr kernel_wm_redraw
+        ; ── SP-3.d : démo toolkit — label + bouton (x>255 prouve TEXT16) ──
+        rep #$20
+        lda #400
+        sta WM_ARG_X
+        lda #210
+        sta WM_ARG_Y
+        sep #$20
+        lda #TK_COL_BORDER              ; label blanc
+        sta GFX_COLOR
+        lda #<tk_demo_label
+        sta DP_PCPTR
+        lda #>tk_demo_label
+        sta DP_PCPTR+1
+        lda #$01                       ; kernel linké 16-bit → bank explicite 1
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        ; bouton "OK" à (400,230, 60×24)
+        rep #$20
+        lda #400
+        sta WM_ARG_X
+        lda #230
+        sta WM_ARG_Y
+        lda #60
+        sta WM_ARG_W
+        lda #24
+        sta WM_ARG_H
+        sep #$20
+        lda #<tk_demo_ok
+        sta DP_PCPTR
+        lda #>tk_demo_ok
+        sta DP_PCPTR+1
+        lda #$01                       ; bank 1 explicite
+        sta DP_PCPTR+2
+        jsr kernel_tk_button
         jsr kernel_wm_draw_cursor       ; v0.5 : curseur initial
 
         jsr kernel_clear_screen
@@ -2755,6 +2809,12 @@ mini_font_S:
 mini_text_OS:
         .byte 'O', 'S', $00
 
+; SP-3.d : chaînes démo toolkit (bank 1, ASCII null-term).
+tk_demo_label:
+        .byte "OricOS Toolkit", $00
+tk_demo_ok:
+        .byte "OK", $00
+
 ; kernel_fill_rect_aligned retiré en PH-cleanup-zombie (2026-05-09).
 ; Code legacy ADR-19 v2 (écrivait bank $80, plus visible compositor).
 ; Rendu rectangles = SYS_GFX_FILL_RECT (ADR-17/21) via GPU blitter.
@@ -3147,6 +3207,282 @@ gfx_text_wait:
         inx
         bne gfx_text_wait
 gfx_text_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  SP-3.d — Toolkit minimal (label / frame / button) sur XVGA
+; ════════════════════════════════════════════════════════════════════
+
+; ── kernel_tk_font_init : upload la fonte ASCII (CHARSET_SRC, 1024 o) en
+;    SDRAM TK_FONT_ADDR pour le GPU TEXT/TEXT16. Appelé une fois au boot.
+.export kernel_tk_font_init
+kernel_tk_font_init:
+        lda #<CHARSET_SRC
+        sta DP_PCPTR
+        lda #>CHARSET_SRC
+        sta DP_PCPTR+1
+        lda #^CHARSET_SRC
+        sta DP_PCPTR+2
+        lda #<TK_FONT_ADDR
+        sta VRAM_OP_ADDR_LO
+        lda #>TK_FONT_ADDR
+        sta VRAM_OP_ADDR_MID
+        lda #^TK_FONT_ADDR
+        sta VRAM_OP_ADDR_HI
+        lda #$00
+        sta VRAM_OP_LEN_LO
+        lda #$04                 ; LEN = $0400 = 1024
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+        rts
+
+; ── kernel_gfx_text16 : GPU TEXT coords 16-bit (ADR-21, SP-3.d) ────────
+; Args : GFX_BASE/FONT/STR (24-bit SDRAM), WM_ARG_X/Y (16-bit ≤1023),
+;        GFX_COLOR (4-bit). ARG4 packé = color<<20 | y<<10 | x. Modifie A.
+.export kernel_gfx_text16
+kernel_gfx_text16:
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        lda GFX_FONT_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_FONT_MID
+        sta GPU_ARG2_MID_IO
+        lda GFX_FONT_HI
+        sta GPU_ARG2_HI_IO
+        lda GFX_STR_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_STR_MID
+        sta GPU_ARG3_MID_IO
+        lda GFX_STR_HI
+        sta GPU_ARG3_HI_IO
+        ; ARG4_LO = x[7:0]
+        lda WM_ARG_X
+        sta GPU_ARG4_LO_IO
+        ; ARG4_MID = (y[5:0]<<2) | x[9:8]
+        lda WM_ARG_X+1
+        and #$03
+        sta DP_TMP
+        lda WM_ARG_Y
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG4_MID_IO
+        ; ARG4_HI = (color<<4) | y[9:6]
+        lda WM_ARG_Y             ; y[7:0] >> 6 → bits0,1 = y[6],y[7]
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_Y+1          ; y[9:8] → <<2 = bits2,3
+        and #$03
+        asl a
+        asl a
+        ora DP_TMP              ; y[9:6]
+        sta DP_TMP
+        lda GFX_COLOR
+        asl a
+        asl a
+        asl a
+        asl a                   ; color<<4
+        ora DP_TMP
+        sta GPU_ARG4_HI_IO
+        lda #GPU_OP_TEXT16
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        ldx #$00
+gfx_t16_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_t16_done
+        inx
+        bne gfx_t16_wait
+gfx_t16_done:
+        rts
+
+; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM
+;    TK_STR_SCRATCH via VRAM_DATA (auto-inc). Garde-fou 255 octets. ─────
+_tk_upload_str:
+        lda #<TK_STR_SCRATCH
+        sta VRAM_ADDR_LO_IO
+        lda #>TK_STR_SCRATCH
+        sta VRAM_ADDR_MID_IO
+        lda #^TK_STR_SCRATCH
+        sta VRAM_ADDR_HI_IO
+        rep #$10
+        ldy #$0000
+_tus_loop:
+        lda [DP_PCPTR],Y
+        sta VRAM_DATA_IO         ; écrit l'octet (null inclus) + auto-inc
+        beq _tus_done            ; Z = octet lu == 0 → terminateur écrit
+        iny
+        cpy #$00FF
+        bcc _tus_loop
+        lda #$00                 ; garde-fou : force terminateur
+        sta VRAM_DATA_IO
+_tus_done:
+        sep #$10
+        rts
+
+; ── kernel_tk_label : texte à (WM_ARG_X,Y), GFX_COLOR, chaîne [DP_PCPTR]
+;    (bank1, null-term). Base framebuffer = $100000. Modifie A,X,Y.
+.export kernel_tk_label
+kernel_tk_label:
+        jsr _tk_upload_str
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #^TK_FONT_ADDR
+        sta GFX_FONT_HI
+        lda #<TK_STR_SCRATCH
+        sta GFX_STR_LO
+        lda #>TK_STR_SCRATCH
+        sta GFX_STR_MID
+        lda #^TK_STR_SCRATCH
+        sta GFX_STR_HI
+        jsr kernel_gfx_text16
+        rts
+
+; ── kernel_tk_frame : cadre 2px autour de (WM_ARG_X/Y/W/H), GFX_COLOR. ─
+; Base = $100000. Modifie A,X,Y + TKF_*.
+.export kernel_tk_frame
+kernel_tk_frame:
+        rep #$20
+        lda WM_ARG_X
+        sta TKF_X
+        lda WM_ARG_Y
+        sta TKF_Y
+        lda WM_ARG_W
+        sta TKF_W
+        lda WM_ARG_H
+        sta TKF_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        ; bord haut : (x, y, w, 2)
+        rep #$20
+        lda TKF_X
+        sta WM_ARG_X
+        lda TKF_Y
+        sta WM_ARG_Y
+        lda TKF_W
+        sta WM_ARG_W
+        lda #2
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_gfx_fill_rect16
+        ; bord bas : (x, y+h-2, w, 2)
+        rep #$20
+        lda TKF_X
+        sta WM_ARG_X
+        lda TKF_Y
+        clc
+        adc TKF_H
+        sec
+        sbc #2
+        sta WM_ARG_Y
+        lda TKF_W
+        sta WM_ARG_W
+        lda #2
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_gfx_fill_rect16
+        ; bord gauche : (x, y, 2, h)
+        rep #$20
+        lda TKF_X
+        sta WM_ARG_X
+        lda TKF_Y
+        sta WM_ARG_Y
+        lda #2
+        sta WM_ARG_W
+        lda TKF_H
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_gfx_fill_rect16
+        ; bord droit : (x+w-2, y, 2, h)
+        rep #$20
+        lda TKF_X
+        clc
+        adc TKF_W
+        sec
+        sbc #2
+        sta WM_ARG_X
+        lda TKF_Y
+        sta WM_ARG_Y
+        lda #2
+        sta WM_ARG_W
+        lda TKF_H
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_gfx_fill_rect16
+        rts
+
+; ── kernel_tk_button : bouton (face + cadre + label centré gauche) ─────
+; Args : WM_ARG_X/Y/W/H, chaîne [DP_PCPTR] (bank1). Modifie A,X,Y,TK_*,TKF_*.
+.export kernel_tk_button
+kernel_tk_button:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. face lightgray (WM_ARG_* = rect du bouton, encore en place)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #TK_COL_BTN_FACE
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. cadre blanc
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #TK_COL_BORDER
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; 3. label noir à (x+4, y+2) — DP_PCPTR inchangé depuis l'appel.
+        rep #$20
+        lda TK_X
+        clc
+        adc #4
+        sta WM_ARG_X
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        sep #$20
+        lda #TK_COL_BTN_TEXT
+        sta GFX_COLOR
+        jsr kernel_tk_label
         rts
 
 ; ════════════════════════════════════════════════════════════════════

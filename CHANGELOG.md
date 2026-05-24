@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.1 — Toolkit minimal (label / frame / button)
+
+#### Added
+- **`kernel_gfx_text16`** : GPU TEXT coords 16-bit (ADR-21, opcode `$07`) —
+  packe `ARG4 = color<<20 | y<<10 | x` (x/y ≤1023). Permet du texte n'importe
+  où sur XVGA (le TEXT 8-bit limitait à x/y ≤255).
+- **`kernel_tk_font_init`** : upload la fonte ASCII (charset, 1024 o) en SDRAM
+  `$010000` au boot (hors zone self-test VRAM).
+- **`kernel_tk_label`** : texte à (x,y) 16-bit, couleur, chaîne bank 1 (copiée en
+  SDRAM scratch `$011000` via `_tk_upload_str`).
+- **`kernel_tk_frame`** : cadre 2px (4 bords via FILL_RECT16).
+- **`kernel_tk_button`** : face lightgray + cadre blanc + label noir.
+- Démo boot : label "OricOS Toolkit" + bouton "OK" à x=400 (prouve TEXT16).
+
+#### Note
+- Fonte/scratch en SDRAM `$010000`/`$011000` (et non `$002000`/`$003000` qui
+  collisionnaient avec le self-test VRAM read_block/DMA du boot).
+
+
 ### SP-3.e v0.8 — Couleur titlebar selon focus
 
 #### Added
