@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.2 — Widgets managés (attachés aux fenêtres)
+
+#### Added
+- **Table de widgets** (8 × 16 o, `$015A00`) : chaque widget a un parent (fenêtre),
+  type (label/button), rect relatif, couleur, chaîne (bank 1).
+- **`kernel_wm_add_widget`** : enregistre un widget attaché à une fenêtre.
+- **`_wm_draw_all_widgets`** : dessine les widgets à leur position absolue
+  (fenêtre parente + offset relatif), appelé **après** `_wm_draw_windows` (hook
+  dans `kernel_wm_redraw` ET `kernel_wm_redraw_drag`).
+- Démo boot : label "OricOS" + bouton "OK" attachés à la fenêtre 0.
+
+#### Changed
+- Les widgets **persistent** aux redraws et **suivent leur fenêtre au drag**
+  (vs démo flottante one-shot v0.1 qui disparaissait). `kernel_wm_init` reset
+  `WIDGET_COUNT`.
+
+
 ### Sprint 3.d v0.1 — Toolkit minimal (label / frame / button)
 
 #### Added

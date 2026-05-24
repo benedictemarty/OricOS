@@ -421,6 +421,24 @@ TKF_X            = $015998       ; 2B : rect frame (distinct, frame appelé par 
 TKF_Y            = $01599A       ; 2B
 TKF_W            = $01599C       ; 2B
 TKF_H            = $01599E       ; 2B
+; ── SP-3.d v0.2 : widgets managés (attachés à une fenêtre) ────────────
+; Table 8 widgets × 16 o à $015A00. Entrée :
+;   +0 flags(used) +1 parent_win +2 type(0=label,1=button) +3 color
+;   +4 rel_x(2) +6 rel_y(2) +8 rel_w(2) +10 rel_h(2) +12 str_off(2, bank1)
+WIDGET_TABLE     = $015A00       ; 8 × 16 = 128 o ($5A00-$5A7F)
+WIDGET_COUNT     = $015A80       ; 1B : nb widgets
+WIDGET_MAX       = 8
+WIDGET_ENTSZ     = 16
+WG_TYPE_LABEL    = $00
+WG_TYPE_BUTTON   = $01
+; temps de _wm_draw_all_widgets
+WG_I             = $015A90       ; 1B : index boucle
+WG_PARENT        = $015A91       ; 1B
+WG_TYPE          = $015A92       ; 1B
+WG_RELX          = $015A94       ; 2B
+WG_RELY          = $015A96       ; 2B
+WG_RELW          = $015A98       ; 2B
+WG_RELH          = $015A9A       ; 2B
 WIN_TITLE_FOCUS  = $09           ; titlebar fenêtre focus : lightblue vif
 WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
@@ -1183,43 +1201,54 @@ kernel_entry:
         lda MOUSE_BTN
         sta WM_TEST_RES+10
 
-        ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres de la table) via GPU
-        ; FILL_RECT16 à SDRAM $100000. Visible avec --xvga / --xvga-screenshot.
-        jsr kernel_wm_redraw
-        ; ── SP-3.d : démo toolkit — label + bouton (x>255 prouve TEXT16) ──
+        ; ── SP-3.d v0.2 : widgets managés attachés à la fenêtre 0 ─────
+        ; Enregistrés AVANT le redraw → dessinés avec la fenêtre, persistent
+        ; au drag (suivent la fenêtre). Label noir + bouton "OK".
+        lda #$00
+        sta WG_PARENT                   ; fenêtre 0
+        lda #WG_TYPE_LABEL
+        sta WG_TYPE
         rep #$20
-        lda #400
+        lda #6
         sta WM_ARG_X
-        lda #210
+        lda #16
         sta WM_ARG_Y
-        sep #$20
-        lda #TK_COL_BORDER              ; label blanc
-        sta GFX_COLOR
-        lda #<tk_demo_label
-        sta DP_PCPTR
-        lda #>tk_demo_label
-        sta DP_PCPTR+1
-        lda #$01                       ; kernel linké 16-bit → bank explicite 1
-        sta DP_PCPTR+2
-        jsr kernel_tk_label
-        ; bouton "OK" à (400,230, 60×24)
-        rep #$20
-        lda #400
-        sta WM_ARG_X
-        lda #230
-        sta WM_ARG_Y
-        lda #60
+        lda #0
         sta WM_ARG_W
-        lda #24
+        lda #0
+        sta WM_ARG_H
+        sep #$20
+        lda #$00                        ; label noir sur corps lightgray
+        sta GFX_COLOR
+        lda #<tk_demo_os
+        sta DP_PCPTR
+        lda #>tk_demo_os
+        sta DP_PCPTR+1
+        jsr kernel_wm_add_widget
+        ; bouton "OK" rel(6,34, 44×18)
+        lda #$00
+        sta WG_PARENT
+        lda #WG_TYPE_BUTTON
+        sta WG_TYPE
+        rep #$20
+        lda #6
+        sta WM_ARG_X
+        lda #34
+        sta WM_ARG_Y
+        lda #44
+        sta WM_ARG_W
+        lda #18
         sta WM_ARG_H
         sep #$20
         lda #<tk_demo_ok
         sta DP_PCPTR
         lda #>tk_demo_ok
         sta DP_PCPTR+1
-        lda #$01                       ; bank 1 explicite
-        sta DP_PCPTR+2
-        jsr kernel_tk_button
+        jsr kernel_wm_add_widget
+
+        ; SP-3.e v0.3 : dessine le desktop XVGA (fenêtres + widgets) via GPU
+        ; FILL_RECT16 à SDRAM $100000. Visible avec --xvga / --xvga-screenshot.
+        jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor       ; v0.5 : curseur initial
 
         jsr kernel_clear_screen
@@ -2814,6 +2843,8 @@ tk_demo_label:
         .byte "OricOS Toolkit", $00
 tk_demo_ok:
         .byte "OK", $00
+tk_demo_os:
+        .byte "OricOS", $00
 
 ; kernel_fill_rect_aligned retiré en PH-cleanup-zombie (2026-05-09).
 ; Code legacy ADR-19 v2 (écrivait bank $80, plus visible compositor).
@@ -3485,6 +3516,130 @@ kernel_tk_button:
         jsr kernel_tk_label
         rts
 
+; ── kernel_wm_add_widget : enregistre un widget managé (SP-3.d v0.2) ───
+; Args : WG_PARENT (id fenêtre), WG_TYPE (0=label,1=button),
+;        WM_ARG_X/Y/W/H (rect RELATIF à la fenêtre), GFX_COLOR (label),
+;        DP_PCPTR lo/hi (offset chaîne bank1). Append à WIDGET_COUNT.
+.export kernel_wm_add_widget
+kernel_wm_add_widget:
+        lda WIDGET_COUNT
+        cmp #WIDGET_MAX
+        bcs _waw_full
+        asl a
+        asl a
+        asl a
+        asl a                    ; offset = COUNT*16
+        tax
+        lda #$01
+        sta WIDGET_TABLE+0,X
+        lda WG_PARENT
+        sta WIDGET_TABLE+1,X
+        lda WG_TYPE
+        sta WIDGET_TABLE+2,X
+        lda GFX_COLOR
+        sta WIDGET_TABLE+3,X
+        rep #$20
+        lda WM_ARG_X
+        sta WIDGET_TABLE+4,X
+        lda WM_ARG_Y
+        sta WIDGET_TABLE+6,X
+        lda WM_ARG_W
+        sta WIDGET_TABLE+8,X
+        lda WM_ARG_H
+        sta WIDGET_TABLE+10,X
+        sep #$20
+        lda DP_PCPTR
+        sta WIDGET_TABLE+12,X
+        lda DP_PCPTR+1
+        sta WIDGET_TABLE+13,X
+        lda WIDGET_COUNT
+        inc a
+        sta WIDGET_COUNT
+_waw_full:
+        rts
+
+; ── _wm_draw_all_widgets : redessine tous les widgets à leur position
+;    absolue (fenêtre parente + offset relatif). Appelé après les fenêtres
+;    → widgets persistent et suivent leur fenêtre au drag. Modifie A,X,Y.
+_wm_draw_all_widgets:
+        lda #$00
+        sta WG_I
+_wdw_loop:
+        lda WG_I
+        cmp WIDGET_COUNT
+        bcc _wdw_go
+        rts                      ; plus de widget → fin
+_wdw_go:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; offset entrée
+        lda WIDGET_TABLE+0,X
+        and #$01
+        bne _wdw_used            ; slot occupé → dessiner
+        jmp _wdw_next            ; libre (branche longue)
+_wdw_used:
+        lda WIDGET_TABLE+1,X
+        sta WG_PARENT
+        lda WIDGET_TABLE+2,X
+        sta WG_TYPE
+        lda WIDGET_TABLE+3,X
+        sta GFX_COLOR
+        rep #$20
+        lda WIDGET_TABLE+4,X
+        sta WG_RELX
+        lda WIDGET_TABLE+6,X
+        sta WG_RELY
+        lda WIDGET_TABLE+8,X
+        sta WG_RELW
+        lda WIDGET_TABLE+10,X
+        sta WG_RELH
+        sep #$20
+        lda WIDGET_TABLE+12,X
+        sta DP_PCPTR
+        lda WIDGET_TABLE+13,X
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        ; fenêtre parente visible ?
+        lda WG_PARENT
+        jsr kernel_wm_offset     ; X = parent*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #(WM_F_USED | WM_F_VISIBLE)
+        cmp #(WM_F_USED | WM_F_VISIBLE)
+        beq _wdw_vis
+        jmp _wdw_next            ; fenêtre absente/invisible (branche longue)
+_wdw_vis:
+        ; abs = win.xy + rel.xy
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WG_RELX
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WG_RELY
+        sta WM_ARG_Y
+        lda WG_RELW
+        sta WM_ARG_W
+        lda WG_RELH
+        sta WM_ARG_H
+        sep #$20
+        lda WG_TYPE
+        bne _wdw_btn
+        jsr kernel_tk_label
+        bra _wdw_next
+_wdw_btn:
+        jsr kernel_tk_button
+_wdw_next:
+        lda WG_I
+        inc a
+        sta WG_I
+        jmp _wdw_loop
+_wdw_done:
+        rts
+
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_window_draw — dessine 1 fenêtre rectangulaire (Sprint 3.c)
 ; ════════════════════════════════════════════════════════════════════
@@ -3661,6 +3816,7 @@ kernel_wm_offset:
 kernel_wm_init:
         lda #$00
         sta WM_COUNT
+        sta WIDGET_COUNT         ; SP-3.d v0.2 : aucune widget au départ
         lda #$FF
         sta WM_FOCUS
         ldx #$00
@@ -3948,7 +4104,7 @@ wm_rd_next:
         iny
         bra wm_rd_loop
 wm_rd_done:
-        rts
+        jmp _wm_draw_all_widgets   ; SP-3.d v0.2 : widgets après les fenêtres
 
 ; ── kernel_wm_redraw_drag : redraw incrémental pour le drag ────────────
 ; Efface seulement l'ancien rect de la fenêtre (WM_DRAG_OLD_*) en bleu,
