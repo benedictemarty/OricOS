@@ -427,6 +427,9 @@ TKF_H            = $01599E       ; 2B
 ;   +4 rel_x(2) +6 rel_y(2) +8 rel_w(2) +10 rel_h(2) +12 str_off(2, bank1)
 WIDGET_TABLE     = $015A00       ; 8 × 16 = 128 o ($5A00-$5A7F)
 WIDGET_COUNT     = $015A80       ; 1B : nb widgets
+WIDGET_ACTIVE    = $015A81       ; 1B : widget bouton cliqué (actif) ou $FF
+TK_BTN_PRESSED   = $015A82       ; 1B : 0=normal 1=pressé (face couleur)
+TK_COL_BTN_PRESS = $08           ; bouton pressé : face darkgray
 WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
@@ -3483,7 +3486,14 @@ kernel_tk_button:
         sta GFX_BASE_MID
         lda #$10
         sta GFX_BASE_HI
+        ; v0.3 : face selon état pressé.
+        lda TK_BTN_PRESSED
+        beq _tkb_face_normal
+        lda #TK_COL_BTN_PRESS
+        bra _tkb_face_set
+_tkb_face_normal:
         lda #TK_COL_BTN_FACE
+_tkb_face_set:
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
         ; 2. cadre blanc
@@ -3631,6 +3641,17 @@ _wdw_vis:
         jsr kernel_tk_label
         bra _wdw_next
 _wdw_btn:
+        ; v0.3 : pressé si ce widget est le bouton actif.
+        lda WG_I
+        cmp WIDGET_ACTIVE
+        bne _wdw_btn_normal
+        lda #$01
+        sta TK_BTN_PRESSED
+        bra _wdw_btn_draw
+_wdw_btn_normal:
+        lda #$00
+        sta TK_BTN_PRESSED
+_wdw_btn_draw:
         jsr kernel_tk_button
 _wdw_next:
         lda WG_I
@@ -3639,6 +3660,92 @@ _wdw_next:
         jmp _wdw_loop
 _wdw_done:
         rts
+
+; ── _wm_widget_hit : cherche un widget BOUTON sous (MOUSE_X,MOUSE_Y) ───
+; Position absolue = fenêtre parente + offset relatif. Écrit WIDGET_ACTIVE
+; = index du bouton touché, ou $FF. Modifie A,X,Y,WG_*. (SP-3.d v0.3)
+_wm_widget_hit:
+        lda #$FF
+        sta WIDGET_ACTIVE
+        lda #$00
+        sta WG_I
+_wh_loop:
+        lda WG_I
+        cmp WIDGET_COUNT
+        bcc _wh_go
+        rts
+_wh_go:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+0,X
+        and #$01
+        bne _wh_used
+        jmp _wh_next
+_wh_used:
+        lda WIDGET_TABLE+2,X
+        cmp #WG_TYPE_BUTTON
+        beq _wh_isbtn
+        jmp _wh_next             ; seuls les boutons sont cliquables
+_wh_isbtn:
+        lda WIDGET_TABLE+1,X
+        sta WG_PARENT
+        rep #$20
+        lda WIDGET_TABLE+4,X
+        sta WG_RELX
+        lda WIDGET_TABLE+6,X
+        sta WG_RELY
+        lda WIDGET_TABLE+8,X
+        sta WG_RELW
+        lda WIDGET_TABLE+10,X
+        sta WG_RELH
+        sep #$20
+        lda WG_PARENT
+        jsr kernel_wm_offset     ; X = parent*10
+        rep #$20
+        ; abs_x = win.x + rel_x  (réutilise WG_RELX)
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WG_RELX
+        sta WG_RELX
+        lda MOUSE_X
+        cmp WG_RELX
+        bcc _wh_miss             ; MOUSE_X < abs_x
+        lda WG_RELX
+        clc
+        adc WG_RELW
+        sta WG_RELW              ; abs_x2
+        lda MOUSE_X
+        cmp WG_RELW
+        bcs _wh_miss             ; MOUSE_X >= abs_x2
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WG_RELY
+        sta WG_RELY              ; abs_y
+        lda MOUSE_Y
+        cmp WG_RELY
+        bcc _wh_miss
+        lda WG_RELY
+        clc
+        adc WG_RELH
+        sta WG_RELH              ; abs_y2
+        lda MOUSE_Y
+        cmp WG_RELH
+        bcs _wh_miss
+        ; HIT
+        sep #$20
+        lda WG_I
+        sta WIDGET_ACTIVE
+        rts
+_wh_miss:
+        sep #$20
+_wh_next:
+        lda WG_I
+        inc a
+        sta WG_I
+        jmp _wh_loop
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_window_draw — dessine 1 fenêtre rectangulaire (Sprint 3.c)
@@ -3819,6 +3926,7 @@ kernel_wm_init:
         sta WIDGET_COUNT         ; SP-3.d v0.2 : aucune widget au départ
         lda #$FF
         sta WM_FOCUS
+        sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
         ldx #$00
 wm_init_lp:
         lda #$00
@@ -4191,6 +4299,8 @@ wm_step_hit:
         jsr kernel_wm_set_focus
         lda #$01                 ; clic sur une fenêtre → arme le drag
         sta WM_DRAG_ARMED
+        ; v0.3 : bouton sous le curseur → WIDGET_ACTIVE (sinon $FF).
+        jsr _wm_widget_hit
         ; Focus changé → desktop modifié → full-redraw + curseur.
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor

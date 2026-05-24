@@ -169,7 +169,8 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - [x] Toolkit minimal (frame, label, button) — SP-3.d v0.1 (`kernel_tk_label`/
       `frame`/`button` + GPU TEXT16 coords 16-bit). v0.2 : **widgets managés**
       (`kernel_wm_add_widget` + `_wm_draw_all_widgets`) attachés aux fenêtres,
-      redessinés avec elles → suivent le drag.
+      redessinés avec elles → suivent le drag. v0.3 : **bouton cliquable**
+      (`_wm_widget_hit` → `WIDGET_ACTIVE`, face pressée darkgray).
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).

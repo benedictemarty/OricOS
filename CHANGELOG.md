@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.3 — Bouton cliquable (retour visuel pressé)
+
+#### Added
+- **`_wm_widget_hit`** : hit-test des widgets BOUTON sous (MOUSE_X,MOUSE_Y) à
+  leur position absolue (fenêtre + offset) → `WIDGET_ACTIVE` (index ou $FF).
+- **`kernel_wm_mouse_step`** (clic sur fenêtre) appelle `_wm_widget_hit` après
+  le focus → le bouton sous le curseur devient actif.
+- **`kernel_tk_button`** / `_wm_draw_all_widgets` : le bouton actif
+  (`WIDGET_ACTIVE`) est dessiné **pressé** (face darkgray `$08` vs lightgray
+  `$07`), via `TK_BTN_PRESSED`. `WIDGET_ACTIVE` reset par `kernel_wm_init`.
+
+
 ### Sprint 3.d v0.2 — Widgets managés (attachés aux fenêtres)
 
 #### Added
