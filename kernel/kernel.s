@@ -390,7 +390,10 @@ MOUSE_X          = $015930       ; 2B position absolue
 MOUSE_Y          = $015932       ; 2B
 MOUSE_BTN        = $015934       ; 1B boutons courants
 MOUSE_PREV_BTN   = $015935       ; 1B boutons frame précédente (edge-detect clic)
+MOUSE_DX         = $015936       ; 1B delta X signé par événement (lu de MOU2_DX)
+MOUSE_DY         = $015937       ; 1B delta Y signé par événement
 WM_TEST_RES      = $015940       ; sentinelle test SP-3.e (12 octets)
+NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
 ; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
 ; 4 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
@@ -3275,6 +3278,11 @@ kernel_mouse_read:
         sep #$20
         lda MOU2_BUTTONS
         sta MOUSE_BTN
+        ; Lit (et clear) les deltas par événement → MOUSE_DX/DY.
+        lda MOU2_DX
+        sta MOUSE_DX
+        lda MOU2_DY
+        sta MOUSE_DY
         lda #(MOU2_CT_IRQ_EN | $02)  ; clear event (deassert IRQ) + IRQ reste enable
         sta MOU2_CTRL
         rts
@@ -3596,12 +3604,13 @@ kernel_wm_mouse_step:
         jsr kernel_wm_redraw     ; focus changé → redessine
         rts
 wm_step_drag:
-        ; Drag : déplace la fenêtre focus du delta souris (MOU2 DX/DY).
-        lda MOU2_DX
-        jsr _sext8_to16          ; WM_ARG_DX = sign-extend(DX)
+        ; Drag : déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY,
+        ; lu par kernel_mouse_read → delta propre par IRQ, pas d'accumulation).
+        lda MOUSE_DX
+        jsr _sext8_to16          ; WM_ARG_DX = sign-extend(MOUSE_DX)
         sta WM_ARG_DX
         stx WM_ARG_DX+1
-        lda MOU2_DY
+        lda MOUSE_DY
         jsr _sext8_to16
         sta WM_ARG_DY
         stx WM_ARG_DY+1
@@ -3885,7 +3894,12 @@ irq_t1:
         sta TICK_COUNTER
         cmp #TICK_GOAL
         bcc do_switch
-        ; ≥ TICK_GOAL → arrêt propre (signal "boot OK" pour les tests)
+        ; ≥ TICK_GOAL. SP-3.e v0.4 : mode persistant (live) vs STP (tests).
+        ; Si NO_STP_FLAG == magic $A5 (posé par --kernel), on continue le
+        ; scheduler à l'infini (GUI interactive). Sinon STP (signal boot OK tests).
+        lda NO_STP_FLAG
+        cmp #$A5
+        beq do_switch
         stp
         bra *
 

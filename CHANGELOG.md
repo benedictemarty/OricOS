@@ -44,10 +44,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GPU_OP_FILL_RECT16` = $06.
 
 #### Note
-- Desktop XVGA visible : fenêtres aux positions 16-bit de la table (ex. (100,100),
-  (300,300)). v0.4 reporté : backing-store DMA (VRAM cold) + redraw incrémental
-  (dirty rects) au lieu du full-clear, couleur titlebar selon focus, drag interactif
-  continu (nécessite un main loop kernel persistant au lieu du STP démo).
+- Desktop XVGA visible : fenêtres aux positions 16-bit de la table.
+
+### SP-3.e v0.4 — Main loop persistant + drag fenêtre live
+
+#### Added
+- **Mode persistant** : le scheduler ne STP plus au tick 10 si `NO_STP_FLAG`
+  (`$01EF00`) = magic `$A5` (posé par Phosphoric `--kernel`). Le kernel tourne
+  indéfiniment → GUI interactive. Les tests (flag non posé) gardent le STP.
+- **`MOUSE_DX/DY`** : `kernel_mouse_read` lit+clear `MOU2_DX/DY` à chaque IRQ →
+  delta **par événement** (plus d'accumulation). `wm_mouse_step` drague la
+  fenêtre focus de ce delta → la fenêtre suit la souris.
+
+#### Note
+- Le drag live est fonctionnel : souris IRQ → `wm_mouse_step` (clic→focus,
+  drag→move + `wm_redraw`) → fenêtre déplacée visible (`--kernel --xvga`).
+- v0.5 reporté : backing-store DMA + redraw incrémental (dirty rects) au lieu
+  du full-clear à chaque événement ; couleur titlebar selon focus.
 
 ### OS-perf — Copie charset via MVN (block move)
 
