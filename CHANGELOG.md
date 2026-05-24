@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-24
 
+### Sprint 3.d v0.6 — Barre de menu multi (table-driven)
+
+#### Changed
+- **`kernel_menu_draw` / `kernel_menu_handle_click`** réécrits **table-driven** :
+  itèrent `menu_defs` (table statique bank1, N=2 menus × 16 o, lue via pointeur
+  24-bit pour éviter DBR). `MENU_OPEN` devient l'**index** du menu ouvert (`$FF`=fermé).
+- 2 menus : "System" (About/Clear) + "View" (Tile/Hide), callbacks distincts.
+- `_menu_setbase` : DP_PCPTR = `menu_defs + MENU_I*16`, bank $01.
+
+
 ### Sprint 3.d v0.5 — Barre de menu déroulant
 
 #### Added

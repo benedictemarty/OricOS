@@ -434,9 +434,12 @@ TK_COL_BTN_PRESS = $08           ; bouton pressé : face darkgray
 WG_CB            = $015A83       ; 2B : input add_widget (offset callback bank1, 0=aucun)
 WG_CB_VEC        = $015A85       ; 2B : vecteur pour jsr (abs,X) indirect
 CB_FLAG          = $015A87       ; 1B : compteur démo (clics sur "OK")
-; ── SP-3.d v0.5 : barre de menu déroulant (1 menu "System") ───────────
-MENU_OPEN        = $015A88       ; 1B : 0=fermé, 1=déroulé
+; ── SP-3.d v0.5/v0.6 : barre de menu déroulant (table de N menus) ─────
+MENU_OPEN        = $015A88       ; 1B : index menu ouvert, ou $FF=fermé
+MENU_I           = $015A89       ; 1B : index boucle menu
 MENU_BAR_H       = 14            ; hauteur barre de menu (px)
+MENU_N           = 2             ; nb de menus dans la barre
+MENU_ENTSZ       = 16            ; taille entrée menu_defs (octets)
 WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
@@ -3679,8 +3682,28 @@ _wdw_next:
 _wdw_done:
         jmp kernel_menu_draw     ; v0.5 : barre de menu par-dessus tout
 
-; ── kernel_menu_draw : barre de menu (haut) + dropdown si ouvert ───────
-; Dessinée en dernier (par-dessus fenêtres + widgets). Modifie A,X,Y.
+; ════════════════════════════════════════════════════════════════════
+;  SP-3.d v0.6 — Barre de menu déroulant table-driven (N menus)
+; ════════════════════════════════════════════════════════════════════
+
+; ── _menu_setbase : DP_PCPTR = menu_defs + MENU_I*16, bank $01. ───────
+_menu_setbase:
+        lda MENU_I
+        asl a
+        asl a
+        asl a
+        asl a                    ; MENU_I*16 (≤ (N-1)*16)
+        clc
+        adc #<menu_defs
+        sta DP_PCPTR
+        lda #>menu_defs
+        adc #$00
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        rts
+
+; ── kernel_menu_draw : barre (titres des N menus) + dropdown si ouvert ─
 .export kernel_menu_draw
 kernel_menu_draw:
         ; barre (0,0,1024,14) darkgray
@@ -3698,33 +3721,75 @@ kernel_menu_draw:
         sta GFX_BASE_MID
         lda #$10
         sta GFX_BASE_HI
-        lda #$08                 ; darkgray
+        lda #$08
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
-        ; titre "System" (4,3) blanc
+        ; titres
+        lda #$00
+        sta MENU_I
+_mdl_title:
+        lda MENU_I
+        cmp #MENU_N
+        bcs _mdl_drop
+        jsr _menu_setbase
+        ldy #2
+        lda [DP_PCPTR],Y         ; bar_x
         rep #$20
-        lda #4
+        and #$00FF
         sta WM_ARG_X
         lda #3
         sta WM_ARG_Y
         sep #$20
+        ldy #0
+        lda [DP_PCPTR],Y         ; title ptr lo
+        pha
+        ldy #1
+        lda [DP_PCPTR],Y         ; title ptr hi
+        sta DP_PCPTR+1
+        pla
+        sta DP_PCPTR             ; (DP_PCPTR+2 reste $01)
         lda #$0F
         sta GFX_COLOR
-        lda #<menu_t_system
-        sta DP_PCPTR
-        lda #>menu_t_system
-        sta DP_PCPTR+1
-        lda #$01
-        sta DP_PCPTR+2
         jsr kernel_tk_label
-        ; dropdown si ouvert
+        lda MENU_I
+        inc a
+        sta MENU_I
+        bra _mdl_title
+_mdl_drop:
         lda MENU_OPEN
-        bne _mdraw_open
+        cmp #$FF
+        bne _mdl_open
         rts
-_mdraw_open:
-        ; fond (4,14,64,24) lightgray + cadre blanc
+_mdl_open:
+        sta MENU_I
+        jsr _menu_setbase
+        ; lit bar_x → WG_RELX, item0 ptr → WG_RELY, item1 ptr → WG_RELW
+        ldy #2
+        lda [DP_PCPTR],Y
         rep #$20
-        lda #4
+        and #$00FF
+        sta WG_RELX
+        sep #$20
+        ldy #4
+        lda [DP_PCPTR],Y
+        sta WG_RELY
+        ldy #5
+        lda [DP_PCPTR],Y
+        sta WG_RELY+1
+        ldy #8
+        lda [DP_PCPTR],Y
+        sta WG_RELW
+        ldy #9
+        lda [DP_PCPTR],Y
+        sta WG_RELW+1
+        ; fond dropdown (bar_x,14,64,24) lightgray
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda WG_RELX
         sta WM_ARG_X
         lda #MENU_BAR_H
         sta WM_ARG_Y
@@ -3737,7 +3802,7 @@ _mdraw_open:
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
         rep #$20
-        lda #4
+        lda WG_RELX
         sta WM_ARG_X
         lda #MENU_BAR_H
         sta WM_ARG_Y
@@ -3749,107 +3814,158 @@ _mdraw_open:
         lda #$0F
         sta GFX_COLOR
         jsr kernel_tk_frame
-        ; item "About" (8,16) noir
+        ; item0 (bar_x+4, 16) noir
         rep #$20
-        lda #8
+        lda WG_RELX
+        clc
+        adc #4
         sta WM_ARG_X
         lda #16
         sta WM_ARG_Y
         sep #$20
         lda #$00
         sta GFX_COLOR
-        lda #<menu_i_about
+        lda WG_RELY
         sta DP_PCPTR
-        lda #>menu_i_about
+        lda WG_RELY+1
         sta DP_PCPTR+1
         lda #$01
         sta DP_PCPTR+2
         jsr kernel_tk_label
-        ; item "Clear" (8,26) noir
+        ; item1 (bar_x+4, 26) noir
         rep #$20
-        lda #8
+        lda WG_RELX
+        clc
+        adc #4
         sta WM_ARG_X
         lda #26
         sta WM_ARG_Y
         sep #$20
         lda #$00
         sta GFX_COLOR
-        lda #<menu_i_clear
+        lda WG_RELW
         sta DP_PCPTR
-        lda #>menu_i_clear
+        lda WG_RELW+1
         sta DP_PCPTR+1
         lda #$01
         sta DP_PCPTR+2
         jsr kernel_tk_label
         rts
 
-; ── kernel_menu_handle_click : traite un clic vis-à-vis du menu. ───────
-; Lit MOUSE_X/Y. Retour : A=1 si le clic est consommé par le menu, A=0 sinon.
-; Ouvre/ferme le menu, invoque le callback de l'item cliqué. (SP-3.d v0.5)
+; ── kernel_menu_handle_click : ouvre/ferme + invoque l'item. ──────────
+; Lit MOUSE_X/Y. A=1 si consommé, A=0 sinon. (SP-3.d v0.6, table-driven)
 .export kernel_menu_handle_click
 kernel_menu_handle_click:
         lda MENU_OPEN
+        cmp #$FF
         bne _mhc_isopen
-        ; fermé : clic dans la barre (y < 14) ?
+        ; fermé : clic dans la barre (y<14) ?
         rep #$20
         lda MOUSE_Y
         cmp #MENU_BAR_H
         sep #$20
         bcc _mhc_inbar
-        lda #$00                 ; hors barre → non consommé
+        lda #$00
         rts
 _mhc_inbar:
-        ; titre "System" (x 4..60) ? → ouvrir
+        ; quel titre ? (x dans [bar_x, bar_x+64) pour un menu)
+        lda #$00
+        sta MENU_I
+_mhc_tl:
+        lda MENU_I
+        cmp #MENU_N
+        bcc _mhc_tl_go
+        lda #$01                 ; barre vide → consommé
+        rts
+_mhc_tl_go:
+        jsr _menu_setbase
+        ldy #2
+        lda [DP_PCPTR],Y
         rep #$20
+        and #$00FF
+        sta WG_RELX              ; bar_x
         lda MOUSE_X
-        cmp #4
-        bcc _mhc_bar_only
-        cmp #60
-        bcs _mhc_bar_only
-        sep #$20
-        lda #$01
+        cmp WG_RELX
+        bcc _mhc_tl_next
+        lda WG_RELX
+        clc
+        adc #64
+        sta WG_RELW
+        lda MOUSE_X
+        cmp WG_RELW
+        bcs _mhc_tl_next
+        sep #$20                 ; HIT titre MENU_I → ouvrir
+        lda MENU_I
         sta MENU_OPEN
         lda #$01
         rts
-_mhc_bar_only:
+_mhc_tl_next:
         sep #$20
-        lda #$01                 ; clic barre vide → consommé
-        rts
+        lda MENU_I
+        inc a
+        sta MENU_I
+        bra _mhc_tl
 _mhc_isopen:
-        ; ouvert : clic dans le dropdown (x 4..68, y 14..38) ?
+        sta MENU_I
+        jsr _menu_setbase
+        ldy #2
+        lda [DP_PCPTR],Y
         rep #$20
+        and #$00FF
+        sta WG_RELX              ; bar_x du menu ouvert
         lda MOUSE_X
-        cmp #4
+        cmp WG_RELX
         bcc _mhc_close
-        cmp #68
+        lda WG_RELX
+        clc
+        adc #64
+        sta WG_RELW
+        lda MOUSE_X
+        cmp WG_RELW
         bcs _mhc_close
         lda MOUSE_Y
         cmp #MENU_BAR_H
         bcc _mhc_close
         cmp #38
         bcs _mhc_close
-        ; item 0 (y 14..25) ou item 1 (y 26..37) ?
+        ; item0 (y<26) ou item1
         lda MOUSE_Y
         cmp #26
         sep #$20
-        bcs _mhc_item1
-        jsr menu_about_cb
-        bra _mhc_done
-_mhc_item1:
-        jsr menu_clear_cb
-_mhc_done:
-        lda #$00
-        sta MENU_OPEN
+        bcs _mhc_it1
+        ldy #6                   ; item0 callback
+        lda [DP_PCPTR],Y
+        sta WG_CB_VEC
+        ldy #7
+        lda [DP_PCPTR],Y
+        sta WG_CB_VEC+1
+        bra _mhc_invoke
+_mhc_it1:
+        ldy #10                  ; item1 callback
+        lda [DP_PCPTR],Y
+        sta WG_CB_VEC
+        ldy #11
+        lda [DP_PCPTR],Y
+        sta WG_CB_VEC+1
+_mhc_invoke:
+        lda #$FF
+        sta MENU_OPEN            ; ferme
+        lda WG_CB_VEC
+        ora WG_CB_VEC+1
+        beq _mhc_consumed
+        ldx #$00
+        jsr (.loword(WG_CB_VEC),X)
+_mhc_consumed:
         lda #$01
         rts
 _mhc_close:
         sep #$20
-        lda #$00
+        lda #$FF
         sta MENU_OPEN
-        lda #$01                 ; ferme + consomme
+        lda #$01
         rts
 
-; callbacks démo du menu
+; callbacks démo des menus
 menu_about_cb:
         lda #$AA
         sta CB_FLAG
@@ -3858,6 +3974,33 @@ menu_clear_cb:
         lda #$00
         sta CB_FLAG
         rts
+menu_tile_cb:
+        lda #$11
+        sta CB_FLAG
+        rts
+menu_hide_cb:
+        lda #$22
+        sta CB_FLAG
+        rts
+
+; ── menu_defs : table statique (bank1), MENU_N entrées de 16 octets ────
+; +0 title_ptr +2 bar_x +3 pad +4 item0_str +6 item0_cb +8 item1_str
+; +10 item1_cb +12 pad
+menu_defs:
+        .word menu_t_system      ; menu 0 "System"
+        .byte 4, 0
+        .word menu_i_about
+        .word menu_about_cb
+        .word menu_i_clear
+        .word menu_clear_cb
+        .res 4
+        .word menu_t_view        ; menu 1 "View"
+        .byte 76, 0
+        .word menu_i_tile
+        .word menu_tile_cb
+        .word menu_i_hide
+        .word menu_hide_cb
+        .res 4
 
 menu_t_system:
         .byte "System", $00
@@ -3865,6 +4008,12 @@ menu_i_about:
         .byte "About", $00
 menu_i_clear:
         .byte "Clear", $00
+menu_t_view:
+        .byte "View", $00
+menu_i_tile:
+        .byte "Tile", $00
+menu_i_hide:
+        .byte "Hide", $00
 
 ; ── _wm_widget_hit : cherche un widget BOUTON sous (MOUSE_X,MOUSE_Y) ───
 ; Position absolue = fenêtre parente + offset relatif. Écrit WIDGET_ACTIVE
@@ -4132,8 +4281,8 @@ kernel_wm_init:
         lda #$FF
         sta WM_FOCUS
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
-        lda #$00
-        sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé
+        lda #$FF
+        sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
         ldx #$00
 wm_init_lp:
         lda #$00

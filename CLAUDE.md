@@ -172,7 +172,8 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       redessinés avec elles → suivent le drag. v0.3 : **bouton cliquable**
       (`_wm_widget_hit` → `WIDGET_ACTIVE`, face pressée darkgray). v0.4 :
       **callbacks de bouton** (`_wm_invoke_active_cb`, `jsr (vec,X)` en bank 1).
-      v0.5 : **barre de menu déroulant** (`kernel_menu_draw`/`_handle_click`).
+      v0.5 : **barre de menu déroulant** ; v0.6 : **multi-menu table-driven**
+      (`menu_defs`, N menus : System/View).
 
 ### Sprint 4 — Userland C (llvm-mos requis ; non-trivial)
 - [ ] PoC llvm-mos 65C816 mode N (peut nécessiter PR upstream).
