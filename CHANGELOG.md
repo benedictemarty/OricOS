@@ -5,6 +5,33 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+revue-fine-OricOS] - 2026-05-25
+
+### Réduction dette/bugs (analyse fine OricOS, revue senior)
+
+#### Fixed
+- **`kernel/modules/kbd.s` — `kernel_kbd_ring_pop` : race producteur/consommateur**
+  (P1, régression du fix deadlock). Depuis le `cli` du handler COP, l'IRQ KBD2
+  peut préempter un syscall et appeler `kbd_poll → ring_push` EN PLEIN POP. Le
+  RMW partagé sur `KBD_RING_COUNT` (push `inc` / pop `dec`) perdait une mise à
+  jour et `DP_KBD_TMP` était écrasé par le push → ring corrompu / mauvais
+  keycode. Ajout d'une section critique `php; sei … plp` autour du pop (le
+  producteur étant uniquement l'IRQ, le masquage rend le pop atomique). `plp`
+  restaure le I de l'appelant (=0 en contexte COP → `WAI` de `sys_read_char`
+  toujours fonctionnel).
+
+#### Changed
+- **`kernel/modules/wm.s` — discipline largeur M/X aux dispatch indirects** (P3).
+  Ajout `.a8`/`.i8` en tête du bloc des handlers syscall. `.smart` (global) ne
+  peut pas propager la largeur à travers `jsr (syscall_table,X)` ; l'assertion
+  garantit que les `lda #imm` 8-bit des handlers (ex. `sys_invalid lda #$FF`)
+  sont encodés conformément au `sep #$30` runtime du dispatcher. Prévient la
+  classe de bug ca65 « tracking mode » déjà rencontrée en SP-3.h.
+
+563 tests verts. Dette restante identifiée (non traitée ici, plus gros rayon) :
+memory map bank 1 100% hardcodée (→ `.segment`/`.res`), réentrance ZP scratch
+au context-switch + écart ADR-14 16-TCB vs scheduler 2-tâches (socle OS-2.g v2).
+
 ## [Unreleased+oricos.h-SSOT] - 2026-05-25
 
 ### oricos.h — source unique de vérité pour les numéros de syscalls (P2 revue)

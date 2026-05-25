@@ -95,10 +95,20 @@ kpush_full:
 
 ; ── kernel_kbd_ring_pop : pop → A = keycode, ou A=$00 si vide ──────
 ; Modifie A, X. Préserve Y. Convention ADR-17 SYS_GET_KEY (A=keycode/0).
+;
+; Section critique (php/sei…plp) : depuis que le handler COP fait cli
+; (cf. handlers.s, fix deadlock SYS_READ_CHAR), l'IRQ KBD2 peut préempter
+; un syscall et appeler kernel_kbd_poll → kernel_kbd_ring_push EN PLEIN POP.
+; Sans masquage, le RMW partagé sur KBD_RING_COUNT (push inc / pop dec) perd
+; une mise à jour, et le scratch DP_KBD_TMP serait écrasé par le push. Le
+; producteur étant uniquement l'IRQ, masquer l'IRQ pendant le pop le rend
+; atomique. plp restaure le I de l'appelant (=0 en contexte COP, d'où WAI OK).
 .export kernel_kbd_ring_pop
 kernel_kbd_ring_pop:
         lda KBD_RING_COUNT
         beq kpop_empty
+        php                      ; sauve I
+        sei                      ; ── début section critique vs IRQ producteur ──
         lda KBD_RING_HEAD
         tax
         lda KBD_RING,X           ; A = keycode
@@ -110,7 +120,8 @@ kernel_kbd_ring_pop:
         lda KBD_RING_COUNT
         dec a
         sta KBD_RING_COUNT
-        lda DP_KBD_TMP           ; A = keycode
+        lda DP_KBD_TMP           ; reload keycode SOUS masque (sinon clobber par push)
+        plp                      ; ── fin section critique : restaure I ──
         rts
 kpop_empty:
         lda #$00

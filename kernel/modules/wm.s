@@ -2383,7 +2383,15 @@ _sext_pos:
 ; X arg1 est lu depuis DP_SYS_ARG_X (sauvé par le dispatcher).
 ; Y arg2 est lu depuis le registre Y (intact, non touché par dispatcher).
 ;
+; Largeur M/X : le dispatcher fait `sep #$30` (M=X=1, 8-bit) juste avant
+; `jsr (syscall_table,X)`. Mais .smart ne peut PAS propager cette largeur
+; à travers un saut INDIRECT → ca65 assumerait la largeur lexicale héritée
+; du code wm.s précédent (potentiellement 16-bit). On l'asserte ici pour que
+; les `lda #imm` 8-bit (ex. sys_invalid `lda #$FF`) soient encodés en 8-bit
+; conformément au runtime. (cf. dette M/X aux dispatch indirects, revue senior.)
 ; ════════════════════════════════════════════════════════════════════
+        .a8
+        .i8
 
 ; $00 — sys_invalid : syscall réservé ou hors-table (aussi fin de table) ─
 sys_invalid:
