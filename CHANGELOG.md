@@ -5,6 +5,31 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+sys-sleep-ms] - 2026-05-25
+
+### OS-2.g v2.b — SYS_SLEEP_MS : sleep bloquant piloté par le timer
+
+#### Changed
+- **`kernel/modules/wm.s` — `sys_sleep_ms`** : de stub (`rts`) à **blocage réel**.
+  Gate `SCHED_ACTIVE` (no-op en contexte boot). Pose `SLEEP_TICKS[CUR]` = durée,
+  permit, forge une resume frame (reprise après le COP, comme yield) et bascule
+  via `kernel_block_switch` (BLOCKED). v1 : argument en **ticks** (~0,5 ms/tick ;
+  conversion ms→ticks 16-bit reportée).
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_sleep_tick`** : appelé par l'IRQ T1 à
+  chaque tick ; décrémente `SLEEP_TICKS[pid]` des tâches endormies, les passe
+  `READY` à 0 (réveil timer).
+- **`kernel/kernel.s`** : `SLEEP_TICKS` ($015480, 16 o, garde `.assert` vs
+  CURSOR_ADDR), `TASK_F_CTR` ($01544B).
+- **`kernel/modules/handlers.s`** : `jsr kernel_sleep_tick` dans l'IRQ T1.
+- **`kernel/modules/alloc.s` — `task_f_entry`** : tâche dormeuse (inc + sleep 3
+  ticks en boucle). **`boot.s`** : crée task_f (pid 7).
+
+2ᵉ source de réveil (timer) après le clavier (g.5) → le modèle block/wake d'ADR-25
+est général. Validé : `TASK_F_CTR > 0` (task_f endormie puis réveillée) ;
+bitmap=$CF ; IDLE_CTR==0. 563 tests verts.
+
 ## [Unreleased+app-as-task] - 2026-05-25
 
 ### OS-2.g v2.b — apps userland comme tâches schedulées (kernel_app_spawn)

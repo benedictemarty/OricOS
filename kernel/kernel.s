@@ -40,6 +40,9 @@ TASK_B_CTR      = $015444
 TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
 TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
 TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
+TASK_F_CTR      = $01544B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (test SYS_SLEEP_MS)
+SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
+                                ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
                                 ; Signal dégénéré (1 attente clavier) ; généralisable en
                                 ; masque de signaux par TCB (ADR-25) si besoin.
@@ -776,4 +779,5 @@ T1_PERIOD_HI    = $10
 
 ; ── Ring clavier ($5860) + buffer secteur FAT ($5F60, 512 o) ──────────
 .assert KBD_RING + KBD_RING_SIZE   <= KBD_RING_HEAD,   error, "overlap KBD_RING"
+.assert SLEEP_TICKS + 16           <= CURSOR_ADDR,     error, "overlap SLEEP_TICKS/CURSOR_ADDR"
 .assert FS_BUFFER + 512            <= FS_INIT_RESULT,  error, "overlap FS_BUFFER (secteur 512o)"

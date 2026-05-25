@@ -469,6 +469,7 @@ kernel_entry:
         sta KBD_WAITER          ; g.5 : aucune tâche en attente clavier
         sta IDLE_PID            ; idle : pas encore créée (0)
         sta IDLE_CTR            ; idle : compteur 0
+        sta TASK_F_CTR          ; sleep : compteur tâche dormeuse 0
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04
@@ -577,6 +578,12 @@ kernel_entry:
         lda #$07                ; priorité la plus basse (info ; find_next gère via IDLE_PID)
         jsr kernel_task_create
         sta IDLE_PID            ; A = pid alloué pour l'idle
+        ; OS-2.g v2.b : tâche dormeuse task_f (pid 7) — exerce SYS_SLEEP_MS
+        ; (blocage/réveil piloté par le timer).
+        ldx #<task_f_entry
+        ldy #>task_f_entry
+        lda #$00
+        jsr kernel_task_create
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

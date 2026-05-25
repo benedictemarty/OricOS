@@ -2612,8 +2612,32 @@ sys_gfx_text:
         rts
 
 ; $12 — SYS_SLEEP_MS : X/Y = ms16 (stub v0.2) ────────────────────────
+; $12 — SYS_SLEEP_MS : X/Y = durée (OS-2.g v2.b) ─────────────────────
+; Blocage réel piloté par le timer : la tâche passe BLOCKED, SLEEP_TICKS[CUR]
+; = durée, rend le CPU ; l'IRQ T1 décrémente et la réveille à 0. Gate
+; SCHED_ACTIVE : en contexte boot (pas de scheduler/timer pour réveiller), no-op.
+; v1 : l'argument X est interprété en TICKS (≈0,5 ms/tick) ; conversion ms→ticks
+; 16-bit reportée (polish). Reprise = après le COP (l'app continue).
 sys_sleep_ms:
-        rts                     ; stub : pas de timer ms précis
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq ssm_block
+        rts                     ; scheduler inactif → sleep = no-op
+ssm_block:
+        sei                     ; section critique (set SLEEP_TICKS + chirurgie atomiques)
+        lda TASK_CUR            ; (LDX n'a pas de mode abs-long → via A+TAX)
+        tax
+        lda DP_SYS_ARG_X        ; durée (ticks v1) = arg X de l'appelant
+        sta f:SLEEP_TICKS,X     ; SLEEP_TICKS[CUR] = durée (abs-long,X)
+        jsr kernel_permit       ; fin du syscall côté FORBID (reprise = contexte app)
+        pla                     ; jette le retour du jsr (lo)
+        pla                     ; jette le retour du jsr (hi) → sommet frame COP
+        lda #$00
+        pha                     ; A_init (don't care)
+        lda DP_SYS_ARG_X
+        pha                     ; X_init (préserve l'arg)
+        phy                     ; Y_init
+        jmp kernel_block_switch ; BLOCKED + bascule ; le timer réveille à 0
 
 ; ════════════════════════════════════════════════════════════════════
 ;  NMI_HANDLER — bank 1 $5500

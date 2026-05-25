@@ -139,6 +139,9 @@ irq_t1:
         lda TICK_COUNTER
         inc a
         sta TICK_COUNTER
+        ; OS-2.g v2.b : décrémente les sommeils (SYS_SLEEP_MS), réveille à 0.
+        jsr kernel_sleep_tick
+        lda TICK_COUNTER        ; recharge (sleep_tick a clobbé A)
         cmp #TICK_GOAL
         bcc do_switch
         ; ≥ TICK_GOAL. SP-3.e v0.4 : mode persistant (live) vs STP (tests).

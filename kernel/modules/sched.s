@@ -249,6 +249,33 @@ kernel_block_switch:
         jmp restore_and_return
 
 ; ════════════════════════════════════════════════════════════════════
+;  kernel_sleep_tick — décrémente les sommeils, réveille à 0 (SYS_SLEEP_MS)
+; ════════════════════════════════════════════════════════════════════
+; Appelé par le handler IRQ T1 à chaque tick. Pour chaque pid 1..TCB_MAX-1 dont
+; SLEEP_TICKS[pid] > 0 : décrémente ; si atteint 0 → tcb[pid].STATE = READY.
+; Clobbers A, X, Y (restaurés par le handler IRQ).
+.export kernel_sleep_tick
+kernel_sleep_tick:
+        ldx #$01                ; pid = 1
+slt_loop:
+        lda f:SLEEP_TICKS,X     ; SLEEP_TICKS[pid] (abs-long,X)
+        beq slt_next            ; 0 → pas endormi
+        dec a
+        sta f:SLEEP_TICKS,X
+        bne slt_next            ; pas encore 0 → reste endormi
+        ; atteint 0 → réveille tcb[pid] (kernel_tcb_ptr préserve X)
+        txa
+        jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[pid]
+        lda #TASK_STATE_READY
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y
+slt_next:
+        inx
+        cpx #TCB_MAX            ; pids 1..TCB_MAX-1 (SLEEP_TICKS[16] = CURSOR_ADDR)
+        bcc slt_loop
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_kbd_wake — réveille la tâche bloquée sur le clavier (g.5)
 ; ════════════════════════════════════════════════════════════════════
 ; Appelé par le handler IRQ après kernel_kbd_poll. Si une tâche attend le

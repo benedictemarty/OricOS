@@ -170,6 +170,20 @@ task_e_entry:
         cop #$AA
         bra task_e_entry        ; filet
 
+; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
+; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
+; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.
+.export task_f_entry
+task_f_entry:
+        lda TASK_F_CTR
+        inc a
+        sta TASK_F_CTR
+        ldx #$03                ; 3 ticks (v1 : arg ~ ticks)
+        ldy #$00
+        lda #$12                ; SYS_SLEEP_MS
+        cop #$AA
+        bra task_f_entry
+
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
 ; quand aucune autre tâche n'est READY). Dort sur WAI jusqu'à l'IRQ suivante.
