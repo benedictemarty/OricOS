@@ -473,8 +473,13 @@ EVT_TMP           = $6E
 ; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
 ; (cohérent avec KBD_WAITER ; signaux multi-bits génériques = polish #1).
 EVENT_WAITER      = $015923
+; SP-3.n G.3c : mode « app-driven ». Posé à $A5 par SYS_MAIN_LOOP (une app pilote
+; la boucle d'événements) → le shell (kernel_wm_mouse_step) NE ferme plus une
+; fenêtre au clic close-box : l'app reçoit MSG_CLOSE et décide (modèle GeoWorks).
+; Sinon (desktop sans app, ex. tests SP-3.f) : auto-close conservé.
+WM_APP_DRIVEN     = $015924
 .assert EVENT_RING + EVENT_ENTRIES * EVENT_SIZE <= EVENT_RING_HEAD, error, "EVENT_RING recouvre ses pointeurs"
-.assert EVENT_WAITER < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
+.assert WM_APP_DRIVEN < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).

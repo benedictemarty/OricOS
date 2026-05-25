@@ -29,7 +29,8 @@ kernel_event_init:
         sta EVENT_RING_TAIL
         sta EVENT_RING_COUNT
         sta EVENT_WAITER         ; G.2 : aucune tâche en attente
-        rts
+        sta WM_APP_DRIVEN        ; G.3c : 0 = shell (auto-close) ; $A5 si une app
+        rts                      ;        pilote SYS_MAIN_LOOP
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_event_wake — réveille la tâche bloquée sur SYS_GET_NEXT_EVENT (G.2)

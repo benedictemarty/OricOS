@@ -1926,12 +1926,23 @@ wm_step_chrome_max:
         jsr kernel_wm_draw_cursor
         rts
 wm_step_chrome_close:
+        ; SP-3.n G.3c : en mode app-driven, le shell NE ferme PAS — l'app reçoit
+        ; MSG_CLOSE via le MainLoop et décide (modèle GeoWorks). Sinon (desktop
+        ; sans app) : auto-close conservé (SP-3.f, test_wm_close_button).
+        lda WM_APP_DRIVEN
+        cmp #$A5
+        beq wm_step_close_appdriven
         ; Clic sur le bouton X → ferme la fenêtre
         lda WIN_SLOT
         jsr kernel_wm_close
         lda #$00
         sta WM_DRAG_ARMED        ; désarme le drag
         jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
+        rts
+wm_step_close_appdriven:
+        lda #$00
+        sta WM_DRAG_ARMED        ; désarme le drag (pas de fermeture : app décide)
         jsr kernel_wm_draw_cursor
         rts
 wm_step_normal_hit:
@@ -2718,6 +2729,8 @@ sgne_got:
 ; (record brut + $DA = id fenêtre pour MSG_CONTENT). `kernel_wm_mouse_step`
 ; (IRQ) garde focus/drag automatiques — le MainLoop ne fait que traduire.
 sys_main_loop:
+        lda #$A5
+        sta WM_APP_DRIVEN       ; G.3c : une app pilote la boucle → close = MSG_CLOSE
         lda SCHED_ACTIVE
         cmp #$A5
         beq sml_block_mode
@@ -2787,9 +2800,18 @@ mlc_key:
         lda #MSG_KEY            ; keycode déjà en $D1
         rts
 mlc_mdown:
-        ; ADR-25 Disable/Enable : WM_ARG_X/Y est partagé avec l'IRQ souris
-        ; (kernel_wm_mouse_step). On masque l'IRQ le temps du set+hit_test pour
-        ; éviter qu'un event souris clobbe WM_ARG entre l'écriture et la lecture.
+        ; G.3c : clic dans la barre de menu (y < MENU_BAR_H) → MSG_MENU.
+        lda $D7                 ; where_y high byte
+        bne mlc_md_notmenu      ; y >= 256 → pas la barre de menu
+        lda $D6                 ; where_y low
+        cmp #MENU_BAR_H
+        bcs mlc_md_notmenu
+        lda #MSG_MENU
+        rts
+mlc_md_notmenu:
+        ; ADR-25 Disable/Enable : WM_ARG_X/Y (et MOUSE_X/Y pour _wm_chrome_hit)
+        ; partagés avec l'IRQ souris. On masque l'IRQ le temps du hit-test +
+        ; chrome-hit pour éviter un clobber entre l'écriture et la lecture.
         php
         sei
         rep #$20
@@ -2799,12 +2821,22 @@ mlc_mdown:
         sta WM_ARG_Y
         sep #$20
         jsr kernel_wm_hit_test  ; A = id fenêtre topmost ou $FF
-        plp                     ; ré-autorise l'IRQ souris
         cmp #$FF
-        beq mlc_null
+        beq mlc_md_null_plp
         sta $DA                 ; id fenêtre cliquée
-        lda #MSG_CONTENT
+        sta WIN_SLOT            ; pour _wm_chrome_hit
+        jsr _wm_chrome_hit      ; A : 0=non, 1=close, 2=max, 3=min (MOUSE_X/Y)
+        plp                     ; ré-autorise l'IRQ souris
+        cmp #$01                ; G.3c : clic sur la case fermeture → MSG_CLOSE
+        beq mlc_close
+        lda #MSG_CONTENT        ; (max/min restent gérés par le shell → contenu)
         rts
+mlc_close:
+        lda #MSG_CLOSE          ; $DA = id fenêtre à fermer (l'app décide)
+        rts
+mlc_md_null_plp:
+        plp
+        ; tombe dans mlc_null
 mlc_null:
         lda #MSG_NULL
         rts

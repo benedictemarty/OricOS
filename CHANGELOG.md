@@ -5,6 +5,24 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G3c] - 2026-05-26
+
+### SP-3.n G.3c — chrome → messages (MSG_CLOSE / MSG_MENU) ; G.3 complet
+
+#### Added
+- **`_ml_classify` étendu** : un clic dans la barre de menu (`where_y < MENU_BAR_H`)
+  → `MSG_MENU` ; un clic sur la case fermeture d'une fenêtre (`_wm_chrome_hit`==1)
+  → `MSG_CLOSE` + id fenêtre en $DA ; sinon `MSG_CONTENT`.
+- **`WM_APP_DRIVEN`** ($015924) : posé à $A5 par `sys_main_loop` (une app pilote
+  la boucle). En mode app-driven, `wm_step_chrome_close` **ne ferme plus** la
+  fenêtre — l'app reçoit `MSG_CLOSE` et décide (modèle GeoWorks « l'app décide »).
+  Sinon (desktop sans app, ex. `test_wm_close_button`) : auto-close conservé.
+
+Validé : `test_oricos_mainloop_close` (clic close-box app-driven → MSG_CLOSE +
+fenêtre RESTE ouverte), `test_oricos_mainloop_menu` (clic barre de menu →
+MSG_MENU). **Arc G.3 (a/b/c) complet. 570 tests verts.** Reste SP-3.n : G.4
+(contrôles→MSG_CONTROL), G.5/G.6 (DoDlgBox/Alert), G.7 (démo C).
+
 ## [Unreleased+SP-3.n-G3b] - 2026-05-26
 
 ### SP-3.n G.3b — SYS_UI_DEFINE : UI déclarative (table GenUI)
