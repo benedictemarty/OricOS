@@ -4,6 +4,33 @@
 ;
         .segment "CODE"
 
+; ── kernel_gfx_window_base : GFX_BASE ← backing store de la fenêtre du caller ──
+; SP-3.m G.4. Cherche le slot possédé par TASK_CUR (WM_OWNER) et pose GFX_BASE
+; = ($06+slot):$0000 (backing store SDRAM implicite par slot, cf. G.2). Les apps
+; dessinent ainsi en coords LOCALES dans leur fenêtre, sans connaître l'adresse
+; XVGA. Si la tâche ne possède pas de fenêtre → GFX_BASE inchangé (no-op).
+; Pré-cond : mode N M=X=1. Clobbers A, X.
+.export kernel_gfx_window_base
+kernel_gfx_window_base:
+        ldx #$00
+gwb_loop:
+        lda f:WM_OWNER,X
+        cmp TASK_CUR            ; (cmp abs-long ; pas de scratch)
+        beq gwb_found
+        inx
+        cpx #WM_MAX
+        bcc gwb_loop
+        rts                     ; pas de fenêtre → GFX_BASE inchangé
+gwb_found:
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        txa
+        clc
+        adc #$06                ; bank SDRAM du backing store = $06 + slot
+        sta GFX_BASE_HI
+        rts
+
 .export kernel_gfx_clear
 kernel_gfx_clear:
         ; ARG1 = base

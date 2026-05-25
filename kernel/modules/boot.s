@@ -594,6 +594,15 @@ kernel_entry:
         lda #$00
         jsr kernel_task_create
 _skip_task_win:
+        ; SP-3.m G.4 : task_wdraw (gated TC_WDRAW_FLAG) — dessine dans sa fenêtre.
+        lda TC_WDRAW_FLAG
+        cmp #$A5
+        bne _skip_task_wdraw
+        ldx #<task_wdraw_entry
+        ldy #>task_wdraw_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_wdraw:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

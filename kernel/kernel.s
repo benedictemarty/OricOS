@@ -625,6 +625,7 @@ NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → p
 TC_HELLOC_FLAG   = $01EF10        ; TC-poc-hello-c : $A5 (posé par le test) → exec bundle_hello_c (JSL)
 TC_HELLOC_TASK_FLAG = $01EF20     ; OS-2.g v2.b : $A5 → spawn bundle_hello_c comme TÂCHE schedulée
 TC_WIN_FLAG      = $01EF30        ; SP-3.m G.2 : $A5 → crée task_win (test SYS_WIN_CREATE)
+TC_WDRAW_FLAG    = $01EF40        ; SP-3.m G.4 : $A5 → crée task_wdraw (test dessin fenêtré)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

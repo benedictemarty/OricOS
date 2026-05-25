@@ -213,6 +213,45 @@ task_win_entry:
         cop #$AA
         bra task_win_entry      ; filet
 
+; ─── task_wdraw_entry : crée une fenêtre, DESSINE dedans, sort (SP-3.m G.4) ──
+; Crée sa fenêtre (SYS_WIN_CREATE → slot 2), puis FILL_RECT (0,0,8,8 couleur 4)
+; en coords LOCALES : le kernel résout GFX_BASE = backing store de la fenêtre
+; (slot 2 → $080000), donc l'app dessine sans connaître l'adresse XVGA. Puis exit.
+.export task_wdraw_entry
+task_wdraw_entry:
+        lda #100                ; x
+        sta $D0
+        lda #$00
+        sta $D1
+        lda #80                 ; y
+        sta $D2
+        lda #$00
+        sta $D3
+        lda #200                ; w
+        sta $D4
+        lda #$00
+        sta $D5
+        lda #120                ; h
+        sta $D6
+        lda #$00
+        sta $D7
+        lda #$13                ; SYS_WIN_CREATE
+        cop #$AA
+        sta TASK_WIN_HANDLE
+        lda #$00
+        sta GFX_ARG2_LO         ; x local = 0
+        sta GFX_ARG2_MID        ; y local = 0
+        lda #$08
+        sta GFX_ARG3_LO         ; w = 8
+        sta GFX_ARG3_MID        ; h = 8
+        lda #$04
+        sta GFX_COLOR           ; couleur 4
+        lda #$0E                ; SYS_GFX_FILL_RECT (→ backing store fenêtre)
+        cop #$AA
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_wdraw_entry    ; filet
+
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
 ; quand aucune autre tâche n'est READY). Dort sur WAI jusqu'à l'IRQ suivante.

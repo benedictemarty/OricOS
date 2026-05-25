@@ -5,6 +5,26 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G4] - 2026-05-25
+
+### SP-3.m G.4 — dessin fenêtré (backing store, coords locales)
+
+#### Added
+- **`kernel/modules/gfx.s` — `kernel_gfx_window_base`** : pose `GFX_BASE` =
+  backing store de la fenêtre du caller = `($06+slot):$0000` (slot = `WM_OWNER`
+  de `TASK_CUR`). No-op si la tâche n'a pas de fenêtre.
+- **`kernel/modules/wm.s`** : les 5 handlers `sys_gfx_*` appellent
+  `kernel_gfx_window_base` avant le `kernel_gfx_*` interne → **une app dessine en
+  coords LOCALES dans SON backing store, sans connaître l'adresse XVGA**. Les
+  `kernel_gfx_*` (WM interne, base explicite) restent inchangés.
+- **`kernel/modules/alloc.s` — `task_wdraw_entry`** + **`kernel.s` `TC_WDRAW_FLAG`**
+  ($01EF40) + boot gated : tâche de test qui crée sa fenêtre puis FILL_RECT local.
+
+Validé : `test_oricos_win_draw` — task_wdraw crée sa fenêtre (slot 2 → backing
+store SDRAM $080000) et FILL_RECT (0,0,8,8) couleur 4 en coords locales ;
+`vram_peek($080000)==$44` → l'app dessine dans son backing store, indépendamment
+du framebuffer XVGA (modèle GrafPort). 563 verts. Suite : G.4bis compositor.
+
 ## [Unreleased+SP-3.m-G3] - 2026-05-25
 
 ### SP-3.m G.3 — clavier → focus (routage)

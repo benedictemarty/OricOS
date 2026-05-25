@@ -2639,30 +2639,35 @@ sys_free_bank:
 
 ; $0D — SYS_GFX_CLEAR : args via I/O ZP (ADR-21 convention) ──────────
 sys_gfx_clear:
+        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
         jsr kernel_gfx_clear
         lda #$00
         rts
 
 ; $0E — SYS_GFX_FILL_RECT ─────────────────────────────────────────────
 sys_gfx_fill_rect:
+        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
         jsr kernel_gfx_fill_rect
         lda #$00
         rts
 
 ; $0F — SYS_GFX_BLIT ──────────────────────────────────────────────────
 sys_gfx_blit:
+        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
         jsr kernel_gfx_blit
         lda #$00
         rts
 
 ; $10 — SYS_GFX_LINE ──────────────────────────────────────────────────
 sys_gfx_line:
+        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
         jsr kernel_gfx_line
         lda #$00
         rts
 
 ; $11 — SYS_GFX_TEXT ──────────────────────────────────────────────────
 sys_gfx_text:
+        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
         jsr kernel_gfx_text
         lda #$00
         rts
