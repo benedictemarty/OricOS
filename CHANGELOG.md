@@ -5,6 +5,22 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G4] - 2026-05-26
+
+### SP-3.n G.4 — contrôles → MSG_CONTROL
+
+#### Added
+- **`_ml_classify` étendu** : après le chrome, un clic qui touche un contrôle
+  (bouton) de la fenêtre (`_wm_widget_hit` → `WIDGET_ACTIVE` != $FF) → `MSG_CONTROL`
+  + id du contrôle (index widget) en $DA. L'app réagit au contrôle via son
+  MainLoop (le callback kernel `_wm_invoke_active_cb` reste en coexistence v1).
+
+Validé : `test_oricos_mainloop_control` — clic sur le bouton "OK" de la fenêtre 0
+(boot, rel 6,34,44×18) en mode app-driven → MSG_CONTROL + id widget. 571 tests
+verts. Reste SP-3.n : G.5 (`SYS_DO_DLGBOX`), G.6 (`SYS_ALERT`), G.7 (démo C).
+NB : les contrôles déclarés dans la table GenUI (tag `GU_BUTTON`) sont reportés
+à G.7 (l'app C déclarera son UI complète).
+
 ## [Unreleased+SP-3.n-G3c] - 2026-05-26
 
 ### SP-3.n G.3c — chrome → messages (MSG_CLOSE / MSG_MENU) ; G.3 complet

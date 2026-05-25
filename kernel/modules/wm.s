@@ -2826,12 +2826,22 @@ mlc_md_notmenu:
         sta $DA                 ; id fenêtre cliquée
         sta WIN_SLOT            ; pour _wm_chrome_hit
         jsr _wm_chrome_hit      ; A : 0=non, 1=close, 2=max, 3=min (MOUSE_X/Y)
-        plp                     ; ré-autorise l'IRQ souris
         cmp #$01                ; G.3c : clic sur la case fermeture → MSG_CLOSE
-        beq mlc_close
-        lda #MSG_CONTENT        ; (max/min restent gérés par le shell → contenu)
+        beq mlc_md_close_plp
+        ; G.4 : clic sur un contrôle (bouton) de la fenêtre → MSG_CONTROL + id.
+        jsr _wm_widget_hit      ; WIDGET_ACTIVE = index bouton touché, ou $FF
+        plp                     ; ré-autorise l'IRQ souris
+        lda WIDGET_ACTIVE
+        cmp #$FF
+        bne mlc_control
+        lda #MSG_CONTENT        ; rien de spécial → contenu (max/min = shell)
         rts
-mlc_close:
+mlc_control:
+        sta $DA                 ; $DA = id contrôle (index widget) ; l'app réagit
+        lda #MSG_CONTROL
+        rts
+mlc_md_close_plp:
+        plp
         lda #MSG_CLOSE          ; $DA = id fenêtre à fermer (l'app décide)
         rts
 mlc_md_null_plp:
