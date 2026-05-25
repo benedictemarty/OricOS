@@ -37,6 +37,8 @@ VERSION_BASE    = $015010
 TASK_CUR        = $015432       ; PID actuellement RUNNING (1..16)
 TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
+TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
+STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
 TICK_GOAL       = $0A           ; 10 ticks → STP
 
 ; ─── ADR-14 : Table TCB (Sprint 2.g) ────────────────────────────────
@@ -258,7 +260,14 @@ DP_KBD_TMP      = $12            ; DP+$12 : scratch ring clavier (OS-2.d)
 ; kbd ($12), FAT ($40+). (Réentrance ZP générale = dette #2, traitée v2.b/ADR-25.)
 SCHED_PTR       = $2C            ; $2C-$2E : pointeur 24-bit &tcb[pid] (bank 1)
 SCHED_CAND      = $2F            ; $2F : pid candidat dans le scan round-robin
-SCHED_TMP       = $30            ; $30-$31 : scratch 16-bit (calcul pid*20)
+SCHED_TMP       = $30            ; $30-$31 : scratch 16-bit (calcul pid*20, masque bitmap)
+; kernel_task_create (g.3) : scratch ZP, zone libre $32-$3F.
+TC_ENTRY_LO     = $32            ; entry PC lo
+TC_ENTRY_HI     = $33            ; entry PC hi
+TC_PRIO         = $34            ; priorité
+TC_PID          = $35            ; pid alloué
+TC_PAGE         = $36            ; page de pile (octet haut de S)
+TC_FPTR         = $37            ; $37-$39 : pointeur 24-bit frame forgée (bank 0)
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF

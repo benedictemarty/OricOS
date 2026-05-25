@@ -64,3 +64,118 @@ sfn_nowrap:
         bne sfn_loop            ; pas READY → continue le scan
         lda SCHED_CAND          ; A = pid sélectionné
         rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_task_create — crée une tâche dynamiquement (OS-2.g v2.a / g.3)
+; ════════════════════════════════════════════════════════════════════
+; In : X = entry PC lo, Y = entry PC hi, A = priorité (0..7).
+; Out: A = pid alloué (1..TCB_MAX-1), ou $00 si plus de slot libre.
+; Alloue : slot TCB (bitmap), page de pile bank 0 (STACK_NEXT_PAGE bump),
+; initialise le TCB et forge une frame d'interruption initiale (Y/X/A=0,
+; P=$30 mode N M=X=1 I=0, PC=entry, PB=1) — même format que la pré-init de
+; task B au boot — pour que le 1er context-switch « entre » à `entry`.
+; Pré-cond : mode N M=X=1, DBR=0 (appelé hors IRQ : boot, ou plus tard syscall).
+.export kernel_task_create
+kernel_task_create:
+        .a8
+        .i8
+        stx TC_ENTRY_LO
+        sty TC_ENTRY_HI
+        sta TC_PRIO
+        ; ── 1. scan bitmap : 1er slot libre (pids 1..TCB_MAX-1) ──
+        rep #$20
+        lda #$0002              ; masque = bit 1
+        sta SCHED_TMP
+        sep #$20
+        ldx #$01                ; pid candidat
+tcc_scan:
+        rep #$20
+        lda TCB_BITMAP
+        and SCHED_TMP
+        bne tcc_next            ; bit set → slot occupé
+        lda TCB_BITMAP          ; libre → réserve le bit
+        ora SCHED_TMP
+        sta TCB_BITMAP
+        sep #$20
+        bra tcc_slot
+tcc_next:
+        asl SCHED_TMP           ; masque <<= 1
+        sep #$20
+        inx
+        cpx #TCB_MAX
+        bcc tcc_scan
+        lda #$00                ; plus de slot
+        rts
+tcc_slot:
+        stx TC_PID              ; X = pid alloué
+        ; ── 2. alloue une page de pile (bump) ──
+        lda STACK_NEXT_PAGE
+        sta TC_PAGE             ; page courante
+        inc a
+        sta STACK_NEXT_PAGE     ; prochaine
+        ; ── 3. init TCB[pid] ──
+        lda TC_PID
+        jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[pid]
+        lda TC_PID
+        ldy #TCB_PID
+        sta [SCHED_PTR],Y
+        lda #TASK_STATE_READY
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y
+        lda TC_PRIO
+        ldy #TCB_PRIO
+        sta [SCHED_PTR],Y
+        lda TASK_CUR            ; parent = tâche courante
+        ldy #TCB_PARENT
+        sta [SCHED_PTR],Y
+        lda #$01                ; PB = bank 1
+        ldy #TCB_PB
+        sta [SCHED_PTR],Y
+        lda #$00
+        ldy #TCB_DB
+        sta [SCHED_PTR],Y       ; DB = 0
+        ldy #TCB_STACK_BANK
+        sta [SCHED_PTR],Y       ; stack_bank = 0
+        ldy #TCB_FLAGS
+        sta [SCHED_PTR],Y       ; flags = 0
+        lda TC_ENTRY_LO
+        ldy #TCB_PC_LO
+        sta [SCHED_PTR],Y
+        lda TC_ENTRY_HI
+        ldy #TCB_PC_HI
+        sta [SCHED_PTR],Y
+        ; saved_S = page:$F4 (la frame occupe $F5..$FB ; ply reprend à $F5)
+        lda #$F4
+        ldy #TCB_S_LO
+        sta [SCHED_PTR],Y
+        lda TC_PAGE
+        ldy #TCB_S_HI
+        sta [SCHED_PTR],Y
+        ; ── 4. forge la frame à page:$F5..$FB (bank 0, adressage long) ──
+        lda #$F5
+        sta TC_FPTR
+        lda TC_PAGE
+        sta TC_FPTR+1
+        lda #$00
+        sta TC_FPTR+2           ; bank 0 (frame en bank 0, indép. du DBR)
+        ldy #$00
+        lda #$00
+        sta [TC_FPTR],Y         ; +0 Y_init = 0
+        iny
+        sta [TC_FPTR],Y         ; +1 X_init = 0
+        iny
+        sta [TC_FPTR],Y         ; +2 A_init = 0
+        iny
+        lda #$30                ; +3 P_init = M=1 X=1 (mode N), I=0 (IRQ on)
+        sta [TC_FPTR],Y
+        iny
+        lda TC_ENTRY_LO
+        sta [TC_FPTR],Y         ; +4 PCL
+        iny
+        lda TC_ENTRY_HI
+        sta [TC_FPTR],Y         ; +5 PCH
+        iny
+        lda #$01
+        sta [TC_FPTR],Y         ; +6 PB = bank 1
+        lda TC_PID              ; retour A = pid
+        rts

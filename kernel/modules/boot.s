@@ -461,6 +461,11 @@ kernel_entry:
         sta TICK_COUNTER
         sta TASK_A_CTR
         sta TASK_B_CTR
+        sta TASK_C_CTR
+        ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
+        ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
+        lda #$04
+        sta STACK_NEXT_PAGE
         ; ADR-14 : init TCB table + bitmap (16 slots).
         ; Bitmap : bits 0,1,2 set ($07) — slot 0 invalid + TCB_1 + TCB_2.
         lda #$07
@@ -535,6 +540,14 @@ kernel_entry:
         lda #$02F4
         sta TCB_2_S
         sep #$20
+
+        ; ── OS-2.g v2.a g.3 : crée une 3e tâche dynamiquement ──────────
+        ; Valide kernel_task_create (alloc slot+pile, forge frame) et le
+        ; round-robin N-tâches. task_c → pid 3, pile page $04.
+        ldx #<task_c_entry
+        ldy #>task_c_entry
+        lda #$00                ; priorité 0
+        jsr kernel_task_create
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

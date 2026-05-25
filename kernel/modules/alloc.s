@@ -131,6 +131,15 @@ task_b_entry:
         sta TASK_B_CTR
         bra task_b_entry
 
+; ─── task_c_entry : 3e tâche (OS-2.g v2.a g.3), créée par task_create ──
+; Démontre la création dynamique + le round-robin N-tâches.
+.export task_c_entry
+task_c_entry:
+        lda TASK_C_CTR
+        inc a
+        sta TASK_C_CTR
+        bra task_c_entry
+
 ; kernel_hires2_clear et pattern_table retirés en PH-cleanup-zombie
 ; (2026-05-09). Code legacy ADR-19 v2, plus visible côté compositor.
 ; Rendu desktop = GPU blitter (ADR-21) via kernel_gfx_*.

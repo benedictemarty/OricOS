@@ -5,6 +5,28 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.g-v2.a-g3] - 2026-05-25
+
+### OS-2.g v2.a/g.3 — création dynamique de tâches (task_create)
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_task_create`** (X=entry lo, Y=entry hi,
+  A=prio → A=pid ou 0). Scanne le bitmap pour un slot libre, alloue une page de
+  pile bank 0 (`STACK_NEXT_PAGE` bump, départ page $04), initialise le TCB et
+  **forge la frame d'interruption initiale** (Y/X/A=0, P=$30, PC=entry, PB=1 ;
+  saved_S=page:$F4) — même format que la pré-init de task B. La frame est écrite
+  en adressage long (bank 0 explicite, indépendant du DBR).
+- **`kernel/modules/alloc.s` — `task_c_entry`** : 3e tâche démo (compteur).
+- **`kernel/kernel.s`** : `TASK_C_CTR` ($015448), `STACK_NEXT_PAGE` ($01544C),
+  ZP scratch task_create (`TC_*` $32-$39).
+- **`kernel/modules/boot.s`** : init `STACK_NEXT_PAGE=$04` + appel `task_create`
+  (task_c → pid 3, pile page $04).
+
+Validation : `test_oricos_boot` asserte `TASK_C_CTR > 0` (la tâche forgée
+s'exécute → frame correcte) **et** bitmap=$0F (slot 3 réservé). Prouve la
+création dynamique + le round-robin N-tâches élisant pid 3 **end-to-end**.
+563 tests verts. (g.4 exit + g.5/g.6 block/wake = suite.)
+
 ## [Unreleased+OS-2.g-v2.a] - 2026-05-25
 
 ### OS-2.g v2.a — scheduler N-tâches round-robin (implémente ADR-14)
