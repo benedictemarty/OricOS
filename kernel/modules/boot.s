@@ -1205,6 +1205,22 @@ _skip_helloc:
         lda #$C0
         sta VIA_IER
 
+        ; ── OS-2.g v2.b : spawn hello_c comme TÂCHE schedulée (gated) ──
+        ; TC_HELLOC_TASK_FLAG=$A5 → l'app C tourne comme une vraie tâche
+        ; préemptive (kernel_app_spawn), pas via JSL boot-context. Placé ICI
+        ; (après l'init de l'allocateur de banks) car app_spawn → kernel_alloc_bank.
+        lda TC_HELLOC_TASK_FLAG
+        cmp #$A5
+        bne _skip_helloc_task
+        lda #<bundle_hello_c
+        sta DP_PTR
+        lda #>bundle_hello_c
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
+_skip_helloc_task:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

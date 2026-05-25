@@ -5,6 +5,28 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+app-as-task] - 2026-05-25
+
+### OS-2.g v2.b — apps userland comme tâches schedulées (kernel_app_spawn)
+
+#### Added
+- **`kernel/modules/fat.s` — `kernel_app_load`** : front commun extrait
+  d'`app_exec` (validate + find_code + alloc bank + copie CODE). Retourne A = bank
+  alloué (≠0) ou 0 (échec). **`kernel_app_spawn`** : charge un bundle et le lance
+  comme **TÂCHE préemptive** via `task_create` (entry crt0 BANK:$0200, PB=bank app)
+  au lieu du JSL boot-context. `app_exec` (JSL legacy) refactoré sur `app_load`.
+- **`kernel/kernel.s`** : `TC_HELLOC_TASK_FLAG` ($01EF20, spawn hello_c en tâche).
+- **`kernel/modules/boot.s`** : spawn hello_c gated, placé **après l'init de
+  l'allocateur de banks** (app_spawn → kernel_alloc_bank ; placé trop tôt,
+  BANK_NEXT non initialisé → alloc échouait).
+
+Le crt0 mos-oricos attend exactement ce que `task_create` forge (mode N M=X=1,
+D=0, pile fournie, pas de XCE) ; `SYS_EXIT` (scheduler actif) détruit la tâche.
+
+Validation : `test_oricos_helloc_as_task` — hello_c spawné comme tâche, tourne
+parmi les tâches démo et imprime « Hello OricOS from C! » dans $BB80. **Une app C
+llvm-mos tourne comme tâche préemptive schedulée.** 3/3 helloc + 563 tests verts.
+
 ## [Unreleased+OS-2.b-idle] - 2026-05-25
 
 ### OS-2.g v2.b — idle task (ferme le trou « dernière tâche »)

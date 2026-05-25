@@ -605,23 +605,31 @@ bv_bad_version:
 ;        Bank app conservée allouée (free explicite v0.2).
 ; Modifie : A, X, Y, BUNDLE_APP_BANK, DP zero page tmp slots.
 ; ════════════════════════════════════════════════════════════════════
-.export kernel_app_exec
-kernel_app_exec:
+; ════════════════════════════════════════════════════════════════════
+;  kernel_app_load — valide + charge le CODE d'un bundle en bank alloué
+; ════════════════════════════════════════════════════════════════════
+; Args : DP_PTR (24-bit) → bundle. Out : A = bank alloué (≠0 = succès,
+; BUNDLE_APP_BANK renseigné) ou A=$00 si échec (magic/version/section/pool).
+; Front commun à kernel_app_exec (JSL legacy) et kernel_app_spawn (tâche).
+.export kernel_app_load
+kernel_app_load:
         jsr kernel_bundle_validate
         cmp #BUNDLE_OK
-        beq ae_after_validate
+        beq al_after_validate
+        lda #$00                        ; échec validate
         rts
-ae_after_validate:
+al_after_validate:
         jsr kernel_bundle_find_code
         cmp #BUNDLE_OK
-        beq ae_after_find
+        beq al_after_find
+        lda #$00                        ; échec find_code
         rts
-ae_after_find:
+al_after_find:
         jsr kernel_alloc_bank
         cmp #$00
-        bne ae_after_alloc
+        bne al_after_alloc
         rts                             ; A=$00 (pool exhausted)
-ae_after_alloc:
+al_after_alloc:
         sta BUNDLE_APP_BANK
 
         ; Setup DP_SRC = DP_PTR + BUNDLE_FOUND_OFFSET (24-bit add)
@@ -658,7 +666,34 @@ ae_copy:
         bra ae_copy
 ae_copy_done:
         sep #$10                        ; X=1 → Y 8-bit (restore)
+        lda BUNDLE_APP_BANK             ; retour A = bank (≠0 = succès)
+        rts
 
+; ════════════════════════════════════════════════════════════════════
+;  kernel_app_spawn — charge un bundle et le lance comme TÂCHE (OS-2.g v2.b)
+; ════════════════════════════════════════════════════════════════════
+; Args : DP_PTR (24-bit) → bundle. Out : A = pid de la tâche app (≠0 succès)
+; ou $00 (échec load ou plus de slot TCB). L'app tourne en mode N préemptif,
+; entrée crt0 à BANK:$0200 (PHK/PLB → DBR=PBR), SYS_EXIT → teardown.
+.export kernel_app_spawn
+kernel_app_spawn:
+        jsr kernel_app_load
+        bne as_loaded
+        rts                             ; A=$00 échec load
+as_loaded:
+        sta TC_CODE_BANK                ; A = bank de l'app → bank de code de la tâche
+        ldx #$00                        ; entry lo = $00 ($0200)
+        ldy #$02                        ; entry hi = $02
+        lda #$00                        ; priorité 0
+        jsr kernel_task_create          ; A = pid (ou 0 si plus de slot)
+        rts
+
+.export kernel_app_exec
+kernel_app_exec:
+        jsr kernel_app_load
+        bne ae_loaded
+        rts                             ; échec : ne rien exécuter
+ae_loaded:
         ; Patch JSL self-modifying. ld65 résout les labels CODE en 16-bit
         ; (bank=0 par défaut dans STA al). Workaround : DP indirect long
         ; avec bank=$01 explicite (CODE segment loaded en bank 1).
