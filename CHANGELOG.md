@@ -5,6 +5,34 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.b-g6-forbid] - 2026-05-25
+
+### OS-2.g v2.b/g.6 — Forbid/Permit (ADR-25 Exec-classique, incrément 1/2)
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_forbid`/`kernel_permit`** : compteur
+  `FORBID_COUNT` ($01544E) suspend la préemption (le timer vérifie le compteur
+  dans `do_switch`) ; les IRQ continuent de tourner. LDA/STA long (INC sans mode
+  abs-long sur 65816). **Préservent A** (porte le num syscall / la valeur de
+  retour à l'entrée/sortie COP), X, Y.
+
+#### Changed
+- **`kernel/modules/handlers.s`** : le dispatcher COP fait `cli` + `kernel_forbid`
+  à l'entrée et `kernel_permit` à la sortie → un syscall ne peut plus être
+  **préempté** en plein milieu (corrige la réentrance ZP **#2**), tout en gardant
+  les IRQ actives (pas de deadlock). `do_switch` saute le switch si `FORBID≠0`
+  (restaure la même tâche).
+- **`kernel/modules/wm.s`** : `sys_yield` et `sys_exit` font `permit` avant de
+  basculer (switch volontaire ≠ préemption ; la garde `FORBID` ne doit pas les
+  bloquer). yield → reprise en contexte app (FORBID=0) ; exit → tâche suivante
+  un-forbidden.
+- **`kernel/modules/boot.s`** : init `FORBID_COUNT=0`.
+
+Fondation d'atomicité d'Exec-classique. Validé par non-régression (563 verts ;
+un bug « A clobbé par forbid » détecté par les tests puis corrigé). La validation
+positive + le superseding du spin/cli arrivent avec g.5 (blocage read_char,
+incrément 2). ADR-25 reste DRAFT (ratifiable quand g.5/g.6 ≥ 50 %).
+
 ## [Unreleased+OS-2.g-v2.a-g4] - 2026-05-25
 
 ### OS-2.g v2.a/g.4 — SYS_EXIT teardown (fin du STP global)

@@ -43,6 +43,9 @@ STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 
 SCHED_ACTIVE    = $01544D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
                                 ; SYS_EXIT fait STP si inactif (app boot-context, ex. hello_c),
                                 ; sinon teardown+reschedule.
+FORBID_COUNT    = $01544E       ; OS-2.g v2.b g.6 (ADR-25 Exec-classique) : compteur Forbid.
+                                ; ≠0 = tâche en syscall → le timer NE préempte PAS (atomicité,
+                                ; corrige la réentrance ZP #2). yield/exit font permit avant switch.
 TICK_GOAL       = $0A           ; 10 ticks → STP
 
 ; ─── ADR-14 : Table TCB (Sprint 2.g) ────────────────────────────────

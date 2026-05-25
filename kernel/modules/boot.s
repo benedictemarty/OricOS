@@ -464,6 +464,7 @@ kernel_entry:
         sta TASK_C_CTR
         sta TASK_D_CTR
         sta SCHED_ACTIVE        ; scheduler pas encore démarré (g.4)
+        sta FORBID_COUNT        ; g.6 : pas de section critique au boot
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04

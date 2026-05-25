@@ -32,12 +32,17 @@ kernel_cop_handler:
         ; tâche émet des syscalls (pas de réentrance sur la ZP scratch kernel).
         ; À revisiter avec le vrai blocage de tâche (OS-2.g v2).
         cli
+        jsr kernel_forbid      ; g.6 : atomicité tâche↔tâche pendant le syscall
+                               ; (le timer ne préempte pas tant que FORBID≠0)
         stx DP_SYS_ARG_X       ; sauve X (arg1) — sera écrasé par l'index
         cmp #$40               ; num < 64 ?
         bcs cop_invalid
         asl a                   ; A = num × 2 (offset bytes dans la table)
         tax                     ; X = index table (DP_SYS_ARG_X contient l'arg1)
         jsr (syscall_table,x)  ; appel handler via table (ADR-17)
+        ; NB : les handlers qui basculent (yield/exit) jmp ailleurs et ont fait
+        ; permit eux-mêmes → ne reviennent pas ici.
+        jsr kernel_permit      ; FORBID-- (fin de syscall normal)
         rti                     ; retour caller — A = valeur de retour
 
 cop_invalid:
@@ -45,6 +50,7 @@ cop_invalid:
         lda #ERR_BAD_SYSCALL
         ldx #LOG_WARN
         jsr kernel_log_write
+        jsr kernel_permit
         lda #$FF                ; convention erreur ADR-17
         rti
 
@@ -151,6 +157,10 @@ do_switch:
         ; slot READY (kernel_sched_find_next), charge son SP. Avec 2 tâches
         ; live, le round-robin reproduit l'alternance 1↔2. Aucun jsr/rts ne
         ; doit traverser le tcs (changement de pile) → helpers appelés AVANT.
+        lda FORBID_COUNT
+        beq ds_proceed
+        jmp restore_and_return          ; g.6 : tâche en syscall → pas de préemption
+ds_proceed:
         lda TASK_CUR
         jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[CUR]
         rep #$20

@@ -2452,6 +2452,7 @@ sys_exit:
         bra *
 se_teardown:
         sei                     ; section critique : teardown + switch atomiques
+        jsr kernel_permit       ; g.6 : fin du syscall (FORBID→0 pour la tâche suivante)
         lda TASK_CUR
         jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[CUR]
         lda #TASK_STATE_DEAD
@@ -2483,6 +2484,7 @@ se_teardown:
 ; forgée par kernel_task_create.
 sys_yield:
         sei                     ; section critique : pas de préemption pendant la chirurgie de pile
+        jsr kernel_permit       ; g.6 : fin du syscall (FORBID→0) ; la reprise = contexte app
         pla                     ; jette le retour du jsr (lo)
         pla                     ; jette le retour du jsr (hi) → SP au sommet de la frame COP
         lda #$00

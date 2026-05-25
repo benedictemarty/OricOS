@@ -181,6 +181,33 @@ tcc_slot:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  kernel_forbid / kernel_permit — sections critiques tâche↔tâche (g.6)
+; ════════════════════════════════════════════════════════════════════
+; ADR-25 Exec-classique. Forbid suspend le context-switch préemptif (le timer
+; vérifie FORBID_COUNT dans do_switch) ; les IRQ continuent de tourner.
+; FORBID_COUNT en bank 1 → LDA/STA long (INC n'a pas de mode abs-long sur 65816).
+; Préservent A, X, Y (A porte le num syscall à l'entrée COP et la valeur de
+; retour à la sortie → NE PAS le clobber). Nestable (inc/dec).
+.export kernel_forbid
+kernel_forbid:
+        pha
+        lda FORBID_COUNT
+        inc a
+        sta FORBID_COUNT
+        pla
+        rts
+.export kernel_permit
+kernel_permit:
+        pha
+        lda FORBID_COUNT
+        beq kp_skip             ; déjà 0 → ne descend pas sous zéro
+        dec a
+        sta FORBID_COUNT
+kp_skip:
+        pla
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_bitmap_clear — libère le slot pid dans TCB_BITMAP (OS-2.g g.4)
 ; ════════════════════════════════════════════════════════════════════
 ; In : A = pid (1..15). Efface le bit pid (bitmap &= ~(1<<pid)).
