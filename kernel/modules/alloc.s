@@ -170,6 +170,21 @@ task_e_entry:
         cop #$AA
         bra task_e_entry        ; filet
 
+; ─── task_evt_entry : tâche qui BLOQUE sur la file d'événements (SP-3.n G.2) ──
+; SYS_GET_NEXT_EVENT ($16, bloquant) → A = what, record en $D0-$D9. Stocke what
+; et le message (keycode pour EV_KEY_DOWN, en $D1) puis SYS_EXIT. Valide le pop
+; syscall + blocage réel + réveil par kernel_event_wake (IRQ).
+.export task_evt_entry
+task_evt_entry:
+        lda #$16                ; SYS_GET_NEXT_EVENT (bloquant)
+        cop #$AA
+        sta TASK_EVT_WHAT       ; A = what de l'événement
+        lda $D1                 ; message lo (keycode si EV_KEY_DOWN)
+        sta TASK_EVT_MSG
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_evt_entry      ; filet
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

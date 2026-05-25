@@ -2649,6 +2649,68 @@ sys_win_flush:
         lda #$00
         rts
 
+; $15 — SYS_EVENT_AVAIL : non-bloquant → A = 1 si un événement est dispo, 0 sinon
+; (SP-3.n G.2). Permet à une app de sonder la file sans bloquer.
+sys_event_avail:
+        lda EVENT_RING_COUNT
+        beq sea_none
+        lda #$01
+        rts
+sea_none:
+        lda #$00
+        rts
+
+; $16 — SYS_GET_NEXT_EVENT : extrait le prochain événement (SP-3.n G.2) ──
+; Bloquant si la file est vide (block/wake ADR-25, réveil par IRQ via
+; kernel_event_wake). Sortie : A = what (EV_*), record 10 o copié dans le bloc
+; ZP $D0-$D9 (what/msg/mods/where_x/where_y/when). Calqué sur sys_read_char.
+sys_get_next_event:
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq sgne_block_mode
+        ; ── mode boot-context : spin + WAI (v1) ──
+sgne_wait:
+        jsr kernel_event_pop    ; A = what (EV_NULL si vide), record → $D0
+        cmp #EV_NULL
+        bne sgne_done
+        wai
+        bra sgne_wait
+sgne_done:
+        rts
+        ; ── mode tâche : blocage réel ─────────────────────────────────
+sgne_block_mode:
+sgne_loop:
+        sei                     ; section critique : pop + décision de bloc
+        jsr kernel_event_pop
+        cmp #EV_NULL
+        bne sgne_got            ; événement dispo
+        ; file vide sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
+        lda TASK_CUR
+        sta EVENT_WAITER
+        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → sgne_resume
+        lda #$01
+        pha                     ; PBR
+        lda #>sgne_resume
+        pha                     ; PCH
+        lda #<sgne_resume
+        pha                     ; PCL
+        lda #$30                ; P : mode N M=X=1, I=0
+        pha
+        lda #$00
+        pha                     ; A
+        pha                     ; X
+        pha                     ; Y
+        lda #$00
+        sta FORBID_COUNT        ; tâche suivante préemptible pendant le bloc
+        jmp kernel_block_switch
+sgne_resume:                    ; rti atterrit ici au réveil (FORBID=0)
+        lda #$01
+        sta FORBID_COUNT        ; de retour dans le syscall
+        bra sgne_loop           ; re-pop (l'événement est là)
+sgne_got:
+        cli                     ; libère notre sei
+        rts                     ; A = what, record dans $D0-$D9
+
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)

@@ -603,6 +603,15 @@ _skip_task_win:
         lda #$00
         jsr kernel_task_create
 _skip_task_wdraw:
+        ; SP-3.n G.2 : task_evt (gated TC_EVT_FLAG) — bloque sur SYS_GET_NEXT_EVENT.
+        lda TC_EVT_FLAG
+        cmp #$A5
+        bne _skip_task_evt
+        ldx #<task_evt_entry
+        ldy #>task_evt_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_evt:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

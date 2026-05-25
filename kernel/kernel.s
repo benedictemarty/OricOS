@@ -42,6 +42,8 @@ TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère 
 TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
 TASK_F_CTR      = $01544B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (test SYS_SLEEP_MS)
 TASK_WIN_HANDLE = $015451       ; SP-3.m G.2 : handle fenêtre retourné par SYS_WIN_CREATE (test)
+TASK_EVT_WHAT   = $015452       ; SP-3.n G.2 : what de l'événement lu par task_evt (test)
+TASK_EVT_MSG    = $015453       ; SP-3.n G.2 : message (keycode) lu par task_evt (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -450,8 +452,11 @@ EV_MOUSE_UP       = 3
 EV_MOUSE_MOVED    = 4
 ; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
 EVT_TMP           = $6E
+; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
+; (cohérent avec KBD_WAITER ; signaux multi-bits génériques = polish #1).
+EVENT_WAITER      = $015923
 .assert EVENT_RING + EVENT_ENTRIES * EVENT_SIZE <= EVENT_RING_HEAD, error, "EVENT_RING recouvre ses pointeurs"
-.assert EVENT_RING_COUNT < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
+.assert EVENT_WAITER < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
@@ -660,6 +665,7 @@ TC_HELLOC_TASK_FLAG = $01EF20     ; OS-2.g v2.b : $A5 → spawn bundle_hello_c c
 TC_WIN_FLAG      = $01EF30        ; SP-3.m G.2 : $A5 → crée task_win (test SYS_WIN_CREATE)
 TC_WDRAW_FLAG    = $01EF40        ; SP-3.m G.4 : $A5 → crée task_wdraw (test dessin fenêtré)
 TC_WINAPP_FLAG   = $01EF50        ; SP-3.m G.6 : $A5 → spawn bundle_win (app C démo fenêtrée)
+TC_EVT_FLAG      = $01EF60        ; SP-3.n G.2 : $A5 → crée task_evt (test SYS_GET_NEXT_EVENT)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

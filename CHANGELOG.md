@@ -5,6 +5,29 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G2] - 2026-05-26
+
+### SP-3.n G.2 — SYS_GET_NEXT_EVENT + SYS_EVENT_AVAIL (Event Manager)
+
+#### Added
+- **`sys_event_avail` ($15)** : non-bloquant, A = 1 si la file contient un
+  événement, 0 sinon.
+- **`sys_get_next_event` ($16)** : extrait le prochain événement (A = what,
+  record 10 o copié dans le bloc ZP $D0-$D9). **Bloquant** si la file est vide
+  (block/wake ADR-25, calqué sur `sys_read_char`) : `EVENT_WAITER` ($015923)
+  enregistre la tâche en attente, réveillée par l'IRQ via `kernel_event_wake`.
+- **`kernel_event_wake`** (event.s) : appelé par l'IRQ handler après le post
+  des événements ; passe `EVENT_WAITER` READY si la file est non vide (pas
+  d'éligibilité focus — file globale du MainLoop).
+- **`task_evt`** (alloc.s, gated `TC_EVT_FLAG` $01EF60) : tâche de test qui
+  bloque sur SYS_GET_NEXT_EVENT, stocke what/message puis sort.
+- **`kernel.s`** : `EVENT_WAITER`, `TASK_EVT_WHAT`/`TASK_EVT_MSG` (sentinelles),
+  `TC_EVT_FLAG`. Table dispatch : $15/$16 câblés (`.repeat 41`).
+
+Mono-waiter v1 (cohérent KBD_WAITER ; signaux multi-bits = polish #1). Validé :
+`test_oricos_event_syscall` — task_evt bloque, reçoit la touche 'B' par IRQ →
+EV_KEY_DOWN, message 'B'. 566 tests verts.
+
 ## [Unreleased+SP-3.n-G1] - 2026-05-26
 
 ### SP-3.n G.1 — file d'événements unifiée (ADR-26 draft, modèle GeoWorks)

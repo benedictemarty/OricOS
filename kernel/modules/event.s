@@ -28,6 +28,30 @@ kernel_event_init:
         sta EVENT_RING_HEAD
         sta EVENT_RING_TAIL
         sta EVENT_RING_COUNT
+        sta EVENT_WAITER         ; G.2 : aucune tâche en attente
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_event_wake — réveille la tâche bloquée sur SYS_GET_NEXT_EVENT (G.2)
+; ════════════════════════════════════════════════════════════════════
+; Appelé par le handler IRQ après avoir posté les événements (clavier/souris).
+; Si une tâche attend (EVENT_WAITER≠0) ET la file est non vide, la passe READY
+; et efface EVENT_WAITER. Pas d'éligibilité focus : la file est globale (tous
+; les événements vont au MainLoop de l'app). Clobbers A, Y (restaurés par l'IRQ).
+.export kernel_event_wake
+kernel_event_wake:
+        lda EVENT_WAITER
+        beq ewake_done                  ; personne n'attend
+        lda EVENT_RING_COUNT
+        beq ewake_done                  ; file vide → pas de réveil
+        lda EVENT_WAITER
+        jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[EVENT_WAITER]
+        lda #TASK_STATE_READY
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y               ; débloque la tâche
+        lda #$00
+        sta EVENT_WAITER
+ewake_done:
         rts
 
 ; ── _evt_tail_offset : X = EVENT_RING_TAIL × 10 (offset octet du slot écrit) ──

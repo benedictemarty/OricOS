@@ -82,8 +82,10 @@ syscall_table:
         .word sys_sleep_ms      ; $12 SYS_SLEEP_MS
         .word sys_win_create    ; $13 SYS_WIN_CREATE (SP-3.m G.2)
         .word sys_win_flush     ; $14 SYS_WIN_FLUSH  (SP-3.m G.4bis/G.6)
-        .repeat 43
-        .word sys_invalid       ; $15-$3F réservés
+        .word sys_event_avail   ; $15 SYS_EVENT_AVAIL (SP-3.n G.2)
+        .word sys_get_next_event ; $16 SYS_GET_NEXT_EVENT (SP-3.n G.2)
+        .repeat 41
+        .word sys_invalid       ; $17-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════
@@ -144,6 +146,8 @@ irq_no_mou:
         jsr kernel_kbd_poll
         ; ── g.5 : réveille la tâche bloquée sur le clavier (si touche dispo) ──
         jsr kernel_kbd_wake
+        ; ── SP-3.n G.2 : réveille la tâche bloquée sur la file d'événements ──
+        jsr kernel_event_wake
 
         ; ── VIA T1 présent ? (sinon IRQ MOU2/KBD2 seule : pas de tick) ──
         lda VIA_IFR
