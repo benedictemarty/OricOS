@@ -47,6 +47,7 @@ TASK_EVT_MSG    = $015453       ; SP-3.n G.2 : message (keycode) lu par task_evt
 TASK_ML_MSG     = $015454       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP (test)
 TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
 TASK_UI_HANDLE  = $015456       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
+TASK_DLG_RES    = $015457       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_dlg (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -468,6 +469,12 @@ MSG_CONTROL       = 5            ; G.4
 GU_END            = $00         ; fin de table
 GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
 GU_TITLE          = $02         ; suivi d'un pointer titre 16-bit (bank 1)
+; Tags de la command table DoDlgBox (SP-3.n G.5, SYS_DO_DLGBOX $19, style GEOS).
+; Le dialogue EST une donnée : l'app passe la table, le kernel l'exécute modalement.
+DB_END            = $00         ; fin de table
+DB_POSITION       = $01         ; suivi de x16 y16 w16 h16 (géométrie dialogue)
+DB_OK             = $02         ; bouton OK (auto-positionné, terminant → retour 1)
+DB_CANCEL         = $03         ; bouton Cancel (auto-positionné, terminant → retour 0)
 ; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
 EVT_TMP           = $6E
 ; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
@@ -478,8 +485,15 @@ EVENT_WAITER      = $015923
 ; fenêtre au clic close-box : l'app reçoit MSG_CLOSE et décide (modèle GeoWorks).
 ; Sinon (desktop sans app, ex. tests SP-3.f) : auto-close conservé.
 WM_APP_DRIVEN     = $015924
+; SP-3.n G.5 : état DoDlgBox (modal). DLG_WIN = slot fenêtre dialogue,
+; DLG_OK_ID/DLG_CANCEL_ID = index widgets boutons terminants ($FF=absent),
+; DLG_RESULT = retour (1=OK, 0=Cancel).
+DLG_WIN           = $015925
+DLG_OK_ID         = $015926
+DLG_CANCEL_ID     = $015927
+DLG_RESULT        = $015928
 .assert EVENT_RING + EVENT_ENTRIES * EVENT_SIZE <= EVENT_RING_HEAD, error, "EVENT_RING recouvre ses pointeurs"
-.assert WM_APP_DRIVEN < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
+.assert DLG_RESULT < MOUSE_X, error, "état event/dlg recouvre MOUSE_X"
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
@@ -691,6 +705,7 @@ TC_WINAPP_FLAG   = $01EF50        ; SP-3.m G.6 : $A5 → spawn bundle_win (app C
 TC_EVT_FLAG      = $01EF60        ; SP-3.n G.2 : $A5 → crée task_evt (test SYS_GET_NEXT_EVENT)
 TC_ML_FLAG       = $01EF70        ; SP-3.n G.3a : $A5 → crée task_ml (test SYS_MAIN_LOOP)
 TC_UI_FLAG       = $01EF80        ; SP-3.n G.3b : $A5 → crée task_ui (test SYS_UI_DEFINE)
+TC_DLG_FLAG      = $01EF90        ; SP-3.n G.5 : $A5 → crée task_dlg (test SYS_DO_DLGBOX)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

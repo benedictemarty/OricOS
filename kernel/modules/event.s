@@ -33,6 +33,57 @@ kernel_event_init:
         rts                      ;        pilote SYS_MAIN_LOOP
 
 ; ════════════════════════════════════════════════════════════════════
+;  kernel_event_wait — bloque la tâche courante jusqu'à un événement (G.5)
+; ════════════════════════════════════════════════════════════════════
+; Helper réutilisable : attend qu'un événement soit disponible (NE le pop PAS).
+; Mode tâche : block/wake (EVENT_WAITER + réveil IRQ kernel_event_wake), rend le
+; CPU. Mode boot-context : spin + WAI. Utilisé par la boucle modale DoDlgBox.
+; Retourne à l'appelant (jsr) avec EVENT_RING_COUNT > 0. Clobbers A.
+.export kernel_event_wait
+kernel_event_wait:
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq kew_block_mode
+kew_spin:
+        lda EVENT_RING_COUNT
+        bne kew_ret
+        wai
+        bra kew_spin
+kew_ret:
+        rts
+kew_block_mode:
+kew_loop:
+        sei
+        lda EVENT_RING_COUNT
+        bne kew_got
+        ; file vide sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
+        lda TASK_CUR
+        sta EVENT_WAITER
+        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → kew_resume
+        lda #$01
+        pha                     ; PBR
+        lda #>kew_resume
+        pha                     ; PCH
+        lda #<kew_resume
+        pha                     ; PCL
+        lda #$30                ; P : mode N M=X=1, I=0
+        pha
+        lda #$00
+        pha                     ; A
+        pha                     ; X
+        pha                     ; Y
+        lda #$00
+        sta FORBID_COUNT
+        jmp kernel_block_switch
+kew_resume:                     ; rti atterrit ici au réveil (frame déroulée)
+        lda #$01
+        sta FORBID_COUNT
+        bra kew_loop            ; re-vérifie (puis rts vers l'appelant)
+kew_got:
+        cli
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_event_wake — réveille la tâche bloquée sur SYS_GET_NEXT_EVENT (G.2)
 ; ════════════════════════════════════════════════════════════════════
 ; Appelé par le handler IRQ après avoir posté les événements (clavier/souris).

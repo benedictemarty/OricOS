@@ -231,6 +231,35 @@ genui_demo:
 genui_ui_title:
         .byte "UI", $00
 
+; ─── task_dlg_entry : ouvre un dialogue modal via command table (SP-3.n G.5) ──
+; SYS_DO_DLGBOX ($19) avec db_demo (dialogue 200,150,160,80 + boutons OK/Cancel).
+; Bloque (modal) jusqu'au clic ; stocke le retour (1=OK/0=Cancel) puis SYS_EXIT.
+.export task_dlg_entry
+task_dlg_entry:
+        lda #<db_demo
+        sta $D0
+        lda #>db_demo
+        sta $D1
+        lda #$01                ; bank 1
+        sta $D2
+        lda #$19                ; SYS_DO_DLGBOX
+        cop #$AA
+        sta TASK_DLG_RES        ; A = 1 (OK) ou 0 (Cancel)
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_dlg_entry      ; filet
+
+; Command table DoDlgBox démo : dialogue (200,150,160,80) + OK + Cancel.
+db_demo:
+        .byte DB_POSITION
+        .word 200               ; x
+        .word 150               ; y
+        .word 160               ; w
+        .word 80                ; h
+        .byte DB_OK
+        .byte DB_CANCEL
+        .byte DB_END
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

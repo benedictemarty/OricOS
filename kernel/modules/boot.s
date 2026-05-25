@@ -630,6 +630,15 @@ _skip_task_ml:
         lda #$00
         jsr kernel_task_create
 _skip_task_ui:
+        ; SP-3.n G.5 : task_dlg (gated TC_DLG_FLAG) — dialogue modal DoDlgBox.
+        lda TC_DLG_FLAG
+        cmp #$A5
+        bne _skip_task_dlg
+        ldx #<task_dlg_entry
+        ldy #>task_dlg_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_dlg:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

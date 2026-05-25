@@ -5,6 +5,29 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G5] - 2026-05-26
+
+### SP-3.n G.5 — SYS_DO_DLGBOX : dialogue modal (command table, GEOS)
+
+#### Added
+- **`sys_do_dlgbox` ($19)** (wm.s) : modèle GEOS — l'app passe une **command
+  table** (`DB_POSITION x16 y16 w16 h16` / `DB_OK` / `DB_CANCEL` / `DB_END`) ; le
+  kernel crée une fenêtre **modale** (`WM_MODAL`) + les boutons (auto-positionnés),
+  exécute une **boucle modale** et rend A = 1 (OK) / 0 (Cancel). **UI-modal** : la
+  saisie va au dialogue ; la tâche appelante **bloque et rend le CPU** (les autres
+  tâches continuent — préemption préservée). Helper `_ddb_add_button`.
+- **`kernel_event_wait`** (event.s) : helper réutilisable — bloque la tâche
+  jusqu'à un événement (block/wake ADR-25, sans le pop), spin+WAI en boot-context.
+- **`kernel.s`** : tags `DB_*`, état `DLG_WIN`/`DLG_OK_ID`/`DLG_CANCEL_ID`/
+  `DLG_RESULT` ($015925+), sentinelle `TASK_DLG_RES`, `TC_DLG_FLAG` ($01EF90).
+  Table dispatch : $19 câblé (`.repeat 38`).
+- **`task_dlg`** (alloc.s, gated TC_DLG_FLAG) + command table `db_demo`.
+
+Choix de conception (cf. réponse humain) : **UI-modal** (réutilise `WM_MODAL`,
+comportement GEOS) ; task-modal (autres fenêtres interactives) parqué v2.
+Validé : `test_oricos_dlgbox` — clic OK → retour 1 + dialogue fermé (`WM_MODAL`
+=$FF). 572 tests verts. Reste SP-3.n : G.6 (`SYS_ALERT`), G.7 (démo C).
+
 ## [Unreleased+SP-3.n-G4] - 2026-05-26
 
 ### SP-3.n G.4 — contrôles → MSG_CONTROL

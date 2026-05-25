@@ -2916,6 +2916,150 @@ sud_done:
 sud_ret:
         rts
 
+; $19 — SYS_DO_DLGBOX : dialogue modal défini par une command table (G.5) ──
+; Modèle GEOS : l'app passe un pointer 24-bit ($D0-$D2) vers une table DB_*
+; (DB_POSITION x16 y16 w16 h16 / DB_OK / DB_CANCEL / DB_END). Le kernel crée une
+; fenêtre modale + les boutons, puis exécute une BOUCLE MODALE (UI-modal : la
+; saisie va au dialogue, WM_MODAL ; la tâche appelante bloque et rend le CPU via
+; kernel_event_wait). Retour : A = 1 (OK) ou 0 (Cancel). Boutons auto-positionnés.
+sys_do_dlgbox:
+        lda #$FF
+        sta DLG_OK_ID
+        sta DLG_CANCEL_ID
+        lda #$00
+        sta DLG_RESULT
+        ldy #$00
+ddb_parse:
+        lda [$D0],y
+        beq ddb_show            ; DB_END
+        cmp #DB_POSITION
+        beq ddb_pos
+        cmp #DB_OK
+        beq ddb_addok
+        cmp #DB_CANCEL
+        beq ddb_addcancel
+        bra ddb_show            ; tag inconnu → stop
+ddb_pos:
+        iny
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_W
+        iny
+        lda [$D0],y
+        sta WM_ARG_W+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_H
+        iny
+        lda [$D0],y
+        sta WM_ARG_H+1
+        iny
+        ; crée la fenêtre dialogue (sans titre v1) + la passe modale
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        phy
+        jsr kernel_wm_add       ; A = handle
+        ply
+        sta DLG_WIN
+        jsr kernel_wm_set_modal ; A = DLG_WIN → WM_MODAL
+        bra ddb_parse
+ddb_addok:
+        iny
+        lda WIDGET_COUNT        ; id = index du nouveau widget
+        sta DLG_OK_ID
+        lda #10                 ; rel x
+        ldx #50                 ; rel y
+        jsr _ddb_add_button
+        bra ddb_parse
+ddb_addcancel:
+        iny
+        lda WIDGET_COUNT
+        sta DLG_CANCEL_ID
+        lda #60                 ; rel x
+        ldx #50                 ; rel y
+        jsr _ddb_add_button
+        bra ddb_parse
+ddb_show:
+        ; ── boucle modale : attend un clic sur un bouton terminant ──
+ddb_loop:
+        jsr kernel_event_wait   ; bloque jusqu'à un événement (rend le CPU)
+        jsr kernel_event_pop    ; A = what, record en $D0
+        cmp #EV_MOUSE_DOWN
+        bne ddb_loop            ; ignore tout sauf un clic
+        php
+        sei                     ; _wm_widget_hit lit MOUSE_X/Y (partagé IRQ)
+        jsr _wm_widget_hit      ; WIDGET_ACTIVE = index bouton ou $FF
+        plp
+        lda WIDGET_ACTIVE
+        cmp #$FF
+        beq ddb_loop            ; rien touché → continue (modal)
+        cmp DLG_OK_ID
+        beq ddb_hit_ok
+        cmp DLG_CANCEL_ID
+        beq ddb_hit_cancel
+        bra ddb_loop            ; autre widget → continue
+ddb_hit_ok:
+        lda #$01
+        sta DLG_RESULT
+        bra ddb_close
+ddb_hit_cancel:
+        lda #$00
+        sta DLG_RESULT
+ddb_close:
+        jsr kernel_wm_clear_modal
+        lda DLG_WIN
+        jsr kernel_wm_close
+        lda DLG_RESULT
+        rts
+
+; ── _ddb_add_button : ajoute un bouton dialogue. A = rel x, X = rel y. ──
+; Parent = DLG_WIN, taille fixe 44×18, label "OK"/"Cancel" partagé db_btn_str.
+; Clobbers A, X, Y (l'appelant ddb_* n'a plus besoin de Y ici).
+_ddb_add_button:
+        sta WM_DP_TMP           ; rel x (8-bit)
+        stx WM_DP_TMP+1         ; rel y
+        lda DLG_WIN
+        sta WG_PARENT
+        lda #WG_TYPE_BUTTON
+        sta WG_TYPE
+        lda #$07
+        sta GFX_COLOR
+        lda #<db_btn_str
+        sta DP_PCPTR
+        lda #>db_btn_str
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB
+        sta WG_CB+1
+        rep #$20
+        lda WM_DP_TMP           ; rel x (le high de WM_DP_TMP+1 = rel y est lu ensuite)
+        and #$00FF
+        sta WM_ARG_X
+        lda WM_DP_TMP+1
+        and #$00FF
+        sta WM_ARG_Y
+        lda #44
+        sta WM_ARG_W
+        lda #18
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add_widget
+        rts
+db_btn_str:
+        .byte "OK", $00
+
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)
