@@ -219,3 +219,10 @@ str_b3_guest_out:
 bundle_test:
         .incbin "../apps/hello/build/hello.oosobj"
 
+; ─── Bundle hello_c (TC-poc-hello-c) ────────────────────────────────────
+; Première app userland C compilée avec llvm-mos (target mos-oricos).
+; Produite par apps/hello_c/ → format .oos (même format OOS qu'hello.oosobj).
+.export bundle_hello_c
+bundle_hello_c:
+        .incbin "../apps/hello_c/build/hello.oos"
+

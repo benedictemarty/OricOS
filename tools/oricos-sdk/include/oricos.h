@@ -12,6 +12,11 @@
  *
  * Mode CPU : 65C816 mode N, M=1, X=1 (8-bit registers).
  * Convention : A = syscall num, X/Y = args, retour A (0xFF = erreur).
+ *
+ * Note asm : les numéros de syscall sont littéraux dans le template asm
+ * (ex. "lda #1\n") et non passés via contrainte "i" + %[sym].
+ * Avec llvm-mos LTO, la contrainte "i" peut être hoistée en variable ZP
+ * (a5 $N) qui écrase la ZP kernel — le littéral force LDA immediate (a9).
  */
 
 #ifndef ORICOS_H
@@ -51,11 +56,11 @@
 static __attribute__((always_inline)) inline
 void oricos_print_char(uint8_t c) {
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #1\n"              /* SYS_PRINT_CHAR — littéral, jamais hoistable */
         "ldx %[ch]\n"
         ".byte 0x02, 0xAA\n"
         :
-        : [syscall] "i" (SYS_PRINT_CHAR), [ch] "r" (c)
+        : [ch] "r" (c)
         : "a", "x"
     );
 }
@@ -71,10 +76,10 @@ void oricos_print_string(const char *s) {
 static __attribute__((always_inline)) inline
 void oricos_yield(void) {
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #5\n"              /* SYS_YIELD */
         ".byte 0x02, 0xAA\n"
         :
-        : [syscall] "i" (SYS_YIELD)
+        :
         : "a"
     );
 }
@@ -82,11 +87,11 @@ void oricos_yield(void) {
 static __attribute__((noreturn, always_inline)) inline
 void oricos_exit(uint8_t code) {
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #4\n"              /* SYS_EXIT */
         "ldx %[code]\n"
         ".byte 0x02, 0xAA\n"
         :
-        : [syscall] "i" (SYS_EXIT), [code] "r" (code)
+        : [code] "r" (code)
         : "a", "x"
     );
     __builtin_unreachable();
@@ -99,11 +104,11 @@ static __attribute__((always_inline)) inline
 uint8_t oricos_get_key(void) {
     uint8_t key;
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #6\n"              /* SYS_GET_KEY */
         ".byte 0x02, 0xAA\n"
         "sta %[out]\n"
         : [out] "=r" (key)
-        : [syscall] "i" (SYS_GET_KEY)
+        :
         : "a"
     );
     return key;
@@ -114,11 +119,11 @@ static __attribute__((always_inline)) inline
 uint8_t oricos_read_char(void) {
     uint8_t key;
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #3\n"              /* SYS_READ_CHAR */
         ".byte 0x02, 0xAA\n"
         "sta %[out]\n"
         : [out] "=r" (key)
-        : [syscall] "i" (SYS_READ_CHAR)
+        :
         : "a"
     );
     return key;
@@ -131,11 +136,11 @@ static __attribute__((always_inline)) inline
 uint8_t oricos_alloc_bank(void) {
     uint8_t bank;
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #11\n"             /* SYS_ALLOC_BANK */
         ".byte 0x02, 0xAA\n"
         "sta %[out]\n"
         : [out] "=r" (bank)
-        : [syscall] "i" (SYS_ALLOC_BANK)
+        :
         : "a"
     );
     return bank;
@@ -144,11 +149,11 @@ uint8_t oricos_alloc_bank(void) {
 static __attribute__((always_inline)) inline
 void oricos_free_bank(uint8_t bank) {
     __asm__ volatile (
-        "lda %[syscall]\n"
+        "lda #12\n"             /* SYS_FREE_BANK */
         "ldx %[b]\n"
         ".byte 0x02, 0xAA\n"
         :
-        : [syscall] "i" (SYS_FREE_BANK), [b] "r" (bank)
+        : [b] "r" (bank)
         : "a", "x"
     );
 }

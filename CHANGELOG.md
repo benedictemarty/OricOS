@@ -5,6 +5,32 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+TC-poc-hello-c] - 2026-05-25
+
+### TC-poc-hello-c — première app C llvm-mos sous OricOS
+
+#### Fixed
+- **`tools/oricos-sdk/include/oricos.h`** : numéros de syscalls en littéraux asm
+  (`"lda #1\n"`) au lieu de contrainte `"i"` paramétrée. Avec `-flto`, la contrainte
+  était hoistée en variable ZP par l'optimiseur, générant `LDA ZP` au lieu de `LDA #imm`.
+  Même correction appliquée à `/home/bmarty/llvm-mos/mos-platform/oricos/include/oricos.h`
+  (priorité sur le SDK local dans le build llvm-mos).
+- **`kernel/modules/wm.s` — `sys_print_char`** : ajout sauvegarde/restaure DBR
+  (`phb; lda #0; pha; plb ... plb`) avant d'appeler `kernel_print_char`. Les apps
+  userland ont DBR = bank propre (ex. bank 4) ; `kernel_print_char` suppose DBR=0
+  pour écrire dans le buffer texte $BB80 via `sta (DP_PCPTR)`.
+- **`kernel/modules/fat.s` — `kernel_app_exec`** : boucle de copie améliorée v0.2
+  (Y 16-bit via `rep #$10`, taille lue en 16-bit via `rep #$20`) pour bundles > 255 B.
+  hello_c = 584 octets ($0248) ; l'ancienne boucle 8-bit ne copiait que 72 octets ($48).
+
+#### Added
+- **`kernel/modules/boot.s`** : bloc conditionnel `TC_HELLOC_FLAG` ($01EF10=$A5) :
+  pré-injection touche 'A' dans ring kbd, DP_PTR ← `bundle_hello_c`, JSR `kernel_app_exec`.
+- **`kernel/modules/console.s`** : `.export bundle_hello_c` — bundle hello_c embarqué
+  via `.incbin "../apps/hello_c/build/hello.oos"`.
+- **`Makefile`** : `APPS` et `APP_BUNDLES` étendus à `hello_c`.
+- **`kernel/kernel.s`** : constante `TC_HELLOC_FLAG = $01EF10`.
+
 ## [Unreleased] - 2026-05-25
 
 ### TC-libc — libc minimale OricOS (liboricos.a) v1.0

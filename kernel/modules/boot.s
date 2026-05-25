@@ -1129,6 +1129,26 @@ skip_big_read:
         jsr kernel_app_exec
 skip_multi_exec:
 
+        ; ── TC-poc-hello-c : exec conditionnel (TC_HELLOC_FLAG=$01EF10 == $A5) ─
+        ; Le test Phosphoric pose $A5 à $01EF10 avant le boot pour activer ce
+        ; chemin. Permet de valider l'exécution d'une app userland C (llvm-mos)
+        ; sans perturber les tests existants (qui laissent $01EF10=$00).
+        lda TC_HELLOC_FLAG
+        cmp #$A5
+        bne _skip_helloc
+        ; Pre-inject la touche 'A' dans le ring kbd → SYS_READ_CHAR se débloque.
+        lda #'A'
+        jsr kernel_kbd_ring_push
+        ; Exec bundle_hello_c (bank 1, adresse absolue).
+        lda #<bundle_hello_c
+        sta DP_PTR
+        lda #>bundle_hello_c
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_exec
+_skip_helloc:
+
         ; ── Configure VIA T1 timer en mode continuous interrupt ────
         ; ACR bit 7=0, bit 6=1 → T1 continuous, no PB7 output.
         lda #$40

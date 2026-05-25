@@ -17,8 +17,9 @@ KERNEL_MAP  = $(BUILD)/kernel.map
 KERNEL_SRC  = kernel/kernel.s
 KERNEL_CFG  = kernel/kernel.cfg
 
-APPS        = hello
-APP_BUNDLES = $(foreach a,$(APPS),apps/$(a)/build/$(a).oosobj)
+APPS        = hello hello_c
+APP_BUNDLES = apps/hello/build/hello.oosobj \
+              apps/hello_c/build/hello.oos
 
 .PHONY: all clean info apps $(APPS)
 

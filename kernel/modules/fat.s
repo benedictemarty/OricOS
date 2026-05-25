@@ -642,18 +642,22 @@ ae_after_alloc:
         lda BUNDLE_APP_BANK
         sta $1D
 
-        ; Copy section CODE byte par byte (v0.1 : size 8-bit max)
-        lda BUNDLE_FOUND_SIZE
-        sta $16
-        ldy #$00
+        ; Copy section CODE (v0.2 : size 16-bit, supporte jusqu'à 64 KiB)
+        rep #$20                        ; M=0 → A 16-bit pour lire size
+        lda BUNDLE_FOUND_SIZE           ; 16-bit size (low+high)
+        sta $16                         ; $16/$17 = counter 16-bit
+        sep #$20                        ; M=1 → A 8-bit
+        rep #$10                        ; X=0 → Y 16-bit
+        ldy #$0000
 ae_copy:
-        cpy $16
+        cpy $16                         ; comparer Y (16-bit) avec count
         bcs ae_copy_done
-        lda [$18],Y
+        lda [$18],Y                     ; byte source (M=1 → 8-bit)
         sta [$1B],Y
         iny
         bra ae_copy
 ae_copy_done:
+        sep #$10                        ; X=1 → Y 8-bit (restore)
 
         ; Patch JSL self-modifying. ld65 résout les labels CODE en 16-bit
         ; (bank=0 par défaut dans STA al). Workaround : DP indirect long
