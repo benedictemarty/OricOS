@@ -45,7 +45,7 @@ TICK_GOAL       = $0A           ; 10 ticks → STP
 ; 16 TCBs × 20 bytes = 320 octets en bank 1 à $5C00.
 ; Bitmap free 2 octets à $5B00 (16 bits).
 TCB_TABLE_BASE  = $015C00
-TCB_BITMAP      = $015B00       ; 2 bytes : bit set = slot occupé
+TCB_BITMAP      = $015B20       ; 2 bytes : bit set = slot occupé (déplacé $5B00→$5B20 pour éviter overlap ICON_TABLE)
 TCB_SIZE        = 20            ; bytes par TCB
 TCB_MAX         = 16            ; tasks max
 
@@ -192,6 +192,53 @@ SCREEN_LAST_ROW = $00BFB8       ; SCREEN_BASE + 27*40
 ; Variables console (bank 1)
 CURSOR_ADDR     = $015490       ; 16-bit, addr écran courante
 CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
+
+; ════════════════════════════════════════════════════════════════════
+;  REGISTRE D'ALLOCATION ZERO PAGE (DP = $0000, bank 0)
+;  Mode N : toutes les adresses sont 16-bit ZP (D=0 au boot).
+;  RÈGLE : toute variable ZP kernel doit figurer ici avant d'être ajoutée.
+;  ⚠️  $20-$21 (WM_DP_TMP) : scratch CLOBBÉ par kernel_wm_offset → jamais
+;      supposer stable après un jsr kernel_wm_offset. Utiliser WIN_SLOT ($24).
+;
+;  Adresse   Taille   Symbole            Usage
+;  --------  ------   ------             -----
+;  $08-$0A   3B       DP_PTR             pointer 24-bit (print_string, long indirect)
+;  $0B       1B       (libre)
+;  $0C-$0D   2B       DP_PCPTR           pointer 16-bit (print_char, screen RAM)
+;  $0E       1B       DP_PCPTR+2         bank byte du DP_PCPTR (écriture temporaire)
+;  $0F       1B       (libre)
+;  $10       1B       DP_TMP             scratch char temp (print_char, misc)
+;  $11       1B       DP_SYS_ARG_X       X sauvé avant dispatch COP (OS-2.f.v2)
+;  $12       1B       DP_KBD_TMP         scratch ring clavier (OS-2.d)
+;  $13       1B       DP_LOG_TMP         scratch code log (OS-2.i.v2)
+;  $14-$15   2B       WM_ARG_X           arg x fenêtre (16-bit)
+;  $16-$17   2B       WM_ARG_Y           arg y fenêtre (16-bit)
+;  $18-$19   2B       WM_ARG_W           arg w fenêtre (16-bit)
+;  $1A-$1B   2B       WM_ARG_H           arg h fenêtre (16-bit)
+;  $1C-$1D   2B       WM_ARG_DX          arg delta-x signé (drag/resize)
+;  $1E-$1F   2B       WM_ARG_DY          arg delta-y signé (drag/resize)
+;  $20-$21   2B       WM_DP_TMP  ⚠️      scratch WM (clobbé par kernel_wm_offset)
+;  $22       1B       WM_ARG_TITLE_LO    pointeur titre (lo)
+;  $23       1B       WM_ARG_TITLE_HI    pointeur titre (hi)
+;  $24       1B       WIN_SLOT           slot fenêtre courant (STABLE post-wm_offset)
+;  $25-$5F   59B      (libres)
+;  $60-$62   3B       VRAM_OP_ADDR_*     adresse SDRAM 24-bit (vram_write/read_block)
+;  $63-$64   2B       VRAM_OP_LEN_*      longueur 16-bit vram block
+;  $65-$67   3B       VRAM_DMA_SRC_*_ZP  source DMA SDRAM 24-bit
+;  $68-$6A   3B       VRAM_DMA_DST_*_ZP  destination DMA SDRAM 24-bit
+;  $6B-$6C   2B       VRAM_DMA_LEN_*_ZP  longueur DMA 16-bit
+;  $6D       1B       VRAM_DMA_DIR_ZP    direction DMA
+;  $6E-$6F   2B       (libres)
+;  $70-$72   3B       GFX_BASE_*         base SDRAM 24-bit GPU (clear/fill/blit...)
+;  $73-$75   3B       GFX_ARG2_*         arg2 GPU (size|x/y/unused)
+;  $76-$77   2B       GFX_ARG3_*         arg3 GPU (w/h)
+;  $78       1B       GFX_COLOR          couleur palette 4-bit (0..15)
+;  $79-$7B   3B       GFX_FONT_*         font_addr 24-bit (GPU TEXT)
+;  $7C-$7E   3B       GFX_STR_*          string_addr 24-bit (GPU TEXT)
+;  $7F       1B       (libre)
+;  $80-$88   9B       WIN_X/Y/W/H/…      args kernel_window_draw legacy (SP-3.c)
+;  $89-$FF   119B     (libres)
+; ════════════════════════════════════════════════════════════════════
 
 ; Zero page kernel (DP=0)
 ; print_string utilise DP_PTR (long indirect [dp],Y → bank 1 strings).
@@ -417,7 +464,7 @@ WM_TITLE_COL     = $015985       ; 1B : couleur titlebar courante (focus/non-foc
 ; Les titres sont stockés en SDRAM : slot 0 → $012000, slot 1 → $012100,
 ; slot 2 → $012200, slot 3 → $012300 (256 o max par titre, suffit pour 255 chars).
 ; Uploadés au moment de kernel_wm_add (hors IRQ context, safe pour DP_PCPTR).
-WM_TITLES        = $015986       ; 4 × 1B = 4 octets ($5986-$5989)
+WM_TITLES        = $015B74       ; 8 × 1B = 8 octets ($5B74-$5B7B, WM_MAX=8)
 ; ZP args pour kernel_wm_add (titre, bank1 pointer 16-bit)
 WM_ARG_TITLE_LO  = $22           ; low byte du pointer titre
 WM_ARG_TITLE_HI  = $23           ; high byte du pointer titre
@@ -458,8 +505,7 @@ WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
 WG_TYPE_BUTTON   = $01
-; temps de _wm_draw_all_widgets
-WG_I             = $015A90       ; 1B : index boucle
+WG_I             = $015A90       ; 1B : index boucle (_wm_draw_widgets_for_slot)
 WG_PARENT        = $015A91       ; 1B
 WG_TYPE          = $015A92       ; 1B
 WG_RELX          = $015A94       ; 2B
@@ -477,8 +523,8 @@ WM_STATE_NORMAL      = $00       ; état fenêtre : normal
 WM_STATE_MAXED       = $01       ; état fenêtre : maximisée
 WM_STATE_HIDDEN      = $02       ; état fenêtre : minimisée depuis état normal
 WM_STATE_HIDDEN_MAXED= $03       ; état fenêtre : minimisée depuis état maximisé
-WM_STATES        = $015AA5       ; 4 × 1B : état par slot ($AA5-$AA8)
-WM_SAVED_RECTS   = $015AA9       ; 4 × 8B : x(2)+y(2)+w(2)+h(2) avant maximize ($AA9-$AC8)
+WM_STATES        = $015B7C       ; 8 × 1B : état par slot ($5B7C-$5B83, WM_MAX=8)
+WM_SAVED_RECTS   = $015B84       ; 8 × 8B : x(2)+y(2)+w(2)+h(2) avant maximize ($5B84-$5BC3, WM_MAX=8)
 WM_H_TEST_RES    = $015AC9       ; sentinelle test SP-3.h (5 octets)
 ; ── SP-3.i : resize des fenêtres (bord droit + bas) ──────────────────
 WM_RESIZE_ARMED  = $015ACE       ; 1B : 1 si resize armé (bouton tenu sur bord)
@@ -537,10 +583,10 @@ NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → p
 
 ; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
 ; 4 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
-WM_TABLE         = $015900       ; 4 × 10 = 40 octets ($5900-$5927)
-WM_COUNT         = $015928       ; 1B : nb fenêtres
-WM_FOCUS         = $015929       ; 1B : id fenêtre focus ($FF = aucune)
-WM_MAX           = 4
+WM_TABLE         = $015B22       ; 8 × 10 = 80 octets ($5B22-$5B71, WM_MAX=8)
+WM_COUNT         = $015B72       ; 1B : nb fenêtres
+WM_FOCUS         = $015B73       ; 1B : id fenêtre focus ($FF = aucune)
+WM_MAX           = 8
 WM_ENTSZ         = 10
 WM_F_USED        = $01           ; flags bit0 : slot occupé
 WM_F_VISIBLE     = $02           ; bit1 : visible
@@ -3850,7 +3896,7 @@ _wdws_check_parent:
         beq _wdws_draw
         jmp _wdws_next
 _wdws_draw:
-        ; dessiner ce widget (copie de la logique de _wm_draw_all_widgets)
+        ; dessiner ce widget
         lda WIDGET_TABLE+2,X
         sta WG_TYPE
         lda WIDGET_TABLE+3,X
@@ -3911,101 +3957,6 @@ _wdws_next:
         jmp _wdws_loop
 _wdws_done:
         rts
-
-; ── _wm_draw_all_widgets : redessine tous les widgets à leur position
-;    absolue (fenêtre parente + offset relatif). Appelé après les fenêtres
-;    → widgets persistent et suivent leur fenêtre au drag. Modifie A,X,Y.
-;    OBSOLÈTE : remplacé par _wm_draw_widgets_for_slot dans la boucle principale.
-;    Conservé pour compatibilité (kernel_wm_redraw_drag l'utilise indirectement).
-_wm_draw_all_widgets:
-        lda #$00
-        sta WG_I
-_wdw_loop:
-        lda WG_I
-        cmp WIDGET_COUNT
-        bcc _wdw_go
-        jmp kernel_menu_draw     ; plus de widget → barre de menu par-dessus
-_wdw_go:
-        asl a
-        asl a
-        asl a
-        asl a
-        tax                      ; offset entrée
-        lda WIDGET_TABLE+0,X
-        and #$01
-        bne _wdw_used            ; slot occupé → dessiner
-        jmp _wdw_next            ; libre (branche longue)
-_wdw_used:
-        lda WIDGET_TABLE+1,X
-        sta WG_PARENT
-        lda WIDGET_TABLE+2,X
-        sta WG_TYPE
-        lda WIDGET_TABLE+3,X
-        sta GFX_COLOR
-        rep #$20
-        lda WIDGET_TABLE+4,X
-        sta WG_RELX
-        lda WIDGET_TABLE+6,X
-        sta WG_RELY
-        lda WIDGET_TABLE+8,X
-        sta WG_RELW
-        lda WIDGET_TABLE+10,X
-        sta WG_RELH
-        sep #$20
-        lda WIDGET_TABLE+12,X
-        sta DP_PCPTR
-        lda WIDGET_TABLE+13,X
-        sta DP_PCPTR+1
-        lda #$01
-        sta DP_PCPTR+2
-        ; fenêtre parente visible ?
-        lda WG_PARENT
-        jsr kernel_wm_offset     ; X = parent*10
-        lda WM_TABLE+WM_OFF_FLAGS,X
-        and #(WM_F_USED | WM_F_VISIBLE)
-        cmp #(WM_F_USED | WM_F_VISIBLE)
-        beq _wdw_vis
-        jmp _wdw_next            ; fenêtre absente/invisible (branche longue)
-_wdw_vis:
-        ; abs = win.xy + rel.xy
-        rep #$20
-        lda WM_TABLE+WM_OFF_X,X
-        clc
-        adc WG_RELX
-        sta WM_ARG_X
-        lda WM_TABLE+WM_OFF_Y,X
-        clc
-        adc WG_RELY
-        sta WM_ARG_Y
-        lda WG_RELW
-        sta WM_ARG_W
-        lda WG_RELH
-        sta WM_ARG_H
-        sep #$20
-        lda WG_TYPE
-        bne _wdw_btn
-        jsr kernel_tk_label
-        bra _wdw_next
-_wdw_btn:
-        ; v0.3 : pressé si ce widget est le bouton actif.
-        lda WG_I
-        cmp WIDGET_ACTIVE
-        bne _wdw_btn_normal
-        lda #$01
-        sta TK_BTN_PRESSED
-        bra _wdw_btn_draw
-_wdw_btn_normal:
-        lda #$00
-        sta TK_BTN_PRESSED
-_wdw_btn_draw:
-        jsr kernel_tk_button
-_wdw_next:
-        lda WG_I
-        inc a
-        sta WG_I
-        jmp _wdw_loop
-_wdw_done:
-        jmp kernel_menu_draw     ; v0.5 : barre de menu par-dessus tout
 
 ; ════════════════════════════════════════════════════════════════════
 ;  SP-3.d v0.6 — Barre de menu déroulant table-driven (N menus)
@@ -4608,17 +4559,25 @@ kernel_wm_init:
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
         lda #$FF
         sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
-        ; SP-3.f : vide la table des flags de titres (4 slots × 1B = $00)
+        ; SP-3.f : vide la table des flags de titres (WM_MAX=8 × 1B = $00)
         lda #$00
         sta WM_TITLES+0
         sta WM_TITLES+1
         sta WM_TITLES+2
         sta WM_TITLES+3
-        ; SP-3.h : init WM_STATES (4 × 1B = normal) et WM_SAVED_RECTS (4 × 8B = 0)
+        sta WM_TITLES+4
+        sta WM_TITLES+5
+        sta WM_TITLES+6
+        sta WM_TITLES+7
+        ; SP-3.h : init WM_STATES (8 × 1B = normal) et WM_SAVED_RECTS (8 × 8B = 0)
         sta WM_STATES+0
         sta WM_STATES+1
         sta WM_STATES+2
         sta WM_STATES+3
+        sta WM_STATES+4
+        sta WM_STATES+5
+        sta WM_STATES+6
+        sta WM_STATES+7
         ; SP-3.i : init WM_RESIZE_ARMED / WM_RESIZE_EDGE à 0
         sta WM_RESIZE_ARMED
         sta WM_RESIZE_EDGE
@@ -4634,11 +4593,12 @@ kernel_wm_init:
         sta f:ICON_TABLE + 3*ICON_ENTSZ + ICON_OFF_FLAGS
         lda #$FF
         sta f:ICON_SELECTED
+        lda #$00
         ldx #$00
 wm_init_sr:
         sta WM_SAVED_RECTS,X
         inx
-        cpx #32                  ; 4 × 8B
+        cpx #64                  ; 8 × 8B (WM_MAX=8)
         bcc wm_init_sr
         ldx #$00
 wm_init_lp:
@@ -6271,18 +6231,6 @@ _iac_go:
 _iac_call:
         ldx #$00
         jsr (.loword(WG_CB_VEC),X)  ; appel indirect (opcode $FC, vecteur en PBR=1)
-        rts
-
-; ── _wm_close_btn_hit : compatibilité — appelle _wm_chrome_hit et teste retour=1 ──
-; SP-3.f v0.2 (conservé pour l'API existante). Retourne A=1 si close, A=0 sinon.
-_wm_close_btn_hit:
-        jsr _wm_chrome_hit
-        cmp #$01
-        beq _cbh_hit
-        lda #$00
-        rts
-_cbh_hit:
-        lda #$01
         rts
 
 ; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
