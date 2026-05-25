@@ -1124,6 +1124,69 @@ kernel_gfx_fill_rect16:
         sta GPU_TRIGGER_IO
         rts
 
+; ── kernel_wm_compose : composite les backing stores → framebuffer XVGA (G.4bis) ──
+; Pour chaque fenêtre USED : BLIT son backing store ($06+slot:0000) vers le
+; framebuffer ($000000) à sa position (x,y). dst = y*512 + (x>>1) (BPL 512, 4bpp).
+; byte_w = w>>1, byte_h = h (BLIT v0.1 8-bit : w≤510, h≤255). Modèle GrafPort :
+; l'app dessine dans son backing store (coords locales), le compositor le place
+; à l'écran. v1 : recompose complète, pas de clipping z-order (overlap simple).
+; Pré-cond : mode N M=X=1, DBR=0. Clobbers A, X, Y.
+.export kernel_wm_compose
+kernel_wm_compose:
+        lda #$00
+        sta WCMP_SLOT
+wcmp_loop:
+        lda WCMP_SLOT
+        jsr kernel_wm_offset            ; X = slot*10
+        lda WM_TABLE+WM_OFF_FLAGS,X
+        and #WM_F_USED
+        beq wcmp_next                   ; slot libre → skip
+        ; src = backing store = ($06+slot):$0000
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda WCMP_SLOT
+        clc
+        adc #$06
+        sta GFX_BASE_HI
+        ; dst = y*512 + (x>>1) (framebuffer base $000000) → GFX_ARG2
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        lsr a                           ; xb = x>>1
+        sta WCMP_XB
+        lda WM_TABLE+WM_OFF_Y,X
+        asl a                           ; y*2 = (mid,hi) de y*512
+        sta WCMP_MIDHI
+        lda WCMP_XB
+        xba                             ; retenue xb>>8 (0/1) en octet bas
+        and #$00FF
+        clc
+        adc WCMP_MIDHI
+        sta WCMP_MIDHI
+        sep #$20
+        lda WCMP_XB
+        sta GFX_ARG2_LO
+        lda WCMP_MIDHI
+        sta GFX_ARG2_MID
+        lda WCMP_MIDHI+1
+        sta GFX_ARG2_HI
+        ; byte_w = w>>1, byte_h = h
+        rep #$20
+        lda WM_TABLE+WM_OFF_W,X
+        lsr a                           ; w>>1
+        sep #$20
+        sta GFX_ARG3_LO                 ; byte_w
+        lda WM_TABLE+WM_OFF_H,X          ; h (octet bas)
+        sta GFX_ARG3_MID                ; byte_h
+        jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
+wcmp_next:
+        lda WCMP_SLOT           ; (INC sans mode abs-long → lda/inc/sta)
+        inc a
+        sta WCMP_SLOT
+        cmp #WM_MAX
+        bcc wcmp_loop
+        rts
+
 ; ── kernel_wm_redraw : efface le desktop + dessine toutes les fenêtres ──
 ; (peinture back-to-front via FILL_RECT16, coords 16-bit). Framebuffer XVGA
 ; à SDRAM $000000 (ADR-20). Modifie A, X, Y.

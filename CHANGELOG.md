@@ -5,6 +5,28 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G4bis] - 2026-05-25
+
+### SP-3.m G.4bis — compositor (backing stores → framebuffer XVGA)
+
+#### Added
+- **`kernel/modules/wm.s` — `kernel_wm_compose`** : parcourt les slots utilisés de
+  `WM_TABLE` et BLITe chaque backing store `($06+slot):$0000` vers le framebuffer
+  XVGA à la position de la fenêtre (`dst = y*512 + x/2`, byte_w=`w/2`, byte_h=`h`,
+  stride fixe 512). Place les pixels dessinés en coords locales (G.4) sur l'écran
+  réel → **indépendance complète app ↔ adresse XVGA** (modèle GrafPort/QuickDraw II).
+- **`kernel.s`** : variables bank 1 `WCMP_SLOT`/`WCMP_XB`/`WCMP_MIDHI` ($015BD5+)
+  avec garde `.assert` anti-recouvrement.
+- **`kernel/modules/alloc.s` — `task_wdraw_entry`** : après le FILL_RECT local,
+  appelle `kernel_wm_compose` puis sort. Couleur de remplissage portée à **15
+  ($FF)**, distincte du fond desktop ($44), pour une preuve de compositing
+  non-ambiguë.
+
+Validé : `test_oricos_win_draw` — backing store `$080000==$FF` (G.4) **et**
+framebuffer `$00A032==$FF` (fenêtre (100,80) → `dst=80*512+50`) après compositing
+(G.4bis). 563 verts. Bug initial diagnostiqué : la couleur 4 collisionnait avec le
+fond desktop, faussant l'assertion du compositor.
+
 ## [Unreleased+SP-3.m-G4] - 2026-05-25
 
 ### SP-3.m G.4 — dessin fenêtré (backing store, coords locales)

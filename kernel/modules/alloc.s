@@ -217,6 +217,8 @@ task_win_entry:
 ; Crée sa fenêtre (SYS_WIN_CREATE → slot 2), puis FILL_RECT (0,0,8,8 couleur 4)
 ; en coords LOCALES : le kernel résout GFX_BASE = backing store de la fenêtre
 ; (slot 2 → $080000), donc l'app dessine sans connaître l'adresse XVGA. Puis exit.
+; Couleur 15 ($FF) choisie distincte du fond desktop ($44) pour que la preuve
+; de compositing ($00A032) soit non-ambiguë.
 .export task_wdraw_entry
 task_wdraw_entry:
         lda #100                ; x
@@ -244,10 +246,13 @@ task_wdraw_entry:
         lda #$08
         sta GFX_ARG3_LO         ; w = 8
         sta GFX_ARG3_MID        ; h = 8
-        lda #$04
-        sta GFX_COLOR           ; couleur 4
+        lda #$0F
+        sta GFX_COLOR           ; couleur 15 (blanc, $FF) — distincte du fond desktop ($44)
         lda #$0E                ; SYS_GFX_FILL_RECT (→ backing store fenêtre)
         cop #$AA
+        ; G.4bis : composite les backing stores → framebuffer XVGA (tâche kernel
+        ; → appel direct ; en vrai une app passerait par un futur SYS_WIN_FLUSH).
+        jsr kernel_wm_compose
         lda #$04                ; SYS_EXIT
         cop #$AA
         bra task_wdraw_entry    ; filet
