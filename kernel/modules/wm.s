@@ -2787,6 +2787,11 @@ mlc_key:
         lda #MSG_KEY            ; keycode déjà en $D1
         rts
 mlc_mdown:
+        ; ADR-25 Disable/Enable : WM_ARG_X/Y est partagé avec l'IRQ souris
+        ; (kernel_wm_mouse_step). On masque l'IRQ le temps du set+hit_test pour
+        ; éviter qu'un event souris clobbe WM_ARG entre l'écriture et la lecture.
+        php
+        sei
         rep #$20
         lda $D4                 ; where_x (16-bit)
         sta WM_ARG_X
@@ -2794,6 +2799,7 @@ mlc_mdown:
         sta WM_ARG_Y
         sep #$20
         jsr kernel_wm_hit_test  ; A = id fenêtre topmost ou $FF
+        plp                     ; ré-autorise l'IRQ souris
         cmp #$FF
         beq mlc_null
         sta $DA                 ; id fenêtre cliquée
@@ -2801,6 +2807,71 @@ mlc_mdown:
         rts
 mlc_null:
         lda #MSG_NULL
+        rts
+
+; $18 — SYS_UI_DEFINE : construit une fenêtre depuis une table GenUI (G.3b) ──
+; Modèle déclaratif GeoWorks : l'app passe un pointer 24-bit ($D0/$D1/$D2) vers
+; un flux de tags (GU_WINDOW x16 y16 w16 h16 / GU_TITLE ptr16 / GU_END). Le
+; kernel parse et crée la fenêtre via kernel_wm_add (qui prend WM_ARG_* + titre).
+; Retour : A = handle (slot) ou $FF. La fenêtre prend le focus (cf. sys_win_create).
+; v1 : seuls GU_WINDOW/GU_TITLE ; les contrôles déclarés viendront en G.4.
+sys_ui_define:
+        lda #$00
+        sta WM_ARG_TITLE_LO     ; défaut : pas de titre
+        sta WM_ARG_TITLE_HI
+        ldy #$00
+sud_loop:
+        lda [$D0],y             ; tag courant (pointer 24-bit en $D0-$D2)
+        beq sud_done            ; GU_END
+        cmp #GU_WINDOW
+        beq sud_window
+        cmp #GU_TITLE
+        beq sud_title
+        bra sud_done            ; tag inconnu → stop sécurité
+sud_window:
+        iny                     ; passe le tag → premier octet de données
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_W
+        iny
+        lda [$D0],y
+        sta WM_ARG_W+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_H
+        iny
+        lda [$D0],y
+        sta WM_ARG_H+1
+        iny
+        bra sud_loop
+sud_title:
+        iny                     ; passe le tag
+        lda [$D0],y
+        sta WM_ARG_TITLE_LO
+        iny
+        lda [$D0],y
+        sta WM_ARG_TITLE_HI
+        iny
+        bra sud_loop
+sud_done:
+        jsr kernel_wm_add       ; crée la fenêtre (A = handle ou $FF)
+        cmp #$FF
+        beq sud_ret
+        pha                     ; sauve le handle
+        jsr kernel_wm_set_focus ; la fenêtre déclarée prend le focus (chaîne G.3)
+        pla                     ; restaure A = handle
+sud_ret:
         rts
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────

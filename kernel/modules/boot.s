@@ -621,6 +621,15 @@ _skip_task_evt:
         lda #$00
         jsr kernel_task_create
 _skip_task_ml:
+        ; SP-3.n G.3b : task_ui (gated TC_UI_FLAG) — déclare son UI (GenUI table).
+        lda TC_UI_FLAG
+        cmp #$A5
+        bne _skip_task_ui
+        ldx #<task_ui_entry
+        ldy #>task_ui_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_ui:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

@@ -46,6 +46,7 @@ TASK_EVT_WHAT   = $015452       ; SP-3.n G.2 : what de l'événement lu par task
 TASK_EVT_MSG    = $015453       ; SP-3.n G.2 : message (keycode) lu par task_evt (test)
 TASK_ML_MSG     = $015454       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP (test)
 TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
+TASK_UI_HANDLE  = $015456       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -462,6 +463,11 @@ MSG_CONTENT       = 2
 MSG_CLOSE         = 3            ; G.3c
 MSG_MENU          = 4            ; G.3c
 MSG_CONTROL       = 5            ; G.4
+; Tags de la table GenUI (SP-3.n G.3b, SYS_UI_DEFINE $18). L'app déclare son UI
+; comme un flux de tags (modèle déclaratif GeoWorks). v1 : fenêtre + titre.
+GU_END            = $00         ; fin de table
+GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
+GU_TITLE          = $02         ; suivi d'un pointer titre 16-bit (bank 1)
 ; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
 EVT_TMP           = $6E
 ; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
@@ -679,6 +685,7 @@ TC_WDRAW_FLAG    = $01EF40        ; SP-3.m G.4 : $A5 → crée task_wdraw (test 
 TC_WINAPP_FLAG   = $01EF50        ; SP-3.m G.6 : $A5 → spawn bundle_win (app C démo fenêtrée)
 TC_EVT_FLAG      = $01EF60        ; SP-3.n G.2 : $A5 → crée task_evt (test SYS_GET_NEXT_EVENT)
 TC_ML_FLAG       = $01EF70        ; SP-3.n G.3a : $A5 → crée task_ml (test SYS_MAIN_LOOP)
+TC_UI_FLAG       = $01EF80        ; SP-3.n G.3b : $A5 → crée task_ui (test SYS_UI_DEFINE)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

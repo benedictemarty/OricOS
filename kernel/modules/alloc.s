@@ -200,6 +200,37 @@ task_ml_entry:
         cop #$AA
         bra task_ml_entry       ; filet
 
+; ─── task_ui_entry : déclare son UI via une table GenUI (SP-3.n G.3b) ─────────
+; Passe un pointer 24-bit vers genui_demo à SYS_UI_DEFINE → le kernel crée la
+; fenêtre déclarée (300,200,120,90) avec titre "UI". Valide le modèle déclaratif.
+.export task_ui_entry
+task_ui_entry:
+        lda #<genui_demo
+        sta $D0
+        lda #>genui_demo
+        sta $D1
+        lda #$01                ; bank 1 (table en bank kernel)
+        sta $D2
+        lda #$18                ; SYS_UI_DEFINE
+        cop #$AA
+        sta TASK_UI_HANDLE      ; A = handle (slot) ou $FF
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_ui_entry       ; filet
+
+; Table GenUI démo : fenêtre (300,200,120,90) + titre "UI".
+genui_demo:
+        .byte GU_WINDOW
+        .word 300               ; x
+        .word 200               ; y
+        .word 120               ; w
+        .word 90                ; h
+        .byte GU_TITLE
+        .word genui_ui_title    ; pointer titre (bank 1, 16-bit)
+        .byte GU_END
+genui_ui_title:
+        .byte "UI", $00
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

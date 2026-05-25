@@ -5,6 +5,30 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G3b] - 2026-05-26
+
+### SP-3.n G.3b — SYS_UI_DEFINE : UI déclarative (table GenUI)
+
+#### Added
+- **`sys_ui_define` ($18)** (wm.s) : modèle déclaratif GeoWorks — l'app passe un
+  pointer 24-bit ($D0-$D2) vers une **table GenUI** (flux de tags) ; le kernel la
+  parse via `lda [$D0],y` et crée la fenêtre par `kernel_wm_add`. Tags v1 :
+  `GU_WINDOW` (x16 y16 w16 h16), `GU_TITLE` (ptr16 bank 1), `GU_END`. Retour :
+  A = handle ou $FF ; la fenêtre prend le focus. Les contrôles déclarés (G.4).
+- **`kernel.s`** : tags `GU_*`, sentinelle `TASK_UI_HANDLE`, `TC_UI_FLAG` ($01EF80).
+  Table dispatch : $18 câblé (`.repeat 39`).
+- **`task_ui`** (alloc.s, gated TC_UI_FLAG) + table `genui_demo` (fenêtre
+  300,200,120,90 + titre "UI").
+
+#### Fixed
+- **`_ml_classify` (G.3a) — race WM_ARG_X/Y** : `WM_ARG_*` est partagé avec l'IRQ
+  souris ; un event souris pouvait clobber les coords entre l'écriture et le
+  hit-test → MSG_CONTENT manqué. Encadré par `php/sei … plp` (ADR-25
+  Disable/Enable : section critique courte RMW partagée avec un handler).
+
+Validé : `test_oricos_ui_define` — la table GenUI crée la fenêtre déclarée
+(handle valide, WM_TABLE[handle].x == 300). 568 tests verts.
+
 ## [Unreleased+SP-3.n-G3a] - 2026-05-26
 
 ### SP-3.n G.3a — SYS_MAIN_LOOP : événements bruts → messages sémantiques
