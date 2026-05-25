@@ -174,8 +174,11 @@ do_switch:
         tcs                             ; ⚠ change de pile — rien après ne doit jsr/rts
         sep #$20
 
+.export restore_and_return
 restore_and_return:
         ; ── Pull Y/X/A depuis la nouvelle stack ────────────────────
+        ; Cible commune : fin de do_switch, et jmp depuis sys_exit (g.4)
+        ; après tcs (la pile a déjà basculé sur la nouvelle tâche).
         ply
         plx
         pla

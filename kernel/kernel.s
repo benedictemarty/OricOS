@@ -38,7 +38,11 @@ TASK_CUR        = $015432       ; PID actuellement RUNNING (1..16)
 TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
 TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
+TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
 STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
+SCHED_ACTIVE    = $01544D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
+                                ; SYS_EXIT fait STP si inactif (app boot-context, ex. hello_c),
+                                ; sinon teardown+reschedule.
 TICK_GOAL       = $0A           ; 10 ticks → STP
 
 ; ─── ADR-14 : Table TCB (Sprint 2.g) ────────────────────────────────

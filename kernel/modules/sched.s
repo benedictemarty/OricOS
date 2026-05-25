@@ -179,3 +179,29 @@ tcc_slot:
         sta [TC_FPTR],Y         ; +6 PB = bank 1
         lda TC_PID              ; retour A = pid
         rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_bitmap_clear — libère le slot pid dans TCB_BITMAP (OS-2.g g.4)
+; ════════════════════════════════════════════════════════════════════
+; In : A = pid (1..15). Efface le bit pid (bitmap &= ~(1<<pid)).
+; Clobbers A, X, SCHED_TMP.
+.export kernel_bitmap_clear
+kernel_bitmap_clear:
+        tax                     ; X = pid (compteur de décalage)
+        rep #$20
+        lda #$0001              ; masque = 1
+        sta SCHED_TMP
+        sep #$20
+bmc_shift:
+        rep #$20
+        asl SCHED_TMP           ; masque <<= 1
+        sep #$20
+        dex
+        bne bmc_shift           ; pid décalages → masque = 1<<pid
+        rep #$20
+        lda SCHED_TMP
+        eor #$FFFF              ; ~masque
+        and TCB_BITMAP
+        sta TCB_BITMAP          ; bitmap &= ~(1<<pid)
+        sep #$20
+        rts

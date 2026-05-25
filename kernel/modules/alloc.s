@@ -145,6 +145,19 @@ task_c_entry:
         cop #$AA
         bra task_c_entry
 
+; ─── task_d_entry : tâche éphémère (OS-2.g v2.a g.4) ───────────────────
+; S'incrémente une fois puis SYS_EXIT → exerce le teardown. Le bra final est
+; un filet : si exit échouait (retour au lieu de switch), task_d boucle
+; (counter > 1) au lieu de tomber dans le vide → échec de test propre.
+.export task_d_entry
+task_d_entry:
+        lda TASK_D_CTR
+        inc a
+        sta TASK_D_CTR
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_d_entry        ; filet (ne devrait jamais être atteint)
+
 ; kernel_hires2_clear et pattern_table retirés en PH-cleanup-zombie
 ; (2026-05-09). Code legacy ADR-19 v2, plus visible côté compositor.
 ; Rendu desktop = GPU blitter (ADR-21) via kernel_gfx_*.

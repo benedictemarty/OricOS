@@ -5,6 +5,40 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.g-v2.a-g4] - 2026-05-25
+
+### OS-2.g v2.a/g.4 — SYS_EXIT teardown (fin du STP global)
+
+#### Changed
+- **`kernel/modules/wm.s` — `sys_exit`** : remplace `stp` par un **teardown réel** :
+  `tcb[CUR].STATE=DEAD`, `kernel_bitmap_clear` (libère le slot), puis élit la
+  prochaine tâche READY et restaure SON contexte (le contexte de la tâche morte
+  n'est PAS sauvé). Une app qui sort ne fige plus la machine.
+- **Garde-fou hello_c** : `SYS_EXIT` ne fait le teardown que si `SCHED_ACTIVE==$A5`
+  (scheduler timer-driven démarré). Avant ça — app lancée en contexte boot via
+  JSL, ex. hello_c (TC-poc) qui n'est pas une vraie tâche — `SYS_EXIT` retombe
+  sur `stp` (sémantique v1 préservée, test hello_c intact).
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_bitmap_clear`** (A=pid → efface bit pid).
+- **`kernel/modules/handlers.s`** : `.export restore_and_return` (cible du jmp
+  depuis sys_exit après le tcs).
+- **`kernel/modules/alloc.s` — `task_d_entry`** : tâche éphémère (inc 1× puis
+  SYS_EXIT) ; `bra` final = filet anti-crash si exit échouait.
+- **`kernel/kernel.s`** : `TASK_D_CTR` ($015449), `SCHED_ACTIVE` ($01544D).
+- **`kernel/modules/boot.s`** : init `SCHED_ACTIVE=0`, crée task_d (pid 4),
+  passe `SCHED_ACTIVE=$A5` juste avant `cli`/`jmp task_a_entry`.
+
+Validation : `TASK_D_CTR == 1` (tourne 1×, sys_exit bascule sans boucler) +
+bitmap=$0F (slot 4 libéré, task_c vivante) → teardown correct. hello_c 2/2
+(STP préservé). 563 tests verts.
+
+#### Limites connues (reportées)
+- La **page de pile** de la tâche détruite fuit (pas de free-list de pages v2.a).
+- Cas **« dernière tâche »** : `sys_exit` suppose ≥1 autre tâche READY (task A/B
+  permanentes) ; idle task / halt propre reporté.
+- `exit_code` (X) ignoré (pas de `wait()` parent / zombie reaping).
+
 ## [Unreleased+OS-2.g-v2.a-g7] - 2026-05-25
 
 ### OS-2.g v2.a/g.7 — SYS_YIELD coopératif réel

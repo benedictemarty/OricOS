@@ -462,6 +462,8 @@ kernel_entry:
         sta TASK_A_CTR
         sta TASK_B_CTR
         sta TASK_C_CTR
+        sta TASK_D_CTR
+        sta SCHED_ACTIVE        ; scheduler pas encore démarré (g.4)
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04
@@ -547,6 +549,12 @@ kernel_entry:
         ldx #<task_c_entry
         ldy #>task_c_entry
         lda #$00                ; priorité 0
+        jsr kernel_task_create
+        ; OS-2.g v2.a g.4 : tâche éphémère task_d (pid 4) — s'incrémente une
+        ; fois puis SYS_EXIT → valide le teardown + reschedule.
+        ldx #<task_d_entry
+        ldy #>task_d_entry
+        lda #$00
         jsr kernel_task_create
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
@@ -1177,6 +1185,10 @@ _skip_helloc:
         sta VIA_IER
 
         ; ── Active interruptions et démarre task A ─────────────────
+        ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
+        ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.
+        lda #$A5
+        sta SCHED_ACTIVE
         cli                     ; I=0 → IRQ enabled
         jmp task_a_entry        ; same bank, JMP suffit
 

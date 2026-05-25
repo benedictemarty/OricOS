@@ -2433,10 +2433,45 @@ sread_wait:
 sread_done:
         rts                     ; A = keycode
 
-; $04 — SYS_EXIT : X = exit_code ─────────────────────────────────────
+; $04 — SYS_EXIT : X = exit_code (OS-2.g v2.a g.4) ────────────────────
+; Détruit la tâche courante et bascule vers la suivante (plus de STP global).
+; STATE=DEAD + libère le bit bitmap, puis élit la prochaine READY et restaure
+; SON contexte (on NE sauve PAS le contexte de la tâche morte). exit_code ignoré
+; en v2.a (pas de wait() parent / zombie reaping — reporté).
+; NB : la page de pile de la tâche fuit (pas de free-list de pages v2.a).
+; NB : suppose qu'au moins une autre tâche est READY (task A/B permanentes) ;
+;      le cas « dernière tâche » (idle task / halt) est reporté.
+; Si le scheduler n'est pas actif (SCHED_ACTIVE≠$A5) — app lancée en
+; contexte boot via JSL, ex. hello_c (TC-poc) qui n'est pas une vraie tâche —
+; on retombe sur STP (sémantique v1 préservée pour le test hello_c).
 sys_exit:
-        stp                     ; v0.1 : arrêt (pas de task cleanup OS-2.g.v2)
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq se_teardown
+        stp                     ; scheduler inactif → halt (app boot-context)
         bra *
+se_teardown:
+        sei                     ; section critique : teardown + switch atomiques
+        lda TASK_CUR
+        jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[CUR]
+        lda #TASK_STATE_DEAD
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y       ; tcb[CUR].STATE = DEAD
+        lda TASK_CUR
+        jsr kernel_bitmap_clear ; libère le slot
+        lda TASK_CUR
+        jsr kernel_sched_find_next  ; A = prochaine READY (CUR DEAD → ignorée)
+        sta TASK_CUR
+        jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[NEXT]
+        lda #TASK_STATE_RUNNING
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y
+        rep #$20
+        ldy #TCB_S_LO
+        lda [SCHED_PTR],Y       ; A = tcb[NEXT].S
+        tcs                     ; bascule sur la pile de la nouvelle tâche
+        sep #$20
+        jmp restore_and_return  ; ply/plx/pla/rti → exécute la nouvelle tâche
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
