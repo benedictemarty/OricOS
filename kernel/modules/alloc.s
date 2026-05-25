@@ -260,6 +260,19 @@ db_demo:
         .byte DB_CANCEL
         .byte DB_END
 
+; ─── task_alert_entry : alerte pré-câblée OK-Cancel (SP-3.n G.6) ──────────────
+; SYS_ALERT ($1A) type ALERT_OKCANCEL (X=1) → fenêtre modale fixe + OK/Cancel.
+; Bloque jusqu'au clic ; stocke le retour (1=OK/0=Cancel) puis SYS_EXIT.
+.export task_alert_entry
+task_alert_entry:
+        ldx #ALERT_OKCANCEL     ; type d'alerte (arg X)
+        lda #$1A                ; SYS_ALERT
+        cop #$AA
+        sta TASK_ALERT_RES      ; A = 1 (OK) ou 0 (Cancel)
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_alert_entry    ; filet
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

@@ -48,6 +48,7 @@ TASK_ML_MSG     = $015454       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP 
 TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
 TASK_UI_HANDLE  = $015456       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
 TASK_DLG_RES    = $015457       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_dlg (test)
+TASK_ALERT_RES  = $015459       ; SP-3.n G.6 : retour SYS_ALERT lu par task_alert (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -475,6 +476,11 @@ DB_END            = $00         ; fin de table
 DB_POSITION       = $01         ; suivi de x16 y16 w16 h16 (géométrie dialogue)
 DB_OK             = $02         ; bouton OK (auto-positionné, terminant → retour 1)
 DB_CANCEL         = $03         ; bouton Cancel (auto-positionné, terminant → retour 0)
+; Types d'alerte (SP-3.n G.6, SYS_ALERT $1A — arg X). Construites sur DoDlgBox.
+; Retour : 1 = bouton gauche (OK/Yes), 0 = bouton droit (Cancel/No).
+ALERT_OK          = $00         ; un seul bouton OK
+ALERT_OKCANCEL    = $01         ; OK + Cancel
+ALERT_YESNO       = $02         ; Yes + No
 ; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
 EVT_TMP           = $6E
 ; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
@@ -706,6 +712,7 @@ TC_EVT_FLAG      = $01EF60        ; SP-3.n G.2 : $A5 → crée task_evt (test SY
 TC_ML_FLAG       = $01EF70        ; SP-3.n G.3a : $A5 → crée task_ml (test SYS_MAIN_LOOP)
 TC_UI_FLAG       = $01EF80        ; SP-3.n G.3b : $A5 → crée task_ui (test SYS_UI_DEFINE)
 TC_DLG_FLAG      = $01EF90        ; SP-3.n G.5 : $A5 → crée task_dlg (test SYS_DO_DLGBOX)
+TC_ALERT_FLAG    = $01EFA0        ; SP-3.n G.6 : $A5 → crée task_alert (test SYS_ALERT)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

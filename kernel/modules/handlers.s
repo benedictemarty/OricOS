@@ -87,8 +87,9 @@ syscall_table:
         .word sys_main_loop     ; $17 SYS_MAIN_LOOP (SP-3.n G.3a)
         .word sys_ui_define     ; $18 SYS_UI_DEFINE (SP-3.n G.3b)
         .word sys_do_dlgbox     ; $19 SYS_DO_DLGBOX (SP-3.n G.5)
-        .repeat 38
-        .word sys_invalid       ; $1A-$3F réservés
+        .word sys_alert         ; $1A SYS_ALERT (SP-3.n G.6)
+        .repeat 37
+        .word sys_invalid       ; $1B-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

@@ -3024,6 +3024,51 @@ ddb_close:
         lda DLG_RESULT
         rts
 
+; $1A — SYS_ALERT : alerte pré-câblée (SP-3.n G.6) ────────────────────
+; Arg X (DP_SYS_ARG_X) = type : 0=OK, 1=OK-Cancel, 2=Yes-No. Construit une
+; fenêtre modale fixe + 1 ou 2 boutons, puis réutilise la boucle modale de
+; DoDlgBox (jmp ddb_show). Retour A = 1 (gauche : OK/Yes) ou 0 (droite : Cancel/No).
+; v1 : pas de texte de message (label cosmétique reporté) ; libellés boutons = "OK".
+sys_alert:
+        lda #$FF
+        sta DLG_OK_ID
+        sta DLG_CANCEL_ID
+        lda #$00
+        sta DLG_RESULT
+        ; fenêtre d'alerte fixe (280,260,180,70)
+        rep #$20
+        lda #280
+        sta WM_ARG_X
+        lda #260
+        sta WM_ARG_Y
+        lda #180
+        sta WM_ARG_W
+        lda #70
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        jsr kernel_wm_add       ; A = handle
+        sta DLG_WIN
+        jsr kernel_wm_set_modal
+        ; bouton gauche (OK/Yes) — toujours présent, terminant → retour 1
+        lda WIDGET_COUNT
+        sta DLG_OK_ID
+        lda #10
+        ldx #44
+        jsr _ddb_add_button
+        ; si type != ALERT_OK, ajoute le bouton droit (Cancel/No) → retour 0
+        lda DP_SYS_ARG_X
+        beq sa_run
+        lda WIDGET_COUNT
+        sta DLG_CANCEL_ID
+        lda #100
+        ldx #44
+        jsr _ddb_add_button
+sa_run:
+        jmp ddb_show            ; réutilise la boucle modale (rts → COP handler)
+
 ; ── _ddb_add_button : ajoute un bouton dialogue. A = rel x, X = rel y. ──
 ; Parent = DLG_WIN, taille fixe 44×18, label "OK"/"Cancel" partagé db_btn_str.
 ; Clobbers A, X, Y (l'appelant ddb_* n'a plus besoin de Y ici).

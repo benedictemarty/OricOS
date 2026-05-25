@@ -5,6 +5,22 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G6] - 2026-05-26
+
+### SP-3.n G.6 — SYS_ALERT : alertes pré-câblées
+
+#### Added
+- **`sys_alert` ($1A)** (wm.s) : alerte pré-câblée selon le type en X
+  (`ALERT_OK`=0 / `ALERT_OKCANCEL`=1 / `ALERT_YESNO`=2). Crée une fenêtre modale
+  fixe (280,260,180,70) + 1 ou 2 boutons, puis **réutilise la boucle modale de
+  DoDlgBox** (`jmp ddb_show`) → retour A = 1 (gauche : OK/Yes) / 0 (droite :
+  Cancel/No). `TASK_ALERT_RES`/`TC_ALERT_FLAG` ($01EFA0). Table dispatch : $1A.
+- **`task_alert`** (alloc.s, gated TC_ALERT_FLAG) : alerte OK-Cancel de test.
+
+v1 : pas de texte de message (label cosmétique reporté) ; libellés boutons "OK".
+Validé : `test_oricos_alert` — clic OK (alerte OK-Cancel) → retour 1 + fermeture
+(`WM_MODAL`=$FF). 573 tests verts. Reste SP-3.n : G.7 (démo C fenêtrée).
+
 ## [Unreleased+SP-3.n-G5] - 2026-05-26
 
 ### SP-3.n G.5 — SYS_DO_DLGBOX : dialogue modal (command table, GEOS)

@@ -639,6 +639,15 @@ _skip_task_ui:
         lda #$00
         jsr kernel_task_create
 _skip_task_dlg:
+        ; SP-3.n G.6 : task_alert (gated TC_ALERT_FLAG) — alerte SYS_ALERT.
+        lda TC_ALERT_FLAG
+        cmp #$A5
+        bne _skip_task_alert
+        ldx #<task_alert_entry
+        ldy #>task_alert_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_alert:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
