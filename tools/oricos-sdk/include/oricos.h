@@ -47,6 +47,31 @@
 #define SYS_SLEEP_MS        0x12
 #define SYS_WIN_CREATE      0x13
 #define SYS_WIN_FLUSH       0x14
+#define SYS_EVENT_AVAIL     0x15
+#define SYS_GET_NEXT_EVENT  0x16
+#define SYS_MAIN_LOOP       0x17
+#define SYS_UI_DEFINE       0x18
+#define SYS_DO_DLGBOX       0x19
+#define SYS_ALERT           0x1A
+
+/* ── Messages du MainLoop (SP-3.n) ───────────────────────────────── */
+#define MSG_NULL            0
+#define MSG_KEY             1
+#define MSG_CONTENT         2
+#define MSG_CLOSE           3
+#define MSG_MENU            4
+#define MSG_CONTROL         5
+
+/* ── Tags table GenUI (SYS_UI_DEFINE) ────────────────────────────── */
+#define GU_END              0
+#define GU_WINDOW           1   /* + x16 y16 w16 h16 */
+#define GU_TITLE            2   /* + ptr16 (AVANT GU_WINDOW) */
+#define GU_BUTTON           3   /* + relx16 rely16 relw16 relh16 */
+
+/* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
+#define ALERT_OK            0
+#define ALERT_OKCANCEL      1
+#define ALERT_YESNO         2
 
 /* ── Sentinelle d'erreur ─────────────────────────────────────────── */
 #define ORICOS_ERR          ((uint8_t)0xFF)
@@ -228,6 +253,80 @@ void oricos_win_flush(void) {
         :
         : "a"
     );
+}
+
+/* ── GUI déclarative + événementielle (SP-3.n) ───────────────────── */
+
+/* SYS_UI_DEFINE : construit une fenêtre (+ contrôles) depuis une table GenUI
+ * (const dans le bank de l'app). Retourne le handle de la fenêtre. Le bank est
+ * pris du PBR courant (phk/pla) → la table est lue dans le bank de l'app. */
+static __attribute__((always_inline)) inline
+uint8_t oricos_ui_define(const void *table) {
+    uint8_t handle;
+    __asm__ volatile (
+        "lda %[lo]\n sta $D0\n"
+        "lda %[hi]\n sta $D1\n"
+        "phk\n pla\n sta $D2\n"   /* bank courant = bank de l'app */
+        _ORICOS_LDA_SYS(SYS_UI_DEFINE)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (handle)
+        : [lo] "r" ((uint8_t)(unsigned)table), [hi] "r" ((uint8_t)((unsigned)table >> 8))
+        : "a"
+    );
+    return handle;
+}
+
+/* SYS_MAIN_LOOP : bloque jusqu'à un message sémantique. Retourne MSG_* (le
+ * détail — id contrôle/fenêtre, keycode — est dans le bloc ZP $D0-$DF). */
+static __attribute__((always_inline)) inline
+uint8_t oricos_main_loop(void) {
+    uint8_t msg;
+    __asm__ volatile (
+        _ORICOS_LDA_SYS(SYS_MAIN_LOOP)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (msg)
+        :
+        : "a"
+    );
+    return msg;
+}
+
+/* SYS_ALERT : alerte pré-câblée (ALERT_OK / ALERT_OKCANCEL / ALERT_YESNO).
+ * Retourne 1 (bouton gauche : OK/Yes) ou 0 (droite : Cancel/No). Modal. */
+static __attribute__((always_inline)) inline
+uint8_t oricos_alert(uint8_t type) {
+    uint8_t res;
+    __asm__ volatile (
+        "ldx %[t]\n"
+        _ORICOS_LDA_SYS(SYS_ALERT)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (res)
+        : [t] "r" (type)
+        : "a", "x"
+    );
+    return res;
+}
+
+/* SYS_DO_DLGBOX : dialogue modal défini par une command table DB_* (const
+ * dans le bank de l'app). Retourne 1 (OK) ou 0 (Cancel). */
+static __attribute__((always_inline)) inline
+uint8_t oricos_do_dlgbox(const void *table) {
+    uint8_t res;
+    __asm__ volatile (
+        "lda %[lo]\n sta $D0\n"
+        "lda %[hi]\n sta $D1\n"
+        "phk\n pla\n sta $D2\n"
+        _ORICOS_LDA_SYS(SYS_DO_DLGBOX)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (res)
+        : [lo] "r" ((uint8_t)(unsigned)table), [hi] "r" ((uint8_t)((unsigned)table >> 8))
+        : "a"
+    );
+    return res;
 }
 
 #endif /* ORICOS_H */

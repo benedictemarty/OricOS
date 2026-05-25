@@ -218,15 +218,21 @@ task_ui_entry:
         cop #$AA
         bra task_ui_entry       ; filet
 
-; Table GenUI démo : fenêtre (300,200,120,90) + titre "UI".
+; Table GenUI démo : titre "UI" + fenêtre (300,200,120,90) + 1 bouton.
+; (GU_TITLE AVANT GU_WINDOW : le titre est uploadé à la création de la fenêtre.)
 genui_demo:
+        .byte GU_TITLE
+        .word genui_ui_title    ; pointer titre (bank 1, 16-bit)
         .byte GU_WINDOW
         .word 300               ; x
         .word 200               ; y
         .word 120               ; w
         .word 90                ; h
-        .byte GU_TITLE
-        .word genui_ui_title    ; pointer titre (bank 1, 16-bit)
+        .byte GU_BUTTON
+        .word 10                ; rel x
+        .word 60                ; rel y
+        .word 44                ; rel w
+        .word 18                ; rel h
         .byte GU_END
 genui_ui_title:
         .byte "UI", $00

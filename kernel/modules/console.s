@@ -239,3 +239,10 @@ bundle_hello_c:
 bundle_win:
         .incbin "../apps/win_hello/build/win.oos"
 
+; ─── Bundle gui_demo (SP-3.n G.7) ───────────────────────────────────────
+; App C démo GUI déclarative + boucle MainLoop : déclare fenêtre+bouton (GenUI),
+; réagit aux messages (MSG_CONTROL/MSG_CLOSE). Clôt l'arc SP-3.n depuis userland C.
+.export bundle_gui
+bundle_gui:
+        .incbin "../apps/gui_demo/build/gui.oos"
+

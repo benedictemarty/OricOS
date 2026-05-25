@@ -5,6 +5,28 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G7] - 2026-05-26
+
+### SP-3.n G.7 — app C GUI déclarative + MainLoop (arc SP-3.n CLOS)
+
+#### Added
+- **`apps/gui_demo/gui.c`** : app userland C qui **déclare** son UI (table GenUI :
+  fenêtre + bouton) via `oricos_ui_define`, puis tourne une **boucle MainLoop**
+  (`oricos_main_loop`) et réagit aux **messages** : `MSG_CONTROL` (bouton cliqué →
+  imprime "gui: bouton"), `MSG_CLOSE` (sort). Bundle `bundle_gui` (console.s),
+  spawné par `TC_GUIAPP_FLAG` ($01EFB0). Aucune coord XVGA, aucun callback.
+- **`sys_ui_define` refondu (G.7a)** : `GU_WINDOW` crée la fenêtre immédiatement
+  (handle dans `DLG_WIN`), `GU_TITLE` (avant `GU_WINDOW`) pose le titre, **nouveau
+  `GU_BUTTON`** ($03 : relx16 rely16 relw16 relh16) attache un bouton enfant.
+  Branches converties en `jmp` (routine agrandie). `genui_demo` réordonné.
+- **SDK `oricos.h`** : `oricos_ui_define` / `oricos_main_loop` / `oricos_alert` /
+  `oricos_do_dlgbox` (ptr table 24-bit via `phk`/`pla` → bank de l'app) ; defines
+  `SYS_*` ($15-$1A), `MSG_*`, `GU_*`, `ALERT_*`.
+
+Validé : `test_oricos_gui_demo` — l'app C déclare fenêtre+bouton, clic bouton →
+"gui: bouton" (MSG_CONTROL), clic case fermeture → "gui: sortie" (MSG_CLOSE).
+**Arc SP-3.n (G.1→G.7) CLOS. 574 tests verts.**
+
 ## [Unreleased+SP-3.n-G6] - 2026-05-26
 
 ### SP-3.n G.6 — SYS_ALERT : alertes pré-câblées

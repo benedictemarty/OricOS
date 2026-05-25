@@ -469,7 +469,8 @@ MSG_CONTROL       = 5            ; G.4
 ; comme un flux de tags (modèle déclaratif GeoWorks). v1 : fenêtre + titre.
 GU_END            = $00         ; fin de table
 GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
-GU_TITLE          = $02         ; suivi d'un pointer titre 16-bit (bank 1)
+GU_TITLE          = $02         ; suivi d'un pointer titre 16-bit (bank 1) — AVANT GU_WINDOW
+GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 (bouton enfant)
 ; Tags de la command table DoDlgBox (SP-3.n G.5, SYS_DO_DLGBOX $19, style GEOS).
 ; Le dialogue EST une donnée : l'app passe la table, le kernel l'exécute modalement.
 DB_END            = $00         ; fin de table
@@ -713,6 +714,7 @@ TC_ML_FLAG       = $01EF70        ; SP-3.n G.3a : $A5 → crée task_ml (test SY
 TC_UI_FLAG       = $01EF80        ; SP-3.n G.3b : $A5 → crée task_ui (test SYS_UI_DEFINE)
 TC_DLG_FLAG      = $01EF90        ; SP-3.n G.5 : $A5 → crée task_dlg (test SYS_DO_DLGBOX)
 TC_ALERT_FLAG    = $01EFA0        ; SP-3.n G.6 : $A5 → crée task_alert (test SYS_ALERT)
+TC_GUIAPP_FLAG   = $01EFB0        ; SP-3.n G.7 : $A5 → spawn bundle_gui (app C démo GUI)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

@@ -22,10 +22,11 @@ KERNEL_CFG  = kernel/kernel.cfg
 # testé silencieusement.
 KERNEL_DEPS = $(wildcard kernel/modules/*.s)
 
-APPS        = hello hello_c win_hello
+APPS        = hello hello_c win_hello gui_demo
 APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/hello_c/build/hello.oos \
-              apps/win_hello/build/win.oos
+              apps/win_hello/build/win.oos \
+              apps/gui_demo/build/gui.oos
 
 .PHONY: all clean info apps $(APPS)
 

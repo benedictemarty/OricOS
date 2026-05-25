@@ -1308,6 +1308,21 @@ _skip_helloc_task:
         jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
 _skip_winapp:
 
+        ; ── SP-3.n G.7 : spawn bundle_gui (app C démo GUI déclarative) ──
+        ; TC_GUIAPP_FLAG=$A5 → l'app C gui_demo tourne comme tâche : déclare son
+        ; UI (GenUI), boucle MainLoop, réagit aux messages (MSG_CONTROL/MSG_CLOSE).
+        lda TC_GUIAPP_FLAG
+        cmp #$A5
+        bne _skip_guiapp
+        lda #<bundle_gui
+        sta DP_PTR
+        lda #>bundle_gui
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
+_skip_guiapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

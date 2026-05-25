@@ -2861,17 +2861,39 @@ sys_ui_define:
         lda #$00
         sta WM_ARG_TITLE_LO     ; défaut : pas de titre
         sta WM_ARG_TITLE_HI
+        lda #$FF
+        sta DLG_WIN             ; handle « fenêtre courante » (réutilise DLG_WIN ;
+                                ; ui_define et dlgbox ne tournent jamais concurremment)
         ldy #$00
 sud_loop:
         lda [$D0],y             ; tag courant (pointer 24-bit en $D0-$D2)
-        beq sud_done            ; GU_END
+        bne sud_notend
+        jmp sud_done            ; GU_END
+sud_notend:
         cmp #GU_WINDOW
-        beq sud_window
+        bne sud_n1
+        jmp sud_window
+sud_n1:
         cmp #GU_TITLE
-        beq sud_title
-        bra sud_done            ; tag inconnu → stop sécurité
+        bne sud_n2
+        jmp sud_title
+sud_n2:
+        cmp #GU_BUTTON
+        bne sud_n3
+        jmp sud_button
+sud_n3:
+        jmp sud_done            ; tag inconnu → stop sécurité
+sud_title:                      ; GU_TITLE doit précéder GU_WINDOW (titre uploadé à la création)
+        iny
+        lda [$D0],y
+        sta WM_ARG_TITLE_LO
+        iny
+        lda [$D0],y
+        sta WM_ARG_TITLE_HI
+        iny
+        jmp sud_loop
 sud_window:
-        iny                     ; passe le tag → premier octet de données
+        iny                     ; passe le tag → x16 y16 w16 h16
         lda [$D0],y
         sta WM_ARG_X
         iny
@@ -2896,23 +2918,70 @@ sud_window:
         lda [$D0],y
         sta WM_ARG_H+1
         iny
-        bra sud_loop
-sud_title:
-        iny                     ; passe le tag
-        lda [$D0],y
-        sta WM_ARG_TITLE_LO
-        iny
-        lda [$D0],y
-        sta WM_ARG_TITLE_HI
-        iny
-        bra sud_loop
-sud_done:
-        jsr kernel_wm_add       ; crée la fenêtre (A = handle ou $FF)
+        ; crée la fenêtre maintenant (les GU_BUTTON suivants s'y attachent)
+        phy
+        jsr kernel_wm_add       ; A = handle ou $FF
+        ply
+        sta DLG_WIN
         cmp #$FF
-        beq sud_ret
-        pha                     ; sauve le handle
+        bne sud_w_focus
+        jmp sud_loop            ; échec création → ignore les boutons
+sud_w_focus:
+        lda DLG_WIN
+        phy
         jsr kernel_wm_set_focus ; la fenêtre déclarée prend le focus (chaîne G.3)
-        pla                     ; restaure A = handle
+        ply
+        jmp sud_loop
+sud_button:                     ; GU_BUTTON : relx16 rely16 relw16 relh16 (8 o)
+        iny
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_W
+        iny
+        lda [$D0],y
+        sta WM_ARG_W+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_H
+        iny
+        lda [$D0],y
+        sta WM_ARG_H+1
+        iny
+        ; attache un bouton (label par défaut) à la fenêtre courante
+        lda DLG_WIN
+        cmp #$FF
+        bne sud_b_add
+        jmp sud_loop            ; pas de fenêtre → ignore
+sud_b_add:
+        sta WG_PARENT
+        lda #WG_TYPE_BUTTON
+        sta WG_TYPE
+        lda #$07
+        sta GFX_COLOR
+        lda #<db_btn_str        ; label par défaut (cosmétique v1)
+        sta DP_PCPTR
+        lda #>db_btn_str
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB
+        sta WG_CB+1
+        phy
+        jsr kernel_wm_add_widget
+        ply
+        jmp sud_loop
+sud_done:
+        lda DLG_WIN             ; A = handle de la fenêtre créée ($FF si aucune)
 sud_ret:
         rts
 
