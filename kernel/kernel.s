@@ -710,3 +710,32 @@ T1_PERIOD_HI    = $10
         .include "modules/tk.s"
         .include "modules/wm.s"
         .include "modules/handlers.s"
+
+; ════════════════════════════════════════════════════════════════════
+;  Gardes d'overlap memory map bank 1 (revue senior, dette #4)
+; ════════════════════════════════════════════════════════════════════
+;
+; Les variables data bank 1 sont des constantes absolues hardcodées (= $01xxxx)
+; — choix imposé par l'ABI d'introspection des tests Phosphoric qui lisent ces
+; adresses fixes (205 réfs littérales dans 7 fichiers de test). On ne peut donc
+; pas les relocaliser vers un .segment/.res sans casser les tests. À défaut, ces
+; .assert transforment tout chevauchement en ERREUR DE BUILD (au lieu d'une
+; corruption silencieuse, cf. overlap ICON_TABLE/TCB_BITMAP corrigé en SP-3.k).
+; Chaque garde encode « cette structure tient avant la variable suivante » via
+; les tailles réelles (WM_MAX, TCB_*, KBD_RING_SIZE) : grossir une structure
+; au-delà de sa zone échoue à la compilation.
+
+; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
+.assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"
+.assert ICON_TABLE   + 4*16        <= TCB_BITMAP,      error, "overlap ICON_TABLE/TCB_BITMAP"
+.assert TCB_BITMAP   + 2           <= WM_TABLE,        error, "overlap TCB_BITMAP/WM_TABLE"
+.assert WM_TABLE     + WM_MAX*10   <= WM_COUNT,        error, "overlap WM_TABLE"
+.assert WM_TITLES    + WM_MAX      <= WM_STATES,       error, "overlap WM_TITLES/WM_STATES"
+.assert WM_STATES    + WM_MAX      <= WM_SAVED_RECTS,  error, "overlap WM_STATES/WM_SAVED_RECTS"
+.assert WM_SAVED_RECTS + WM_MAX*8  <= WM_ZORDER,       error, "overlap WM_SAVED_RECTS/WM_ZORDER"
+.assert WM_ZORDER    + WM_MAX      <= WM_ZORDER_N,     error, "overlap WM_ZORDER"
+.assert TCB_TABLE_BASE + TCB_MAX*TCB_SIZE <= $015D40,  error, "overlap TCB_TABLE (>$5D40)"
+
+; ── Ring clavier ($5860) + buffer secteur FAT ($5F60, 512 o) ──────────
+.assert KBD_RING + KBD_RING_SIZE   <= KBD_RING_HEAD,   error, "overlap KBD_RING"
+.assert FS_BUFFER + 512            <= FS_INIT_RESULT,  error, "overlap FS_BUFFER (secteur 512o)"

@@ -5,6 +5,27 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+gardes-overlap-mmap] - 2026-05-25
+
+### Dette #4 — gardes d'overlap memory map bank 1 (pivot après investigation)
+
+#### Context
+L'objectif initial (migrer les 126 constantes absolues `= $01xxxx` vers un
+`.segment`/`.res` linker-alloué) s'est révélé **contre-productif** : ces adresses
+forment une ABI d'introspection white-box — les tests Phosphoric lisent l'état
+interne du kernel via 205 références littérales dans 7 fichiers. Les relocaliser
+casserait les tests et imposerait de recopier les adresses assignées par le
+linker dans chaque test → on recrée la synchro manuelle, en pire.
+
+#### Added
+- **`kernel/kernel.s`** : 11 gardes `.assert … error` en fin de fichier. Adresses
+  inchangées (ABI test préservée) mais **tout chevauchement devient une erreur de
+  build** au lieu d'une corruption silencieuse (cf. overlap ICON_TABLE/TCB_BITMAP
+  qui avait mordu en SP-3.k). Chaque garde encode « cette structure tient avant la
+  variable suivante » via les tailles réelles (`WM_MAX`, `TCB_MAX*TCB_SIZE`,
+  `KBD_RING_SIZE`, buffer secteur 512o). Validé négatif : `WM_MAX=20` fait
+  échouer le build avec les messages d'overlap attendus. 563 tests verts.
+
 ## [Unreleased+revue-fine-OricOS] - 2026-05-25
 
 ### Réduction dette/bugs (analyse fine OricOS, revue senior)
