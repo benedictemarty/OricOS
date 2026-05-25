@@ -5,6 +5,26 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G5] - 2026-05-25
+
+### SP-3.m G.5 — exit → close (fin de v1.a)
+
+#### Added
+- **`kernel/modules/wm.s` — `kernel_wm_close_owner`** (A=pid) : scanne `WM_OWNER`,
+  ferme la fenêtre possédée par la tâche (`kernel_wm_close`) + efface l'owner.
+  Appelé par **`sys_exit`** (teardown) → **la fenêtre d'une tâche se ferme
+  automatiquement quand elle sort**. No-op pour les tâches sans fenêtre.
+- **`kernel/kernel.s`** : `WCO_PID` ($3B, scratch).
+
+#### Changed
+- **`kernel/modules/alloc.s` — `task_win_entry`** : crée sa fenêtre puis
+  `SYS_EXIT` (au lieu de dormir) → exerce G.2 (create) **et** G.5 (close on exit).
+
+Validé : `test_oricos_boot` — `TASK_WIN_HANDLE==2` (G.2 : créée via syscall), puis
+à l'exit `WM_COUNT==2` (redescend aux 2 démo) + `WM_OWNER[2]==0` (G.5 : fermée).
+563 verts. **v1.a de SP-3.m complet** (fenêtre liée à la tâche : ouvre/ferme).
+Suite v1.b : G.3 clavier→focus, G.4 dessin fenêtré, G.4bis compositor.
+
 ## [Unreleased+SP-3.m-G2] - 2026-05-25
 
 ### SP-3.m G.2 — SYS_WIN_CREATE : une app ouvre sa fenêtre

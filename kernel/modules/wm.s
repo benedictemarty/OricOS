@@ -494,6 +494,29 @@ wm_mv_done:
 ; WM_COUNT décrémenté. Hit-test/redraw sautent les slots sans WM_F_USED.
 ; Modifie A, X.
 .export kernel_wm_close
+; ── kernel_wm_close_owner : ferme la fenêtre possédée par pid (SP-3.m G.5) ──
+; In : A = pid. Scanne WM_OWNER ; si un slot lui appartient, le ferme
+; (kernel_wm_close) et efface WM_OWNER[slot]. v1 : 0..1 fenêtre par tâche.
+; Appelé par sys_exit (teardown). No-op si la tâche ne possède aucune fenêtre.
+.export kernel_wm_close_owner
+kernel_wm_close_owner:
+        sta WCO_PID
+        ldx #$00
+wco_loop:
+        lda f:WM_OWNER,X
+        cmp WCO_PID
+        beq wco_found
+        inx
+        cpx #WM_MAX
+        bcc wco_loop
+        rts                     ; aucune fenêtre pour ce pid
+wco_found:
+        lda #$00
+        sta f:WM_OWNER,X        ; efface l'owner du slot
+        txa                     ; A = slot id
+        jsr kernel_wm_close     ; ferme (flags/titre/count/zorder/focus)
+        rts
+
 kernel_wm_close:
         cmp #WM_MAX              ; id >= WM_MAX ? → ignore
         bcc wm_close_go
@@ -2502,6 +2525,8 @@ se_teardown:
         lda #TASK_STATE_DEAD
         ldy #TCB_STATE
         sta [SCHED_PTR],Y       ; tcb[CUR].STATE = DEAD
+        lda TASK_CUR
+        jsr kernel_wm_close_owner ; G.5 : ferme la fenêtre de la tâche qui sort
         lda TASK_CUR
         jsr kernel_bitmap_clear ; libère le slot
         lda TASK_CUR

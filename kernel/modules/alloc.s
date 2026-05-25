@@ -208,12 +208,10 @@ task_win_entry:
         lda #$13                ; SYS_WIN_CREATE
         cop #$AA
         sta TASK_WIN_HANDLE     ; A = handle (slot) retourné
-tw_idle:
-        ldx #$0A                ; dort longtemps (boucle de garde)
-        ldy #$00
-        lda #$12                ; SYS_SLEEP_MS
+        ; G.5 : sortie → SYS_EXIT doit fermer la fenêtre (kernel_wm_close_owner).
+        lda #$04                ; SYS_EXIT
         cop #$AA
-        bra tw_idle
+        bra task_win_entry      ; filet
 
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
