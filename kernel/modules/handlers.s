@@ -84,8 +84,9 @@ syscall_table:
         .word sys_win_flush     ; $14 SYS_WIN_FLUSH  (SP-3.m G.4bis/G.6)
         .word sys_event_avail   ; $15 SYS_EVENT_AVAIL (SP-3.n G.2)
         .word sys_get_next_event ; $16 SYS_GET_NEXT_EVENT (SP-3.n G.2)
-        .repeat 41
-        .word sys_invalid       ; $17-$3F réservés
+        .word sys_main_loop     ; $17 SYS_MAIN_LOOP (SP-3.n G.3a)
+        .repeat 40
+        .word sys_invalid       ; $18-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

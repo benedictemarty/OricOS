@@ -185,6 +185,21 @@ task_evt_entry:
         cop #$AA
         bra task_evt_entry      ; filet
 
+; ─── task_ml_entry : tâche qui consomme un MESSAGE du MainLoop (SP-3.n G.3a) ──
+; SYS_MAIN_LOOP ($17, bloquant) → A = MSG_*, détails en $D0-$DF. Stocke le
+; message et son détail ($DA = id fenêtre pour MSG_CONTENT) puis SYS_EXIT.
+; Valide la traduction événement→message sémantique + skip des MSG_NULL.
+.export task_ml_entry
+task_ml_entry:
+        lda #$17                ; SYS_MAIN_LOOP (bloquant)
+        cop #$AA
+        sta TASK_ML_MSG         ; A = MSG_*
+        lda $DA                 ; détail (id fenêtre pour MSG_CONTENT)
+        sta TASK_ML_DETAIL
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_ml_entry       ; filet
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

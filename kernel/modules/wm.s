@@ -2711,6 +2711,98 @@ sgne_got:
         cli                     ; libère notre sei
         rts                     ; A = what, record dans $D0-$D9
 
+; $17 — SYS_MAIN_LOOP : bloque jusqu'à un MESSAGE sémantique (SP-3.n G.3a) ──
+; Modèle GeoWorks : consomme les événements bruts de la file et les traduit en
+; messages app (MSG_KEY / MSG_CONTENT / …). Les événements non significatifs
+; (mouse moved/up) sont sautés (boucle). Retour : A = MSG_*, détails en $D0-$DF
+; (record brut + $DA = id fenêtre pour MSG_CONTENT). `kernel_wm_mouse_step`
+; (IRQ) garde focus/drag automatiques — le MainLoop ne fait que traduire.
+sys_main_loop:
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq sml_block_mode
+        ; ── mode boot-context : spin + WAI ──
+sml_spin:
+        jsr kernel_event_pop
+        cmp #EV_NULL
+        beq sml_spin_wai
+        jsr _ml_classify
+        cmp #MSG_NULL
+        bne sml_done
+        bra sml_spin
+sml_spin_wai:
+        wai
+        bra sml_spin
+sml_done:
+        rts
+        ; ── mode tâche : blocage réel ─────────────────────────────────
+sml_block_mode:
+sml_loop:
+        sei
+        jsr kernel_event_pop
+        cmp #EV_NULL
+        beq sml_block           ; file vide → bloque
+        cli                     ; événement obtenu → classifie (Forbid empêche le switch)
+        jsr _ml_classify
+        cmp #MSG_NULL
+        bne sml_ret             ; message significatif → rends-le
+        bra sml_loop            ; non significatif (moved/up) → suivant
+sml_block:
+        lda TASK_CUR
+        sta EVENT_WAITER
+        lda #$01
+        pha                     ; PBR
+        lda #>sml_resume
+        pha                     ; PCH
+        lda #<sml_resume
+        pha                     ; PCL
+        lda #$30                ; P : mode N M=X=1, I=0
+        pha
+        lda #$00
+        pha                     ; A
+        pha                     ; X
+        pha                     ; Y
+        lda #$00
+        sta FORBID_COUNT
+        jmp kernel_block_switch
+sml_resume:
+        lda #$01
+        sta FORBID_COUNT
+        bra sml_loop
+sml_ret:
+        rts                     ; A = MSG_*
+
+; ── _ml_classify : record brut en $D0-$D9 → A = MSG_* (détails en $D0-$DF) ──
+; MSG_KEY (keycode en $D1) / MSG_CONTENT ($DA = id fenêtre) / MSG_NULL.
+; NB : hit-test via WM_ARG_X/Y (partagé avec l'IRQ souris) — clobber rare possible.
+_ml_classify:
+        lda $D0                 ; what
+        cmp #EV_KEY_DOWN
+        beq mlc_key
+        cmp #EV_MOUSE_DOWN
+        beq mlc_mdown
+        lda #MSG_NULL           ; up/moved/null → pas de message
+        rts
+mlc_key:
+        lda #MSG_KEY            ; keycode déjà en $D1
+        rts
+mlc_mdown:
+        rep #$20
+        lda $D4                 ; where_x (16-bit)
+        sta WM_ARG_X
+        lda $D6                 ; where_y
+        sta WM_ARG_Y
+        sep #$20
+        jsr kernel_wm_hit_test  ; A = id fenêtre topmost ou $FF
+        cmp #$FF
+        beq mlc_null
+        sta $DA                 ; id fenêtre cliquée
+        lda #MSG_CONTENT
+        rts
+mlc_null:
+        lda #MSG_NULL
+        rts
+
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)

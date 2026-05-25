@@ -44,6 +44,8 @@ TASK_F_CTR      = $01544B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (
 TASK_WIN_HANDLE = $015451       ; SP-3.m G.2 : handle fenêtre retourné par SYS_WIN_CREATE (test)
 TASK_EVT_WHAT   = $015452       ; SP-3.n G.2 : what de l'événement lu par task_evt (test)
 TASK_EVT_MSG    = $015453       ; SP-3.n G.2 : message (keycode) lu par task_evt (test)
+TASK_ML_MSG     = $015454       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP (test)
+TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -450,6 +452,16 @@ EV_KEY_DOWN       = 1
 EV_MOUSE_DOWN     = 2
 EV_MOUSE_UP       = 3
 EV_MOUSE_MOVED    = 4
+; Messages sémantiques du MainLoop (SP-3.n G.3, SYS_MAIN_LOOP $17). Le MainLoop
+; consomme les événements bruts et rend ces messages à l'app (modèle GeoWorks).
+; Détails dans le bloc ZP $D0-$DF : MSG_KEY → keycode en $D1 ; MSG_CONTENT →
+; id fenêtre en $DA. ($DA-$DF libres après le record d'événement $D0-$D9.)
+MSG_NULL          = 0
+MSG_KEY           = 1
+MSG_CONTENT       = 2
+MSG_CLOSE         = 3            ; G.3c
+MSG_MENU          = 4            ; G.3c
+MSG_CONTROL       = 5            ; G.4
 ; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
 EVT_TMP           = $6E
 ; SP-3.n G.2 : tâche bloquée sur SYS_GET_NEXT_EVENT (0=aucune). Mono-waiter v1
@@ -666,6 +678,7 @@ TC_WIN_FLAG      = $01EF30        ; SP-3.m G.2 : $A5 → crée task_win (test SY
 TC_WDRAW_FLAG    = $01EF40        ; SP-3.m G.4 : $A5 → crée task_wdraw (test dessin fenêtré)
 TC_WINAPP_FLAG   = $01EF50        ; SP-3.m G.6 : $A5 → spawn bundle_win (app C démo fenêtrée)
 TC_EVT_FLAG      = $01EF60        ; SP-3.n G.2 : $A5 → crée task_evt (test SYS_GET_NEXT_EVENT)
+TC_ML_FLAG       = $01EF70        ; SP-3.n G.3a : $A5 → crée task_ml (test SYS_MAIN_LOOP)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

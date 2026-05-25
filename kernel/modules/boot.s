@@ -612,6 +612,15 @@ _skip_task_wdraw:
         lda #$00
         jsr kernel_task_create
 _skip_task_evt:
+        ; SP-3.n G.3a : task_ml (gated TC_ML_FLAG) — consomme un msg MainLoop.
+        lda TC_ML_FLAG
+        cmp #$A5
+        bne _skip_task_ml
+        ldx #<task_ml_entry
+        ldy #>task_ml_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_ml:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

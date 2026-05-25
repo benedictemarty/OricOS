@@ -5,6 +5,27 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G3a] - 2026-05-26
+
+### SP-3.n G.3a — SYS_MAIN_LOOP : événements bruts → messages sémantiques
+
+#### Added
+- **`sys_main_loop` ($17)** (wm.s) : modèle GeoWorks — bloque jusqu'à un
+  **message** significatif en consommant les événements bruts de la file et en
+  les traduisant via `_ml_classify` : `EV_KEY_DOWN`→`MSG_KEY` (keycode en $D1),
+  `EV_MOUSE_DOWN`→`MSG_CONTENT` (hit-test `kernel_wm_hit_test` → id fenêtre en
+  $DA), moved/up→`MSG_NULL` (sautés, boucle). Blocage réel via block/wake
+  (`EVENT_WAITER`, réveil IRQ). Détails dans le bloc ZP $D0-$DF.
+- **`kernel.s`** : constantes `MSG_*`, sentinelles `TASK_ML_MSG`/`TASK_ML_DETAIL`,
+  `TC_ML_FLAG` ($01EF70). Table dispatch : $17 câblé (`.repeat 40`).
+- **`task_ml`** (alloc.s, gated TC_ML_FLAG) : consomme un message MainLoop.
+
+`kernel_wm_mouse_step` (IRQ) **inchangé** : focus/drag restent des comportements
+WM automatiques ; le MainLoop ne fait qu'ajouter une couche de traduction
+sémantique pour l'app (additif, pas de migration des comportements WM). Validé :
+`test_oricos_mainloop_message` — move (sauté) puis clic fenêtre → MSG_CONTENT +
+id valide. 567 tests verts.
+
 ## [Unreleased+SP-3.n-G2] - 2026-05-26
 
 ### SP-3.n G.2 — SYS_GET_NEXT_EVENT + SYS_EVENT_AVAIL (Event Manager)
