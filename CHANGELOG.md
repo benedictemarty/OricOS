@@ -5,6 +5,19 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+oricos.h-SSOT] - 2026-05-25
+
+### oricos.h — source unique de vérité pour les numéros de syscalls (P2 revue)
+
+#### Changed
+- **`tools/oricos-sdk/include/oricos.h`** : les numéros de syscalls dans les
+  templates asm ne sont plus des littéraux dupliqués (`"lda #1\n"`) mais
+  stringifiés depuis les `#define SYS_*` via `_ORICOS_LDA_SYS(SYS_PRINT_CHAR)`
+  → `"lda #" "0x01" "\n"`. Garde le bénéfice anti-LTO (LDA #imm, jamais hoisté
+  en ZP) ET restaure la source unique de vérité : renuméroter un syscall dans
+  le `#define` (ou ADR-17) propage automatiquement à l'asm. Vérifié : `a9 01`,
+  `a9 03` présents, `a5 01` (forme ZP buggée) absent. 563 tests verts.
+
 ## [Unreleased+SYS_READ_CHAR-deadlock] - 2026-05-25
 
 ### Fix deadlock SYS_READ_CHAR (P1 revue) — IRQ démasquée pendant les syscalls
