@@ -311,6 +311,10 @@ wm_add_done:
         lda WM_COUNT
         inc a
         sta WM_COUNT
+        ; SP-3.m G.1 : enregistre le propriétaire = tâche courante (créatrice).
+        ldx DP_TMP               ; slot id
+        lda TASK_CUR
+        sta f:WM_OWNER,X         ; WM_OWNER[id] = pid créateur (abs-long,X)
         lda DP_TMP               ; retourne id
         rts
 wm_add_full:

@@ -5,6 +5,21 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G1] - 2026-05-25
+
+### SP-3.m G.1 — lien fenêtre↔tâche (WM_OWNER)
+
+#### Added
+- **`kernel/kernel.s`** : `WM_OWNER` ($015BCD, WM_MAX×1B = pid propriétaire par
+  slot fenêtre ; 0 = aucun) + garde `.assert` vs TCB_TABLE_BASE.
+- **`kernel/modules/wm.s` — `kernel_wm_add`** : enregistre `WM_OWNER[id] =
+  TASK_CUR` (tâche créatrice) à la création de fenêtre. Fondation du modèle
+  GUI×multitâche (SP-3.m, backing-store/GrafPort) : chaque fenêtre est liée à
+  sa tâche propriétaire.
+
+Validé : `test_oricos_boot` asserte `WM_OWNER[0]==1` (fenêtre démo "OricOS" créée
+par task_a pid 1). 563 tests verts. Suite : G.2 `SYS_WIN_CREATE` (+ backing store).
+
 ## [Unreleased+sys-sleep-ms] - 2026-05-25
 
 ### OS-2.g v2.b — SYS_SLEEP_MS : sleep bloquant piloté par le timer

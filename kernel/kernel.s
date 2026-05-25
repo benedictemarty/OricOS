@@ -633,6 +633,8 @@ WM_MAX           = 8
 ; Mise à jour par kernel_wm_add, kernel_wm_close, kernel_wm_set_focus.
 WM_ZORDER        = $015BC4       ; WM_MAX × 1B = 8B ($5BC4-$5BCB)
 WM_ZORDER_N      = $015BCC       ; 1B : nb entrées actives (= WM_COUNT en pratique)
+WM_OWNER         = $015BCD       ; SP-3.m G.1 : WM_MAX × 1B = pid propriétaire par slot
+                                ; (0 = aucun) ; renseigné par kernel_wm_add = TASK_CUR créateur.
 WM_ENTSZ         = 10
 WM_F_USED        = $01           ; flags bit0 : slot occupé
 WM_F_VISIBLE     = $02           ; bit1 : visible
@@ -775,6 +777,7 @@ T1_PERIOD_HI    = $10
 .assert WM_STATES    + WM_MAX      <= WM_SAVED_RECTS,  error, "overlap WM_STATES/WM_SAVED_RECTS"
 .assert WM_SAVED_RECTS + WM_MAX*8  <= WM_ZORDER,       error, "overlap WM_SAVED_RECTS/WM_ZORDER"
 .assert WM_ZORDER    + WM_MAX      <= WM_ZORDER_N,     error, "overlap WM_ZORDER"
+.assert WM_OWNER     + WM_MAX      <= TCB_TABLE_BASE,  error, "overlap WM_OWNER/TCB_TABLE"
 .assert TCB_TABLE_BASE + TCB_MAX*TCB_SIZE <= $015D40,  error, "overlap TCB_TABLE (>$5D40)"
 
 ; ── Ring clavier ($5860) + buffer secteur FAT ($5F60, 512 o) ──────────
