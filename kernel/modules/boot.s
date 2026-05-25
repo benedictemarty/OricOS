@@ -705,6 +705,7 @@ _skip_task_wdraw:
 
         ; ── SP-3.e self-test : window manager + souris (ADR-24) ──────
         jsr kernel_mouse_init
+        jsr kernel_event_init    ; SP-3.n G.1 : file d'événements vide
         jsr kernel_wm_init
         ; fenêtre 0 @ (100,100, 80×60) — titre "OricOS" (SP-3.f)
         rep #$20

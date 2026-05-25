@@ -66,6 +66,8 @@ kpoll_loop:
         beq kpoll_done           ; FIFO vide → terminé
         lda KBD2_DATA            ; pop keycode ASCII
         jsr kernel_kbd_ring_push
+        lda DP_KBD_TMP           ; SP-3.n G.1 : alimente AUSSI la file d'événements
+        jsr kernel_event_push_key ; (coexistence — KBD_RING reste alimenté)
         bra kpoll_loop
 kpoll_done:
         rts

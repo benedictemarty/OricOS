@@ -5,6 +5,34 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G1] - 2026-05-26
+
+### SP-3.n G.1 — file d'événements unifiée (ADR-26 draft, modèle GeoWorks)
+
+#### Added
+- **`kernel/modules/event.s`** : file d'événements bank 1 (`EVENT_RING` $015880,
+  16 entrées × 10 octets : what/message/mods/where_x16/where_y16/when).
+  `kernel_event_init`, `kernel_event_push_key` (A=keycode → EV_KEY_DOWN, mods=
+  KBD2_MOD, where=souris), `kernel_event_push_mouse` (A=type, mods=boutons),
+  `kernel_event_pop` (copie le record en tête vers le bloc ZP $D0, base de
+  SYS_MAIN_LOOP G.2). Helpers `_evt_tail_offset` (×10), `_evt_advance_tail`,
+  `_evt_fill_where_when`.
+- **`kernel.s`** : constantes `EVENT_*`/`EVT_*`/`EV_*` + `EVT_TMP`=$6E (scratch ZP
+  IRQ-only) + 2 `.assert` anti-recouvrement (logé dans le trou $015873-$01592F de
+  la région charset morte, avant `MOUSE_X`).
+
+#### Changed
+- **Migration PROGRESSIVE** (coexistence — aucun consommateur actuel modifié) :
+  `kernel_kbd_poll` (kbd.s) pousse chaque touche dans `KBD_RING` **et** poste un
+  EV_KEY_DOWN ; l'IRQ MOU2 (handlers.s) appelle `kernel_wm_mouse_step` **et**
+  poste EV_MOUSE_DOWN/UP/MOVED (edge-detect bouton gauche). `boot.s` :
+  `kernel_event_init` à l'init.
+
+Sûreté concurrence : push appelé uniquement depuis l'IRQ (I=1, pas de nesting) ;
+`EVT_TMP` dédié IRQ-only ; ZP basse ($00-$88) disjointe de la ZP app llvm-mos
+($89-$CF) → l'IRQ ne corrompt pas l'app courante. Validé : `test_oricos_event_queue`
+(touche 'A' → EV_KEY_DOWN ; clic (250,150) → événement souris). 565 tests verts.
+
 ## [Unreleased+SP-3.m-G6] - 2026-05-25
 
 ### SP-3.m G.6 — app C démo fenêtrée (arc SP-3.m clos)

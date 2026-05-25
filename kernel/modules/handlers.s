@@ -118,6 +118,27 @@ kernel_irq_handler:
         beq irq_no_mou
         jsr kernel_mouse_read
         jsr kernel_wm_mouse_step
+        ; ── SP-3.n G.1 : poste l'événement souris dans la file (edge-detect ──
+        ; bouton gauche : down/up sur transition, moved sinon). Coexiste avec
+        ; kernel_wm_mouse_step (qui garde sa logique focus/drag actuelle).
+        lda MOUSE_BTN
+        and #MOU2_BTN_LEFT
+        beq irq_mou_curup        ; bouton gauche relâché maintenant
+        lda MOUSE_PREV_BTN
+        and #MOU2_BTN_LEFT
+        bne irq_mou_moved        ; déjà pressé avant → maintenu = moved
+        lda #EV_MOUSE_DOWN       ; transition relâché→pressé
+        bra irq_mou_post
+irq_mou_curup:
+        lda MOUSE_PREV_BTN
+        and #MOU2_BTN_LEFT
+        beq irq_mou_moved        ; relâché avant et maintenant → moved
+        lda #EV_MOUSE_UP         ; transition pressé→relâché
+        bra irq_mou_post
+irq_mou_moved:
+        lda #EV_MOUSE_MOVED
+irq_mou_post:
+        jsr kernel_event_push_mouse
 irq_no_mou:
         ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring ───────────
         jsr kernel_kbd_poll

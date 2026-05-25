@@ -420,6 +420,39 @@ KBD_RING_MASK   = KBD_RING_SIZE - 1
 KBD_GETKEY_RES  = $015476       ; sentinelle test : résultat SYS_GET_KEY démo
 SCROLL_TEST_RES = $015477       ; sentinelle test OS-2.e.2 : 4 octets (scroll+CR)
 
+; ─── File d'événements unifiée (SP-3.n G.1, ADR-26 draft) ──────────
+; Couche événementielle façon GeoWorks/GEOS : les drivers IRQ (KBD2, MOU2)
+; postent des records d'événement ; consommée plus tard par SYS_MAIN_LOOP (G.2).
+; Migration PROGRESSIVE : coexiste avec KBD_RING + MOUSE_* (les producteurs
+; alimentent les deux en parallèle), donc aucune régression des consommateurs
+; actuels. Logée dans la région charset morte ($015800-$015BFF), trou
+; $015873-$01592F (avant MOUSE_X $015930).
+; Record = 10 octets : what(1) message(2) mods(1) where_x(2) where_y(2) when(2).
+EVENT_RING        = $015880      ; 160 octets = 16 entrées × 10
+EVENT_RING_HEAD   = $015920      ; index entrée lecture (pop), 0..15
+EVENT_RING_TAIL   = $015921      ; index entrée écriture (push), 0..15
+EVENT_RING_COUNT  = $015922      ; nb événements en file (0..16)
+EVENT_ENTRIES     = 16           ; puissance de 2 → wrap via AND
+EVENT_SIZE        = 10
+; Offsets de champ dans un record (octet)
+EVT_WHAT          = 0
+EVT_MSG_LO        = 1
+EVT_MSG_HI        = 2
+EVT_MODS          = 3
+EVT_WHERE_X       = 4            ; 2B (position souris absolue XVGA)
+EVT_WHERE_Y       = 6            ; 2B
+EVT_WHEN          = 8            ; 2B (tick, best-effort v1)
+; Types d'événement (champ what)
+EV_NULL           = 0
+EV_KEY_DOWN       = 1
+EV_MOUSE_DOWN     = 2
+EV_MOUSE_UP       = 3
+EV_MOUSE_MOVED    = 4
+; Scratch ZP dédié au push (IRQ-only → I=1, pas de nesting ; $6E libre)
+EVT_TMP           = $6E
+.assert EVENT_RING + EVENT_ENTRIES * EVENT_SIZE <= EVENT_RING_HEAD, error, "EVENT_RING recouvre ses pointeurs"
+.assert EVENT_RING_COUNT < MOUSE_X, error, "file d'événements recouvre MOUSE_X"
+
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
 GPU_CMD_OP_IO    = $000340
@@ -761,6 +794,7 @@ T1_PERIOD_HI    = $10
         .include "modules/tk.s"
         .include "modules/wm.s"
         .include "modules/sched.s"
+        .include "modules/event.s"
         .include "modules/handlers.s"
 
 ; ════════════════════════════════════════════════════════════════════
