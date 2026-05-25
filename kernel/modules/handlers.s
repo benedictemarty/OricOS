@@ -24,6 +24,14 @@ kernel_nmi_handler:
 .export kernel_cop_handler
 kernel_cop_handler:
         sep #$30                ; sécurité M=X=1 (mode N native)
+        ; ADR-03 : un syscall ne doit pas masquer les IRQ. Le COP entre avec
+        ; I=1 (hardware) ; sans cli, un syscall bloquant (SYS_READ_CHAR) fige
+        ; tout le noyau car l'IRQ KBD2 ne peut plus remplir le ring → deadlock.
+        ; Le rti final restaure le P (donc I) de l'appelant.
+        ; ⚠️ v1 : rend les syscalls interruptibles. Sûr tant qu'une seule
+        ; tâche émet des syscalls (pas de réentrance sur la ZP scratch kernel).
+        ; À revisiter avec le vrai blocage de tâche (OS-2.g v2).
+        cli
         stx DP_SYS_ARG_X       ; sauve X (arg1) — sera écrasé par l'index
         cmp #$40               ; num < 64 ?
         bcs cop_invalid

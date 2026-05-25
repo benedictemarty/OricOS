@@ -5,6 +5,30 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SYS_READ_CHAR-deadlock] - 2026-05-25
+
+### Fix deadlock SYS_READ_CHAR (P1 revue) — IRQ démasquée pendant les syscalls
+
+#### Fixed
+- **`kernel/modules/handlers.s` — `kernel_cop_handler`** : `cli` ajouté en entrée
+  du dispatcher COP. Le COP entre avec I=1 (hardware) ; un syscall bloquant
+  (`SYS_READ_CHAR`) figeait alors **tout le noyau** car l'IRQ KBD2 ne pouvait
+  plus remplir le ring → deadlock garanti en usage réel. Le `rti` final restaure
+  le P (donc I) de l'appelant. Conforme ADR-03 (kernel jamais bloqué par une app).
+  ⚠️ v1 : rend les syscalls interruptibles — sûr tant qu'une seule tâche émet des
+  syscalls ; réentrance sur la ZP scratch kernel à revisiter en OS-2.g v2.
+- **`kernel/modules/wm.s` — `sys_read_char`** : `WAI` entre deux tentatives de
+  pop au lieu d'un busy-spin. Avec I=0 (cli du handler), `WAI` dort jusqu'à l'IRQ
+  KBD2 qui remplit le ring, puis re-poll.
+- **`kernel/modules/boot.s`** : suppression du hack de pré-injection clavier
+  (`lda #'A'; jsr kernel_kbd_ring_push`) dans le chemin TC_HELLOC_FLAG. C'était
+  un pansement masquant le deadlock ; la touche arrive maintenant par l'IRQ
+  KBD2 réelle.
+
+Validation : `test_oricos_helloc` ne pré-injecte plus ; il livre 'A' via le
+device KBD2 quand l'app bloque (`cpu.waiting`), exerçant la chaîne complète
+KBD2→IRQ→ring→read_char. 563 tests verts.
+
 ## [Unreleased+TC-poc-hello-c-hardening] - 2026-05-25
 
 ### TC-poc-hello-c — durcissement post-revue (P0 repro + fix racine DBR)

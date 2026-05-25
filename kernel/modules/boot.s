@@ -1136,9 +1136,9 @@ skip_multi_exec:
         lda TC_HELLOC_FLAG
         cmp #$A5
         bne _skip_helloc
-        ; Pre-inject la touche 'A' dans le ring kbd → SYS_READ_CHAR se débloque.
-        lda #'A'
-        jsr kernel_kbd_ring_push
+        ; Plus de pré-injection clavier : SYS_READ_CHAR se débloque via l'IRQ
+        ; KBD2 réelle (le handler COP fait cli ; cf. handlers.s / sys_read_char).
+        ; Le test livre la touche via le device KBD2 quand l'app bloque.
         ; Exec bundle_hello_c (bank 1, adresse absolue).
         lda #<bundle_hello_c
         sta DP_PTR

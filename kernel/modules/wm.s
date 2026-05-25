@@ -2412,13 +2412,17 @@ sys_print_string:
         rts
 
 ; $03 — SYS_READ_CHAR : bloquant → A = keycode (OS-2.d, ADR-22) ──────
-; v0.1 : spin-poll le ring (les autres tâches tournent via préemption
-; timer). Blocage vrai (task BLOCKED + wake) reporté à OS-2.g (TCB states).
+; v0.1 : poll le ring + WAI entre essais. Le handler COP a fait cli (I=0),
+; donc WAI dort jusqu'à l'IRQ KBD2 qui remplit le ring via kernel_kbd_poll,
+; au lieu de busy-spinner. Blocage vrai (task BLOCKED + wake) → OS-2.g v2.
 sys_read_char:
 sread_wait:
         jsr kernel_kbd_ring_pop
         cmp #$00
-        beq sread_wait          ; vide → attend une touche
+        bne sread_done          ; touche dispo → retour
+        wai                     ; dort jusqu'à IRQ (KBD2 remplit le ring)
+        bra sread_wait
+sread_done:
         rts                     ; A = keycode
 
 ; $04 — SYS_EXIT : X = exit_code ─────────────────────────────────────
