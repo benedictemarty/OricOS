@@ -119,6 +119,8 @@ kernel_irq_handler:
 irq_no_mou:
         ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring ───────────
         jsr kernel_kbd_poll
+        ; ── g.5 : réveille la tâche bloquée sur le clavier (si touche dispo) ──
+        jsr kernel_kbd_wake
 
         ; ── VIA T1 présent ? (sinon IRQ MOU2/KBD2 seule : pas de tick) ──
         lda VIA_IFR

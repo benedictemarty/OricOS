@@ -208,6 +208,60 @@ kp_skip:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  kernel_block_switch — bascule en bloquant la tâche courante (g.5)
+; ════════════════════════════════════════════════════════════════════
+; Comme do_switch mais marque CUR BLOCKED (au lieu de READY). Une resume frame
+; valide doit déjà être au sommet de la pile (forgée par l'appelant). Entré par
+; jmp (pas via le timer → pas de garde FORBID). Aucun jsr/rts ne traverse le tcs.
+.export kernel_block_switch
+kernel_block_switch:
+        lda TASK_CUR
+        jsr kernel_tcb_ptr
+        rep #$20
+        tsc
+        ldy #TCB_S_LO
+        sta [SCHED_PTR],Y               ; tcb[CUR].S = SP (resume frame)
+        sep #$20
+        lda #TASK_STATE_BLOCKED
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y               ; tcb[CUR].STATE = BLOCKED
+        lda TASK_CUR
+        jsr kernel_sched_find_next      ; next READY (CUR BLOCKED → ignorée)
+        sta TASK_CUR
+        jsr kernel_tcb_ptr
+        lda #TASK_STATE_RUNNING
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y
+        rep #$20
+        ldy #TCB_S_LO
+        lda [SCHED_PTR],Y
+        tcs
+        sep #$20
+        jmp restore_and_return
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_kbd_wake — réveille la tâche bloquée sur le clavier (g.5)
+; ════════════════════════════════════════════════════════════════════
+; Appelé par le handler IRQ après kernel_kbd_poll. Si une tâche attend le
+; clavier (KBD_WAITER≠0) ET une touche est dispo (ring non vide), la passe
+; READY et efface KBD_WAITER. Clobbers A, Y (restaurés par le handler IRQ).
+.export kernel_kbd_wake
+kernel_kbd_wake:
+        lda KBD_WAITER
+        beq kwake_done                  ; personne n'attend
+        lda KBD_RING_COUNT
+        beq kwake_done                  ; ring vide → pas de réveil
+        lda KBD_WAITER
+        jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[KBD_WAITER]
+        lda #TASK_STATE_READY
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y               ; débloque la tâche
+        lda #$00
+        sta KBD_WAITER
+kwake_done:
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_bitmap_clear — libère le slot pid dans TCB_BITMAP (OS-2.g g.4)
 ; ════════════════════════════════════════════════════════════════════
 ; In : A = pid (1..15). Efface le bit pid (bitmap &= ~(1<<pid)).

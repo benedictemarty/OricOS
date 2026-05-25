@@ -5,6 +5,39 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.b-g5-block] - 2026-05-25
+
+### OS-2.g v2.b/g.5 — SYS_READ_CHAR bloquant + réveil IRQ (Exec-classique 2/2)
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_block_switch`** : comme `do_switch` mais
+  marque CUR `BLOCKED` (resume frame déjà forgée par l'appelant). **`kernel_kbd_wake`**
+  : appelé par le handler IRQ après `kbd_poll` ; si `KBD_WAITER≠0` et ring non
+  vide, passe la tâche `READY` et efface `KBD_WAITER`.
+- **`kernel/kernel.s`** : `KBD_WAITER` ($01544F, pid bloqué sur clavier — signal
+  dégénéré généralisable), `TASK_E_KEY` ($01544A, test).
+- **`kernel/modules/alloc.s` — `task_e_entry`** : tâche qui bloque sur
+  `SYS_READ_CHAR`, stocke la touche, puis `SYS_EXIT`.
+- **`kernel/modules/handlers.s`** : `jsr kernel_kbd_wake` après `kernel_kbd_poll`.
+- **`kernel/modules/boot.s`** : init `KBD_WAITER`/`TASK_E_KEY`, crée task_e (pid 5).
+
+#### Changed
+- **`kernel/modules/wm.s` — `sys_read_char`** : deux modes (gate `SCHED_ACTIVE`,
+  comme `SYS_EXIT`). Scheduler **inactif** (app boot-context, ex. hello_c) → spin +
+  `WAI` (v1, préserve le test hello_c). Scheduler **actif** (vraie tâche) →
+  **blocage réel** : sous `sei` (anti lost-wakeup), si ring vide enregistre
+  `KBD_WAITER`, forge une resume frame (reprise → re-check), met `FORBID=0`
+  (tâche suivante préemptible) et bascule via `kernel_block_switch` ; au réveil
+  restaure `FORBID=1` et re-pop. **Plus de spin** : la tâche rend le CPU.
+
+Validation : task_e bloque (KBD_WAITER=5), une autre tâche tourne, le test injecte
+'K' via le device KBD2 → IRQ → `kernel_kbd_wake` réveille task_e → elle lit 'K'
+(`TASK_E_KEY=='K'`) puis `SYS_EXIT` (bitmap=$0F). hello_c 2/2 (fallback WAI
+préservé). **563 tests verts.**
+
+→ Le modèle de concurrence **Exec-classique (ADR-25)** est désormais implémenté
+(Forbid/Permit + atomicité syscall + block/wake) → ADR-25 ratifiable.
+
 ## [Unreleased+OS-2.b-g6-forbid] - 2026-05-25
 
 ### OS-2.g v2.b/g.6 — Forbid/Permit (ADR-25 Exec-classique, incrément 1/2)

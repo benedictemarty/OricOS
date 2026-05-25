@@ -465,6 +465,8 @@ kernel_entry:
         sta TASK_D_CTR
         sta SCHED_ACTIVE        ; scheduler pas encore démarré (g.4)
         sta FORBID_COUNT        ; g.6 : pas de section critique au boot
+        sta TASK_E_KEY          ; g.5 : touche lue par task_e (init 0)
+        sta KBD_WAITER          ; g.5 : aucune tâche en attente clavier
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04
@@ -555,6 +557,12 @@ kernel_entry:
         ; fois puis SYS_EXIT → valide le teardown + reschedule.
         ldx #<task_d_entry
         ldy #>task_d_entry
+        lda #$00
+        jsr kernel_task_create
+        ; OS-2.g v2.b g.5 : task_e (pid 5) bloque sur SYS_READ_CHAR → valide le
+        ; blocage réel + réveil par l'IRQ KBD2.
+        ldx #<task_e_entry
+        ldy #>task_e_entry
         lda #$00
         jsr kernel_task_create
 

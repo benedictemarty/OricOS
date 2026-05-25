@@ -158,6 +158,18 @@ task_d_entry:
         cop #$AA
         bra task_d_entry        ; filet (ne devrait jamais être atteint)
 
+; ─── task_e_entry : tâche qui BLOQUE sur le clavier (OS-2.g v2.b g.5) ──
+; SYS_READ_CHAR (bloque jusqu'à une touche), stocke le keycode, puis SYS_EXIT.
+; Valide le blocage réel + le réveil par l'IRQ KBD2.
+.export task_e_entry
+task_e_entry:
+        lda #$03                ; SYS_READ_CHAR (bloquant)
+        cop #$AA
+        sta TASK_E_KEY          ; A = keycode lu
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_e_entry        ; filet
+
 ; kernel_hires2_clear et pattern_table retirés en PH-cleanup-zombie
 ; (2026-05-09). Code legacy ADR-19 v2, plus visible côté compositor.
 ; Rendu desktop = GPU blitter (ADR-21) via kernel_gfx_*.

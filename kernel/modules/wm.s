@@ -2420,17 +2420,57 @@ sys_print_string:
         rts
 
 ; $03 — SYS_READ_CHAR : bloquant → A = keycode (OS-2.d, ADR-22) ──────
-; v0.1 : poll le ring + WAI entre essais. Le handler COP a fait cli (I=0),
-; donc WAI dort jusqu'à l'IRQ KBD2 qui remplit le ring via kernel_kbd_poll,
-; au lieu de busy-spinner. Blocage vrai (task BLOCKED + wake) → OS-2.g v2.
+; Deux modes (gate SCHED_ACTIVE, comme SYS_EXIT) :
+;  - scheduler inactif (app boot-context, ex. hello_c qui n'est pas une tâche) :
+;    poll + WAI (le COP a fait cli ; WAI dort jusqu'à l'IRQ KBD2). v1.
+;  - scheduler actif (vraie tâche) : BLOCAGE réel (g.5) — la tâche passe BLOCKED
+;    et rend le CPU ; l'IRQ KBD2 la réveille (kernel_kbd_wake). Plus de spin.
 sys_read_char:
+        lda SCHED_ACTIVE
+        cmp #$A5
+        beq sread_block_mode
+        ; ── mode boot-context : spin + WAI (v1, préserve hello_c) ──
 sread_wait:
         jsr kernel_kbd_ring_pop
         cmp #$00
-        bne sread_done          ; touche dispo → retour
-        wai                     ; dort jusqu'à IRQ (KBD2 remplit le ring)
+        bne sread_done
+        wai
         bra sread_wait
 sread_done:
+        rts                     ; A = keycode
+
+        ; ── mode tâche : blocage réel (g.5) ───────────────────────────
+sread_block_mode:
+sread_loop:
+        sei                     ; section critique : check ring + décision de bloc
+        jsr kernel_kbd_ring_pop ; (nested sei/plp OK)
+        cmp #$00
+        bne sread_got           ; touche dispo
+        ; ring vide ET sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
+        lda TASK_CUR
+        sta KBD_WAITER
+        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → reprise à sread_resume
+        lda #$01
+        pha                     ; PBR
+        lda #>sread_resume
+        pha                     ; PCH
+        lda #<sread_resume
+        pha                     ; PCL
+        lda #$30                ; P : mode N M=X=1, I=0
+        pha
+        lda #$00
+        pha                     ; A
+        pha                     ; X
+        pha                     ; Y
+        lda #$00
+        sta FORBID_COUNT        ; tâche suivante préemptible (on quitte le syscall le temps du bloc)
+        jmp kernel_block_switch ; sauve SP→tcb[CUR].S (BLOCKED), bascule
+sread_resume:                   ; rti atterrit ici au réveil (FORBID=0)
+        lda #$01
+        sta FORBID_COUNT        ; de retour dans le syscall
+        bra sread_loop          ; re-check (la touche est là)
+sread_got:
+        cli                     ; libère notre sei
         rts                     ; A = keycode
 
 ; $04 — SYS_EXIT : X = exit_code (OS-2.g v2.a g.4) ────────────────────

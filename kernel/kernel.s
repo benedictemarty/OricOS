@@ -39,6 +39,10 @@ TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
 TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
 TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
+TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
+KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
+                                ; Signal dégénéré (1 attente clavier) ; généralisable en
+                                ; masque de signaux par TCB (ADR-25) si besoin.
 STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
 SCHED_ACTIVE    = $01544D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
                                 ; SYS_EXIT fait STP si inactif (app boot-context, ex. hello_c),
