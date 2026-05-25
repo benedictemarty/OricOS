@@ -221,7 +221,9 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $22       1B       WM_ARG_TITLE_LO    pointeur titre (lo)
 ;  $23       1B       WM_ARG_TITLE_HI    pointeur titre (hi)
 ;  $24       1B       WIN_SLOT           slot fenêtre courant (STABLE post-wm_offset)
-;  $25-$5F   59B      (libres)
+;  $25-$2A   6B       WM_CRH_TMP         scratch _wm_chrome_hit (SP-3.h)
+;  $2B       1B       WM_ZN_CACHE        cache ZP de WM_ZORDER_N (CPY/CPX sans mode long)
+;  $2C-$5F   52B      (libres)
 ;  $60-$62   3B       VRAM_OP_ADDR_*     adresse SDRAM 24-bit (vram_write/read_block)
 ;  $63-$64   2B       VRAM_OP_LEN_*      longueur 16-bit vram block
 ;  $65-$67   3B       VRAM_DMA_SRC_*_ZP  source DMA SDRAM 24-bit
@@ -581,12 +583,17 @@ WIN_TITLE_FOCUS  = $09           ; titlebar fenêtre focus : lightblue vif
 WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 
-; ─── Window manager (SP-3.e v0.1) — table en bank 1 $5900 ───────────
-; 4 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
-WM_TABLE         = $015B22       ; 8 × 10 = 80 octets ($5B22-$5B71, WM_MAX=8)
-WM_COUNT         = $015B72       ; 1B : nb fenêtres
-WM_FOCUS         = $015B73       ; 1B : id fenêtre focus ($FF = aucune)
+; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
+; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
+WM_TABLE         = $015B22       ; 8 × 10 = 80 octets ($5B22-$5B71)
+WM_COUNT         = $015B72       ; 1B : nb fenêtres actives
+WM_FOCUS         = $015B73       ; 1B : slot fenêtre focus ($FF = aucune)
 WM_MAX           = 8
+; SP-3.R S4 — Z-order table : liste compacte des slots actifs, du fond vers l'avant.
+; WM_ZORDER[0] = slot le plus en fond, WM_ZORDER[WM_ZORDER_N-1] = slot au premier plan.
+; Mise à jour par kernel_wm_add, kernel_wm_close, kernel_wm_set_focus.
+WM_ZORDER        = $015BC4       ; WM_MAX × 1B = 8B ($5BC4-$5BCB)
+WM_ZORDER_N      = $015BCC       ; 1B : nb entrées actives (= WM_COUNT en pratique)
 WM_ENTSZ         = 10
 WM_F_USED        = $01           ; flags bit0 : slot occupé
 WM_F_VISIBLE     = $02           ; bit1 : visible
@@ -607,6 +614,7 @@ WM_ARG_DX        = $1C           ; 2B signé
 WM_ARG_DY        = $1E           ; 2B signé
 WM_DP_TMP        = $20           ; 2B scratch
 WM_CRH_TMP      = $25           ; 6B scratch pour _wm_chrome_hit (SP-3.h) : $25-$2A
+WM_ZN_CACHE     = $2B           ; 1B cache ZP de WM_ZORDER_N (CPY/CPX ne font pas le mode long)
 
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)
@@ -4553,6 +4561,7 @@ kernel_wm_offset:
 kernel_wm_init:
         lda #$00
         sta WM_COUNT
+        sta WM_ZORDER_N          ; SP-3.R S4 : table Z-order vide
         sta WIDGET_COUNT         ; SP-3.d v0.2 : aucune widget au départ
         lda #$FF
         sta WM_FOCUS
@@ -4638,7 +4647,7 @@ wm_add_scan_next:
         inc a
         cmp #WM_MAX
         bcc wm_add_scan
-        bra wm_add_full          ; (ne devrait pas arriver si WM_COUNT < WM_MAX)
+        jmp wm_add_full          ; (ne devrait pas arriver si WM_COUNT < WM_MAX)
 wm_add_init:
         lda #(WM_F_USED | WM_F_VISIBLE)
         sta WM_TABLE+WM_OFF_FLAGS,X
@@ -4691,6 +4700,14 @@ wm_add_notitle:
         lda #$00
         sta WM_TITLES,X          ; flag = $00 (pas de titre)
 wm_add_done:
+        ; SP-3.R S4 : ajouter le slot en fin de WM_ZORDER (au premier plan).
+        lda WM_ZORDER_N
+        tax
+        lda DP_TMP               ; slot id
+        sta f:WM_ZORDER,X        ; ZORDER[N] = nouveau slot (long,X)
+        lda WM_ZORDER_N
+        inc a
+        sta WM_ZORDER_N
         lda WM_COUNT
         inc a
         sta WM_COUNT
@@ -4701,16 +4718,21 @@ wm_add_full:
         rts
 
 ; ── kernel_wm_hit_test : args WM_ARG_X/Y (point) → A = id topmost ou $FF
+; SP-3.R S4 : scan dans l'ordre WM_ZORDER (fond→sommet) ; dernier hit = topmost.
+; Y = index ZORDER (préservé par kernel_wm_offset). tyx → X temporaire pour lda f:WM_ZORDER,X.
 .export kernel_wm_hit_test
 kernel_wm_hit_test:
+        lda WM_ZORDER_N
+        sta WM_ZN_CACHE          ; CPY/CPX ne font pas le mode long 24-bit
         lda #$FF
         sta DP_TMP               ; résultat
         ldy #$00
 wm_ht_loop:
-        tya
-        cmp #WM_MAX              ; scan tous les slots (pas WM_COUNT : trous après close)
+        cpy WM_ZN_CACHE
         bcs wm_ht_done
-        jsr kernel_wm_offset     ; A=id → X = id*10
+        tyx                      ; X = Y (index ZORDER) pour lda long,X (long,Y inexistant)
+        lda f:WM_ZORDER,X        ; A = slot id
+        jsr kernel_wm_offset     ; A=id → X = id*10 (Y préservé)
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #(WM_F_USED | WM_F_VISIBLE)
         cmp #(WM_F_USED | WM_F_VISIBLE)
@@ -4737,7 +4759,8 @@ wm_ht_loop:
         cmp WM_DP_TMP
         bcs wm_ht_next16
         sep #$20                 ; hit → result = id (topmost = dernier match)
-        tya
+        tyx                      ; X = Y pour lire le slot id
+        lda f:WM_ZORDER,X
         sta DP_TMP
         bra wm_ht_next
 wm_ht_next16:
@@ -4750,6 +4773,7 @@ wm_ht_done:
         rts
 
 ; ── kernel_wm_set_focus : A = id ───────────────────────────────────
+; SP-3.R S4 : déplace aussi le slot au sommet de WM_ZORDER.
 .export kernel_wm_set_focus
 kernel_wm_set_focus:
         sta DP_TMP               ; nouvel id
@@ -4768,6 +4792,44 @@ wm_sf_new:
         sta WM_TABLE+WM_OFF_FLAGS,X
         lda DP_TMP
         sta WM_FOCUS
+        ; SP-3.R S4 : remonter le slot au sommet du Z-order.
+        ; Cherche DP_TMP dans ZORDER[0..N-1], le retire, le réinsère en fin.
+        ; Y = index boucle (long,Y inexistant → tyx avant chaque accès WM_ZORDER).
+        lda WM_ZORDER_N
+        sta WM_ZN_CACHE          ; CPY ne fait pas le mode long 24-bit
+        ldy #$00
+wm_sf_zord_find:
+        cpy WM_ZN_CACHE
+        bcs wm_sf_zord_done      ; pas trouvé → déjà au sommet ou absent
+        tyx
+        lda f:WM_ZORDER,X
+        cmp DP_TMP
+        beq wm_sf_zord_found
+        iny
+        bra wm_sf_zord_find
+wm_sf_zord_found:
+        ; Y = index trouvé. Décaler ZORDER[Y+1..N-1] → ZORDER[Y..N-2].
+        phy                      ; sauve index
+wm_sf_zord_shift:
+        iny
+        cpy WM_ZN_CACHE
+        bcs wm_sf_zord_shift_done
+        tyx                      ; X = Y (index suivant)
+        lda f:WM_ZORDER,X        ; ZORDER[Y]
+        dey
+        tyx                      ; X = Y-1 (index précédent)
+        sta f:WM_ZORDER,X
+        iny
+        bra wm_sf_zord_shift
+wm_sf_zord_shift_done:
+        ply                      ; index original (dépile)
+        ; Insérer en fin : ZORDER[N-1] = DP_TMP
+        lda WM_ZORDER_N
+        dec a
+        tax
+        lda DP_TMP
+        sta f:WM_ZORDER,X
+wm_sf_zord_done:
         rts
 
 ; ── kernel_wm_move_focused : args WM_ARG_DX/DY (signé 16-bit) ───────
@@ -4830,7 +4892,9 @@ wm_mv_done:
 .export kernel_wm_close
 kernel_wm_close:
         cmp #WM_MAX              ; id >= WM_MAX ? → ignore
-        bcs wm_close_done
+        bcc wm_close_go
+        jmp wm_close_done
+wm_close_go:
         sta DP_TMP               ; sauve id
         jsr kernel_wm_offset     ; X = id*10
         lda WM_TABLE+WM_OFF_FLAGS,X
@@ -4844,11 +4908,6 @@ kernel_wm_close:
         tax
         lda #$00
         sta WM_TITLES,X
-        ; Décrémente WM_COUNT (saturé à 0)
-        lda WM_COUNT
-        beq wm_close_done
-        dec a
-        sta WM_COUNT
         ; SP-3.j : si la fenêtre fermée était modale → clear WM_MODAL
         lda DP_TMP
         cmp WM_MODAL
@@ -4856,29 +4915,59 @@ kernel_wm_close:
         lda #$FF
         sta WM_MODAL
 wm_close_not_modal:
+        ; Décrémente WM_COUNT (saturé à 0)
+        lda WM_COUNT
+        beq wm_close_done
+        dec a
+        sta WM_COUNT
+        ; SP-3.R S4 : retirer le slot fermé de WM_ZORDER (compact).
+        ; Cherche l'index du slot dans ZORDER, décale, décrémente N.
+        ; Y = index boucle ; long,Y inexistant → tyx avant chaque accès WM_ZORDER.
+        lda WM_ZORDER_N
+        sta WM_ZN_CACHE          ; CPY ne fait pas le mode long 24-bit
+        lda DP_TMP               ; slot à retirer (sauvegardé dans A)
+        ldy #$00
+wm_close_zord_find:
+        cpy WM_ZN_CACHE
+        bcs wm_close_zord_done   ; pas trouvé (ne devrait pas arriver)
+        tyx                      ; X = Y pour lda long,X
+        cmp f:WM_ZORDER,X
+        beq wm_close_zord_found
+        iny
+        bra wm_close_zord_find
+wm_close_zord_found:
+        ; Y = index trouvé. Compacter : ZORDER[Y..N-2] = ZORDER[Y+1..N-1].
+        phy                      ; sauvegarder index trouvé
+wm_close_zord_compact:
+        iny
+        cpy WM_ZN_CACHE
+        bcs wm_close_zord_compact_done
+        tyx                      ; X = Y (index suivant)
+        lda f:WM_ZORDER,X
+        dey
+        tyx                      ; X = Y-1 (index précédent)
+        sta f:WM_ZORDER,X
+        iny
+        bra wm_close_zord_compact
+wm_close_zord_compact_done:
+        ply                      ; index (dépile)
+        lda WM_ZORDER_N
+        dec a
+        sta WM_ZORDER_N
+wm_close_zord_done:
         ; Mise à jour focus : si la fenêtre fermée avait le focus →
-        ; chercher le premier slot USED, sinon garder.
+        ; le nouveau focus = sommet du ZORDER (dernier slot restant).
         lda DP_TMP
         cmp WM_FOCUS
         bne wm_close_done        ; pas le focus → fin
         lda #$FF
         sta WM_FOCUS             ; perd le focus par défaut
-        ; Cherche un nouveau focus (premier slot USED)
-        ldy #$00
-wm_close_find_focus:
-        tya
-        cmp #WM_MAX
-        bcs wm_close_done
-        jsr kernel_wm_offset     ; X = y*10
-        lda WM_TABLE+WM_OFF_FLAGS,X
-        and #WM_F_USED
-        beq wm_close_next
-        tya
-        sta WM_FOCUS             ; nouveau focus = premier slot USED
-        bra wm_close_done
-wm_close_next:
-        iny
-        bra wm_close_find_focus
+        lda WM_ZORDER_N
+        beq wm_close_done        ; plus aucune fenêtre
+        dec a                    ; index du dernier = N-1
+        tax
+        lda f:WM_ZORDER,X        ; slot id au sommet (long,X)
+        sta WM_FOCUS             ; nouveau focus = sommet Z-order
 wm_close_done:
         rts
 
@@ -5431,32 +5520,22 @@ kernel_wm_redraw:
         ; fall-through : dessine les fenêtres.
 
 ; ── _wm_draw_windows : dessine toutes les fenêtres visibles (corps + titre).
-;    Réutilisé par kernel_wm_redraw (clear plein) et kernel_wm_redraw_drag
-;    (efface seulement l'ancien rect). Modifie A, X, Y.
-; ── _wm_draw_windows : deux passes pour Z-order correct ─────────────────
-; Passe 1 : fenêtres non-focus (slot 0..N-1 sauf WM_FOCUS).
-; Passe 2 : fenêtre focus en dernier = visuellement au-dessus de toutes.
-; Modifie A, X, Y.
+;    SP-3.R S4 : passe unique dans l'ordre WM_ZORDER (fond→premier plan).
+;    Réutilisé par kernel_wm_redraw et kernel_wm_redraw_drag.
+;    Modifie A, X, Y.
 _wm_draw_windows:
-        ldy #$00
+        lda WM_ZORDER_N
+        sta WM_ZN_CACHE          ; CPX ne fait pas le mode long 24-bit
+        ldx #$00
 wm_rd_loop:
-        tya
-        cmp #WM_MAX              ; scan tous les slots (pas WM_COUNT : trous après close)
-        bcs wm_rd_pass2
-        cmp WM_FOCUS            ; fenêtre focus → réservée pour passe 2
-        beq wm_rd_next
-        phy                     ; _wm_draw_one clobbe Y via GPU → sauvegarder
-        jsr _wm_draw_one        ; A = slot id
-        ply                     ; restaurer le compteur de boucle
-wm_rd_next:
-        iny
+        cpx WM_ZN_CACHE
+        bcs wm_rd_done
+        lda f:WM_ZORDER,X        ; slot id depuis ZORDER (long,X = seule forme 24-bit indexée)
+        phx                      ; _wm_draw_one clobbe X,Y via GPU → sauvegarder index
+        jsr _wm_draw_one
+        plx
+        inx
         bra wm_rd_loop
-wm_rd_pass2:
-        ; Passe 2 : fenêtre focus
-        lda WM_FOCUS
-        cmp #$FF
-        beq wm_rd_done          ; pas de focus → rien
-        jsr _wm_draw_one        ; A = slot id (WM_FOCUS)
 wm_rd_done:
         jmp kernel_menu_draw    ; menu par-dessus tout
 
