@@ -45,6 +45,8 @@
 #define SYS_GFX_LINE        0x10
 #define SYS_GFX_TEXT        0x11
 #define SYS_SLEEP_MS        0x12
+#define SYS_WIN_CREATE      0x13
+#define SYS_WIN_FLUSH       0x14
 
 /* ── Sentinelle d'erreur ─────────────────────────────────────────── */
 #define ORICOS_ERR          ((uint8_t)0xFF)
@@ -165,6 +167,66 @@ void oricos_free_bank(uint8_t bank) {
         :
         : [b] "r" (bank)
         : "a", "x"
+    );
+}
+
+/* ── GUI : fenêtres et dessin fenêtré (SP-3.m) ───────────────────── */
+
+/* SYS_WIN_CREATE : crée une fenêtre {x,y,w,h} (coords écran XVGA, 16-bit) et
+ * retourne son handle (slot 0..7), ou ORICOS_ERR si plus de slots. La fenêtre
+ * prend le focus (son propriétaire reçoit le clavier). Args passés via le bloc
+ * ZP syscall réservé $D0-$D7 (ABI ADR-17, D=0 garanti pour les apps). */
+static __attribute__((always_inline)) inline
+uint8_t oricos_win_create(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    uint8_t handle;
+    __asm__ volatile (
+        "lda %[xl]\n sta $D0\n lda %[xh]\n sta $D1\n"
+        "lda %[yl]\n sta $D2\n lda %[yh]\n sta $D3\n"
+        "lda %[wl]\n sta $D4\n lda %[wh]\n sta $D5\n"
+        "lda %[hl]\n sta $D6\n lda %[hh]\n sta $D7\n"
+        _ORICOS_LDA_SYS(SYS_WIN_CREATE)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (handle)
+        : [xl] "r" ((uint8_t)x),  [xh] "r" ((uint8_t)(x >> 8)),
+          [yl] "r" ((uint8_t)y),  [yh] "r" ((uint8_t)(y >> 8)),
+          [wl] "r" ((uint8_t)w),  [wh] "r" ((uint8_t)(w >> 8)),
+          [hl] "r" ((uint8_t)h),  [hh] "r" ((uint8_t)(h >> 8))
+        : "a"
+    );
+    return handle;
+}
+
+/* SYS_GFX_FILL_RECT : remplit un rectangle en coordonnées LOCALES à la fenêtre
+ * du caller (le kernel résout le backing store via WM_OWNER). L'app ignore
+ * l'adresse physique XVGA (modèle GrafPort). Coords/dimensions 8-bit (v0.1).
+ * Args via la ZP gfx kernel $73-$78. color : index palette 0..15. */
+static __attribute__((always_inline)) inline
+void oricos_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t color) {
+    __asm__ volatile (
+        "lda %[x]\n sta $73\n"
+        "lda %[y]\n sta $74\n"
+        "lda %[w]\n sta $76\n"
+        "lda %[h]\n sta $77\n"
+        "lda %[c]\n sta $78\n"
+        _ORICOS_LDA_SYS(SYS_GFX_FILL_RECT)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [x] "r" (x), [y] "r" (y), [w] "r" (w), [h] "r" (h), [c] "r" (color)
+        : "a"
+    );
+}
+
+/* SYS_WIN_FLUSH : composite les backing stores des fenêtres sur le framebuffer
+ * XVGA. À appeler après les SYS_GFX_* pour rendre le dessin visible. */
+static __attribute__((always_inline)) inline
+void oricos_win_flush(void) {
+    __asm__ volatile (
+        _ORICOS_LDA_SYS(SYS_WIN_FLUSH)
+        ".byte 0x02, 0xAA\n"
+        :
+        :
+        : "a"
     );
 }
 

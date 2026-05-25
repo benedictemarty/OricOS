@@ -2631,6 +2631,22 @@ sys_win_create:
         sta WM_ARG_TITLE_LO
         sta WM_ARG_TITLE_HI
         jsr kernel_wm_add       ; A = slot id (handle) ou $FF
+        cmp #$FF
+        beq swc_done            ; échec → pas de focus
+        ; SP-3.m G.6 : la fenêtre nouvellement créée prend le focus (comportement
+        ; GUI standard) → son propriétaire reçoit le clavier (chaîne G.3).
+        pha                     ; sauve le handle (valeur de retour)
+        jsr kernel_wm_set_focus ; A = id
+        pla                     ; restaure A = handle
+swc_done:
+        rts
+
+; $14 — SYS_WIN_FLUSH : composite les backing stores → framebuffer XVGA (G.4bis)
+; Anticipé en G.4bis : une app dessine en local (SYS_GFX_*) puis FLUSH pour
+; rendre son backing store visible à l'écran sans connaître l'adresse XVGA.
+sys_win_flush:
+        jsr kernel_wm_compose
+        lda #$00
         rts
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────

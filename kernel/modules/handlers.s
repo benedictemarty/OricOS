@@ -81,8 +81,9 @@ syscall_table:
         .word sys_gfx_text      ; $11 SYS_GFX_TEXT
         .word sys_sleep_ms      ; $12 SYS_SLEEP_MS
         .word sys_win_create    ; $13 SYS_WIN_CREATE (SP-3.m G.2)
-        .repeat 44
-        .word sys_invalid       ; $14-$3F réservés
+        .word sys_win_flush     ; $14 SYS_WIN_FLUSH  (SP-3.m G.4bis/G.6)
+        .repeat 43
+        .word sys_invalid       ; $15-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

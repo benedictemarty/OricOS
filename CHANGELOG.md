@@ -5,6 +5,35 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G6] - 2026-05-25
+
+### SP-3.m G.6 — app C démo fenêtrée (arc SP-3.m clos)
+
+#### Added
+- **`apps/win_hello/win.c` + Makefile** : première app userland C **fenêtrée**
+  (llvm-mos, target mos-oricos). Crée sa fenêtre, dessine en coords locales,
+  flush, lit le clavier au focus, sort. Bundle embarqué `bundle_win` (console.s),
+  spawné par `TC_WINAPP_FLAG` ($01EF50) via `kernel_app_spawn`.
+- **`tools/oricos-sdk/include/oricos.h`** : helpers `oricos_win_create(x,y,w,h)`
+  (args via $D0-$D7, retourne handle), `oricos_gfx_fill_rect(x,y,w,h,color)`
+  (args via ZP gfx $73-$78), `oricos_win_flush()`. Defines `SYS_WIN_CREATE`
+  ($13), `SYS_WIN_FLUSH` ($14).
+- **`sys_win_flush` ($14)** : nouveau syscall → `kernel_wm_compose` (permet à une
+  app de rendre son dessin visible sans connaître l'adresse XVGA). Câblé dans
+  `syscall_table` (`.repeat 43` ajustée).
+- **`sys_win_create`** : la fenêtre créée **prend le focus** (`kernel_wm_set_focus`)
+  → son propriétaire reçoit le clavier (boucle la chaîne G.3 depuis userland).
+
+Validé : `test_oricos_win_app` — l'app C crée sa fenêtre (slot 2, focus),
+dessine `$080000==$FF` (G.4), composite `$00A032==$FF` (G.4bis), reçoit la touche
+au focus → imprime "win_hello: sortie" (G.3), puis sort → `WM_COUNT` 3→2 +
+`WM_OWNER[2]=0` (G.5). **Arc SP-3.m complet (G.1→G.6). 564 tests verts.**
+
+#### ABI : compatibilité 65C816 / llvm-mos vérifiée
+- Args ZP `$73-$78`/`$D0-$D7` écrits par l'app : sûrs car le crt0 mos-oricos
+  garantit D=0 et la ZP app (`$A9-$CF`) + imag-regs (`$89-$A8`) ne recouvrent pas
+  ces plages (link.ld plateforme conçu pour l'ABI syscall ADR-17).
+
 ## [Unreleased+SP-3.m-G4bis] - 2026-05-25
 
 ### SP-3.m G.4bis — compositor (backing stores → framebuffer XVGA)

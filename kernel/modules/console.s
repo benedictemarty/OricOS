@@ -232,3 +232,10 @@ bundle_test:
 bundle_hello_c:
         .incbin "../apps/hello_c/build/hello.oos"
 
+; ─── Bundle win_hello (SP-3.m G.6) ──────────────────────────────────────
+; App C démo fenêtrée : crée sa fenêtre, dessine en local, flush, lit le
+; clavier au focus, sort (fenêtre fermée). Valide G.1-G.5 depuis userland C.
+.export bundle_win
+bundle_win:
+        .incbin "../apps/win_hello/build/win.oos"
+

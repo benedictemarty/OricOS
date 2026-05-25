@@ -1247,6 +1247,21 @@ _skip_helloc:
         jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
 _skip_helloc_task:
 
+        ; ── SP-3.m G.6 : spawn bundle_win (app C démo fenêtrée) ──
+        ; TC_WINAPP_FLAG=$A5 → l'app C win_hello tourne comme tâche : crée sa
+        ; fenêtre (focus), dessine en local, flush, lit le clavier, sort.
+        lda TC_WINAPP_FLAG
+        cmp #$A5
+        bne _skip_winapp
+        lda #<bundle_win
+        sta DP_PTR
+        lda #>bundle_win
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
+_skip_winapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.
