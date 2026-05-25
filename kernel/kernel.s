@@ -221,7 +221,10 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $24       1B       WIN_SLOT           slot fenêtre courant (STABLE post-wm_offset)
 ;  $25-$2A   6B       WM_CRH_TMP         scratch _wm_chrome_hit (SP-3.h)
 ;  $2B       1B       WM_ZN_CACHE        cache ZP de WM_ZORDER_N (CPY/CPX sans mode long)
-;  $2C-$5F   52B      (libres)
+;  $2C-$2E   3B       SCHED_PTR          pointeur &tcb[pid] (scheduler, contexte IRQ)
+;  $2F       1B       SCHED_CAND         pid candidat scan round-robin
+;  $30-$31   2B       SCHED_TMP          scratch 16-bit (pid*20)
+;  $32-$3F   14B      (libres)
 ;  $60-$62   3B       VRAM_OP_ADDR_*     adresse SDRAM 24-bit (vram_write/read_block)
 ;  $63-$64   2B       VRAM_OP_LEN_*      longueur 16-bit vram block
 ;  $65-$67   3B       VRAM_DMA_SRC_*_ZP  source DMA SDRAM 24-bit
@@ -249,6 +252,13 @@ DP_PCPTR        = $0C            ; DP+$0C/$0D : pointer 16-bit
 DP_TMP          = $10            ; DP+$10 : char temp
 DP_SYS_ARG_X    = $11            ; DP+$11 : X sauvé avant corruption dispatch (OS-2.f.v2)
 DP_KBD_TMP      = $12            ; DP+$12 : scratch ring clavier (OS-2.d)
+
+; ── Scheduler N-tâches (OS-2.g v2.a) : scratch ZP dédié, zone libre $2C-$3F ──
+; Utilisé uniquement par le scheduler en contexte IRQ. Disjoint de WM ($14-$2B),
+; kbd ($12), FAT ($40+). (Réentrance ZP générale = dette #2, traitée v2.b/ADR-25.)
+SCHED_PTR       = $2C            ; $2C-$2E : pointeur 24-bit &tcb[pid] (bank 1)
+SCHED_CAND      = $2F            ; $2F : pid candidat dans le scan round-robin
+SCHED_TMP       = $30            ; $30-$31 : scratch 16-bit (calcul pid*20)
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
@@ -709,6 +719,7 @@ T1_PERIOD_HI    = $10
         .include "modules/gfx.s"
         .include "modules/tk.s"
         .include "modules/wm.s"
+        .include "modules/sched.s"
         .include "modules/handlers.s"
 
 ; ════════════════════════════════════════════════════════════════════

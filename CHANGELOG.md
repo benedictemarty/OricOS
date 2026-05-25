@@ -5,6 +5,35 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.g-v2.a] - 2026-05-25
+
+### OS-2.g v2.a — scheduler N-tâches round-robin (implémente ADR-14)
+
+#### Added
+- **`kernel/modules/sched.s`** (nouveau module, segment CODE) :
+  - `kernel_tcb_ptr` — pid (1..16) → `SCHED_PTR` = `&tcb[pid]` 24-bit
+    (`TCB_TABLE_BASE + (pid-1)*TCB_SIZE`, indexation (pid-1) conforme au layout
+    TCB_1/TCB_2). Math 16-bit `(pid-1)*20`, discipline `.a8`/`.i8`.
+  - `kernel_sched_find_next` — pid courant → prochain pid `READY` (round-robin
+    1..16 avec wrap, saute les slots non-READY). Terminaison garantie (CUR passé
+    READY avant l'appel).
+- **`kernel/kernel.s`** : ZP scheduler `SCHED_PTR` ($2C-$2E), `SCHED_CAND` ($2F),
+  `SCHED_TMP` ($30-$31), zone libre disjointe de WM/kbd/FAT.
+
+#### Changed
+- **`kernel/modules/handlers.s` — `do_switch`** : remplace le swap **figé
+  2 tâches** (`CUR∈{1,2}`, `NEXT=3-CUR`) par un **round-robin table-driven**
+  (sauve SP→`tcb[CUR].S` via `kernel_tcb_ptr`, choisit le suivant via
+  `kernel_sched_find_next`, charge son SP). Les helpers (jsr) sont appelés
+  **avant** le `tcs` (aucun jsr/rts ne traverse le changement de pile).
+  Segment IRQ_HANDLER : 114 o / 256 (le switch généralisé est plus compact).
+
+Comportement préservé : avec 2 tâches live, le round-robin reproduit l'alternance
+1↔2 → **563 tests verts**. Le scan exerce réellement l'indexation, le saut des
+14 slots DEAD et le wrap. Reste à v2.b : `task_create`/`destroy` (g.3), block/wake
++ Forbid/Disable (g.5/g.6, modèle de concurrence ADR-25 DRAFT). Implémente ADR-14
+(déjà ratifiée) — ne présuppose pas ADR-25.
+
 ## [Unreleased+gardes-overlap-mmap] - 2026-05-25
 
 ### Dette #4 — gardes d'overlap memory map bank 1 (pivot après investigation)

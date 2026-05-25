@@ -143,41 +143,33 @@ irq_t1:
         bra *
 
 do_switch:
-        ; ── ADR-14 : sauve S dans TCB[CUR].saved_S, charge TCB[NEXT] ──
-        ; v0.1 : 2 tasks fixes. CUR ∈ {1, 2}. NEXT = 3 - CUR.
+        ; ── ADR-14 : scheduler N-tâches round-robin (OS-2.g v2.a) ──────
+        ; Sauve SP dans tcb[CUR].S, passe CUR à READY, choisit le prochain
+        ; slot READY (kernel_sched_find_next), charge son SP. Avec 2 tâches
+        ; live, le round-robin reproduit l'alternance 1↔2. Aucun jsr/rts ne
+        ; doit traverser le tcs (changement de pile) → helpers appelés AVANT.
         lda TASK_CUR
-        cmp #$01                ; CUR == 1 (task A) ?
-        bne switch_from_2
-
-        ; CUR=1 → save TCB_1, load TCB_2
+        jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[CUR]
         rep #$20
-        tsc
-        sta TCB_1_S
-        lda TCB_2_S
-        tcs
+        tsc                             ; A = SP courant (16-bit)
+        ldy #TCB_S_LO
+        sta [SCHED_PTR],Y               ; tcb[CUR].S = SP
         sep #$20
         lda #TASK_STATE_READY
-        sta TCB_1_STATE
-        lda #TASK_STATE_RUNNING
-        sta TCB_2_STATE
-        lda #$02
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y               ; tcb[CUR].STATE = READY
+        lda TASK_CUR
+        jsr kernel_sched_find_next      ; A = prochain pid READY
         sta TASK_CUR
-        bra restore_and_return
-
-switch_from_2:
-        ; CUR=2 → save TCB_2, load TCB_1
+        jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[NEXT]
+        lda #TASK_STATE_RUNNING
+        ldy #TCB_STATE
+        sta [SCHED_PTR],Y               ; tcb[NEXT].STATE = RUNNING
         rep #$20
-        tsc
-        sta TCB_2_S
-        lda TCB_1_S
-        tcs
+        ldy #TCB_S_LO
+        lda [SCHED_PTR],Y               ; A = tcb[NEXT].S
+        tcs                             ; ⚠ change de pile — rien après ne doit jsr/rts
         sep #$20
-        lda #TASK_STATE_READY
-        sta TCB_2_STATE
-        lda #TASK_STATE_RUNNING
-        sta TCB_1_STATE
-        lda #$01
-        sta TASK_CUR
 
 restore_and_return:
         ; ── Pull Y/X/A depuis la nouvelle stack ────────────────────
