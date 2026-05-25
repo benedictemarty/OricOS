@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-25
 
+### SP-3.R S5 — Split kernel.s en modules
+
+#### Changed
+- **`kernel/kernel.s`** transformé en orchestrateur pur (711 lignes) :
+  constantes/ZP/I/O + 11 `.include "modules/X.s"`.
+- **`kernel/modules/`** (nouveau répertoire) : 11 modules extraits.
+
+| Module | Lignes | Contenu |
+|--------|--------|---------|
+| `boot.s` | 1149 | entry, scheduler, TCB |
+| `fat.s` | 691 | FAT32 + SD + bundle + loader |
+| `log.s` | 120 | log ring + panic + hex |
+| `console.s` | 221 | print + scroll + banner |
+| `kbd.s` | 118 | driver clavier KBD2 |
+| `alloc.s` | 196 | bank allocator |
+| `vram.s` | 135 | VRAM I/O |
+| `gfx.s` | 267 | GPU blitter helpers |
+| `tk.s` | 865 | toolkit + widgets + menu |
+| `wm.s` | 2519 | WM + taskbar + icônes + curseur |
+| `handlers.s` | 190 | NMI/COP/IRQ + CHARSET |
+
+Build identique : 57 344 octets. 563 tests verts.
+
+### SP-3.R S6 — Dirty rect resize
+
+#### Changed
+- **`_wm_do_resize`** : remplace `kernel_wm_redraw` (clear 393 Ko) par
+  `kernel_wm_redraw_drag` — `_wm_capture_focused_rect` en tête de la
+  fonction avait déjà peuplé `WM_DRAG_OLD_*`, le dirty rect incrémental
+  suffit.
+
 ### SP-3 bugfix — Session 2026-05-25 : WM robustesse complète
 
 #### Fixed
