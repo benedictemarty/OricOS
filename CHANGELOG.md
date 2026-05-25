@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-25
 
+### TC-libc — libc minimale OricOS (liboricos.a) v1.0
+
+#### Added
+- **`tools/oricos-sdk/lib/liboricos.c`** : libc minimale
+  - Sortie : `putchar`, `puts`
+  - String : `strlen`, `memset`, `memcpy`, `strcpy`, `strcat`, `strcmp`
+  - Format : `printf`, `sprintf`, `vprintf` (spécificateurs : `%s %d %u %c %x %%`)
+  - Conversion : `itoa` (base 10 et 16)
+- **`tools/oricos-sdk/lib/malloc.c`** : allocateur bump bank-local
+  - `malloc(n)` → bump pointer depuis `__heap_start` (fin BSS) jusqu'à `$FFFF`
+  - `free(p)` → no-op v1 (bump monotone)
+  - `calloc(nmemb, size)`, `heap_available()`
+- **`tools/oricos-sdk/include/liboricos.h`** : header public de la libc
+- **`install.sh`** : mis à jour pour compiler et installer `liboricos.a`
+- **`apps/test_libc/`** : app de validation (14 tests : printf/strlen/strcmp/strcpy/memset/malloc/calloc/sprintf/heap_available)
+  - Compilée → `test_libc.oos` 9068B
+
 ### TC-llvmmos-target-oricos — Target llvm-mos `mos-oricos` v1.0
 
 #### Added
