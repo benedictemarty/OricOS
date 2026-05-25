@@ -170,6 +170,19 @@ task_e_entry:
         cop #$AA
         bra task_e_entry        ; filet
 
+; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
+; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
+; quand aucune autre tâche n'est READY). Dort sur WAI jusqu'à l'IRQ suivante.
+; IDLE_CTR s'incrémente seulement si l'idle tourne réellement (test : ==0 tant
+; que des tâches réelles sont READY → prouve la dépriorisation).
+.export idle_entry
+idle_entry:
+        lda IDLE_CTR
+        inc a
+        sta IDLE_CTR
+        wai                     ; dort jusqu'à IRQ (économie ; réveil au prochain tick)
+        bra idle_entry
+
 ; kernel_hires2_clear et pattern_table retirés en PH-cleanup-zombie
 ; (2026-05-09). Code legacy ADR-19 v2, plus visible côté compositor.
 ; Rendu desktop = GPU blitter (ADR-21) via kernel_gfx_*.

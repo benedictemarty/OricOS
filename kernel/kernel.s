@@ -43,6 +43,10 @@ TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test 
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
                                 ; Signal dégénéré (1 attente clavier) ; généralisable en
                                 ; masque de signaux par TCB (ADR-25) si besoin.
+IDLE_PID        = $01547D       ; OS-2.g v2.b idle : pid de la tâche idle (0=non créée).
+                                ; find_next la saute (passe normale) et n'y retombe QUE si
+                                ; aucune autre tâche READY → ferme le trou « dernière tâche ».
+IDLE_CTR        = $01547E       ; compteur idle (test : ==0 tant que des tâches réelles tournent)
 STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
 SCHED_ACTIVE    = $01544D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
                                 ; SYS_EXIT fait STP si inactif (app boot-context, ex. hello_c),

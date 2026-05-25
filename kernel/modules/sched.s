@@ -42,13 +42,14 @@ kernel_tcb_ptr:
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_sched_find_next — A = pid courant → A = prochain pid READY
 ; ════════════════════════════════════════════════════════════════════
-; Round-robin sur les slots 1..TCB_MAX, en repartant de CUR+1 (wrap à 1).
-; Sélectionne le premier slot en état READY. Terminaison garantie : l'appelant
-; passe tcb[CUR].STATE à READY avant l'appel → au pire le scan revient sur CUR.
-; Clobbers A, Y, SCHED_CAND, SCHED_PTR. Préserve X.
+; Round-robin BORNÉ (≤ TCB_MAX essais) depuis CUR+1 (wrap à 1). Saute l'idle
+; (IDLE_PID) dans la passe normale ; si AUCUNE tâche normale READY → retombe sur
+; IDLE_PID (toujours runnable). Ferme le trou « dernière tâche / tout bloqué »
+; (plus de boucle infinie). Clobbers A, X, Y, SCHED_CAND, SCHED_PTR.
 .export kernel_sched_find_next
 kernel_sched_find_next:
         sta SCHED_CAND          ; cand = CUR
+        ldx #TCB_MAX            ; bornage du scan (au plus TCB_MAX essais)
 sfn_loop:
         lda SCHED_CAND
         inc a
@@ -57,11 +58,19 @@ sfn_loop:
         lda #$01                ; wrap → pid 1 (0 = invalid)
 sfn_nowrap:
         sta SCHED_CAND
-        jsr kernel_tcb_ptr      ; A=cand → SCHED_PTR = &tcb[cand]
+        cmp IDLE_PID            ; idle ? (cmp abs-long) → sauté en passe normale
+        beq sfn_dec
+        jsr kernel_tcb_ptr      ; A=cand → SCHED_PTR (préserve X = compteur)
         ldy #TCB_STATE
         lda [SCHED_PTR],Y
         cmp #TASK_STATE_READY
-        bne sfn_loop            ; pas READY → continue le scan
+        beq sfn_found           ; READY (≠ idle) → sélectionnée
+sfn_dec:
+        dex
+        bne sfn_loop
+        lda IDLE_PID            ; aucune tâche normale READY → fallback idle
+        rts
+sfn_found:
         lda SCHED_CAND          ; A = pid sélectionné
         rts
 

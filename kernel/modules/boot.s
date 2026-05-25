@@ -467,6 +467,8 @@ kernel_entry:
         sta FORBID_COUNT        ; g.6 : pas de section critique au boot
         sta TASK_E_KEY          ; g.5 : touche lue par task_e (init 0)
         sta KBD_WAITER          ; g.5 : aucune tâche en attente clavier
+        sta IDLE_PID            ; idle : pas encore créée (0)
+        sta IDLE_CTR            ; idle : compteur 0
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04
@@ -565,6 +567,14 @@ kernel_entry:
         ldy #>task_e_entry
         lda #$00
         jsr kernel_task_create
+        ; OS-2.g v2.b : tâche idle (créée en DERNIER → pid suivant). Toujours
+        ; READY, dépriorisée par find_next ; fallback quand rien d'autre n'est
+        ; runnable (ferme le trou « dernière tâche »). On mémorise son pid.
+        ldx #<idle_entry
+        ldy #>idle_entry
+        lda #$07                ; priorité la plus basse (info ; find_next gère via IDLE_PID)
+        jsr kernel_task_create
+        sta IDLE_PID            ; A = pid alloué pour l'idle
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

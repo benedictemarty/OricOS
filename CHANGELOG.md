@@ -5,6 +5,29 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.b-idle] - 2026-05-25
+
+### OS-2.g v2.b — idle task (ferme le trou « dernière tâche »)
+
+#### Added
+- **`kernel/modules/alloc.s` — `idle_entry`** : tâche idle (toujours READY,
+  priorité la plus basse). Incrémente `IDLE_CTR` puis `WAI` (dort jusqu'à l'IRQ).
+- **`kernel/kernel.s`** : `IDLE_PID` ($01547D, pid de l'idle), `IDLE_CTR` ($01547E).
+- **`kernel/modules/boot.s`** : crée l'idle **en dernier** via `task_create`,
+  mémorise son pid dans `IDLE_PID`.
+
+#### Changed
+- **`kernel/modules/sched.s` — `kernel_sched_find_next`** : scan **borné**
+  (≤ TCB_MAX essais, fini le risque de boucle infinie), **saute `IDLE_PID`** dans
+  la passe normale, et **retombe sur l'idle** si aucune autre tâche READY. Ferme
+  le trou « dernière tâche / tout bloqué » (avant : hang). L'idle n'est élue
+  qu'en dernier recours → zéro temps volé aux tâches réelles.
+
+Validation : `IDLE_CTR == 0` (l'idle n'a jamais tourné tant que a/b/c étaient
+READY → dépriorisation correcte) ; bitmap=$4F (idle pid 6 vivante, task_d/e
+détruites). 563 tests verts. (Le fallback idle « tout bloqué » sera exercé
+naturellement à l'étape app_exec → task_create.)
+
 ## [Unreleased+OS-2.b-g5-block] - 2026-05-25
 
 ### OS-2.g v2.b/g.5 — SYS_READ_CHAR bloquant + réveil IRQ (Exec-classique 2/2)
