@@ -2438,9 +2438,24 @@ sys_exit:
         stp                     ; v0.1 : arrêt (pas de task cleanup OS-2.g.v2)
         bra *
 
-; $05 — SYS_YIELD : cède le CPU ───────────────────────────────────────
+; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
+; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
+;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)
+; On jette le retour du jsr, puis on reconstruit la frame attendue par
+; do_switch : [Y][X][A][P][PCL][PCH][PBR]. Le jmp do_switch sauve alors le SP
+; (= point de reprise juste après le COP) dans tcb[CUR].S et bascule. Au réveil,
+; ply/plx/pla/rti restaure et reprend après le COP. Même format que la frame
+; forgée par kernel_task_create.
 sys_yield:
-        rts                     ; no-op : scheduler est IRQ-driven (ADR-03)
+        sei                     ; section critique : pas de préemption pendant la chirurgie de pile
+        pla                     ; jette le retour du jsr (lo)
+        pla                     ; jette le retour du jsr (hi) → SP au sommet de la frame COP
+        lda #$00
+        pha                     ; A_init (valeur de retour yield = don't care)
+        lda DP_SYS_ARG_X
+        pha                     ; X_init = X de l'appelant (préservé, ABI)
+        phy                     ; Y_init = Y de l'appelant
+        jmp do_switch           ; sauve SP→tcb[CUR].S, élit next, bascule (rti)
 
 ; $06 — SYS_GET_KEY : non-bloquant → A = keycode ou $00 (OS-2.d) ─────
 sys_get_key:

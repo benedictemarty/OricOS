@@ -5,6 +5,26 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+OS-2.g-v2.a-g7] - 2026-05-25
+
+### OS-2.g v2.a/g.7 — SYS_YIELD coopératif réel
+
+#### Changed
+- **`kernel/modules/wm.s` — `sys_yield`** : remplace le no-op (`rts`) par un
+  vrai yield coopératif. Entré via `jsr (syscall_table,X)`, il jette le retour
+  du jsr, reconstruit sur la frame COP la frame attendue par `do_switch`
+  (`[Y][X][A][P][PCL][PCH][PBR]`), puis `jmp do_switch` → sauve le SP (point de
+  reprise après le COP) dans `tcb[CUR].S` et bascule. Au réveil, ply/plx/pla/rti
+  reprend après le COP. `sei` protège la chirurgie de pile (mini section
+  critique ; do_switch ressort en rti → I de la tâche suivante).
+- **`kernel/modules/handlers.s`** : `.export do_switch` (cible du jmp depuis yield).
+- **`kernel/modules/alloc.s`** : `task_c_entry` cède via `SYS_YIELD` ($05) à
+  chaque itération (exerce g.7).
+
+Validation : avec task_c qui yield à chaque tour, `TASK_C_CTR > 0` + A/B > 0 +
+tick=10 + STP propre → la chirurgie de pile est correcte (switch + reprise après
+le COP). Un bug aurait crashé/hang task_c. 563 tests verts.
+
 ## [Unreleased+OS-2.g-v2.a-g3] - 2026-05-25
 
 ### OS-2.g v2.a/g.3 — création dynamique de tâches (task_create)

@@ -142,8 +142,11 @@ irq_t1:
         stp
         bra *
 
+.export do_switch
 do_switch:
         ; ── ADR-14 : scheduler N-tâches round-robin (OS-2.g v2.a) ──────
+        ; Entrée IRQ (frame poussée par hw+handler) OU yield coopératif
+        ; (sys_yield construit une frame compatible puis jmp ici).
         ; Sauve SP dans tcb[CUR].S, passe CUR à READY, choisit le prochain
         ; slot READY (kernel_sched_find_next), charge son SP. Avec 2 tâches
         ; live, le round-robin reproduit l'alternance 1↔2. Aucun jsr/rts ne

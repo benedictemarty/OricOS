@@ -138,6 +138,11 @@ task_c_entry:
         lda TASK_C_CTR
         inc a
         sta TASK_C_CTR
+        ; OS-2.g v2.a g.7 : cède coopérativement le CPU via SYS_YIELD ($05).
+        ; Exerce sys_yield (chirurgie de pile + do_switch). Si bug → task_c
+        ; crashe/hang → tests rouges.
+        lda #$05                ; SYS_YIELD
+        cop #$AA
         bra task_c_entry
 
 ; kernel_hires2_clear et pattern_table retirés en PH-cleanup-zombie
