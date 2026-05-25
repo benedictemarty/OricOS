@@ -551,6 +551,8 @@ kernel_entry:
         ; ── OS-2.g v2.a g.3 : crée une 3e tâche dynamiquement ──────────
         ; Valide kernel_task_create (alloc slot+pile, forge frame) et le
         ; round-robin N-tâches. task_c → pid 3, pile page $04.
+        lda #$01
+        sta TC_CODE_BANK        ; tâches kernel démo → bank 1
         ldx #<task_c_entry
         ldy #>task_c_entry
         lda #$00                ; priorité 0

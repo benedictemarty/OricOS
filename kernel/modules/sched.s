@@ -137,7 +137,7 @@ tcc_slot:
         lda TASK_CUR            ; parent = tâche courante
         ldy #TCB_PARENT
         sta [SCHED_PTR],Y
-        lda #$01                ; PB = bank 1
+        lda TC_CODE_BANK        ; PB = bank de code (1 = kernel ; app = son bank)
         ldy #TCB_PB
         sta [SCHED_PTR],Y
         lda #$00
@@ -184,8 +184,8 @@ tcc_slot:
         lda TC_ENTRY_HI
         sta [TC_FPTR],Y         ; +5 PCH
         iny
-        lda #$01
-        sta [TC_FPTR],Y         ; +6 PB = bank 1
+        lda TC_CODE_BANK
+        sta [TC_FPTR],Y         ; +6 PB = bank de code
         lda TC_PID              ; retour A = pid
         rts
 

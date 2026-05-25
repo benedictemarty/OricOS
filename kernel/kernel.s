@@ -283,6 +283,8 @@ TC_PRIO         = $34            ; priorité
 TC_PID          = $35            ; pid alloué
 TC_PAGE         = $36            ; page de pile (octet haut de S)
 TC_FPTR         = $37            ; $37-$39 : pointeur 24-bit frame forgée (bank 0)
+TC_CODE_BANK    = $3A            ; bank de code (PB) de la tâche à créer (entrée task_create).
+                                ; Posé par l'appelant avant l'appel ; 1 = tâche kernel.
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
