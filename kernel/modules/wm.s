@@ -2518,6 +2518,30 @@ se_teardown:
         sep #$20
         jmp restore_and_return  ; ply/plx/pla/rti → exécute la nouvelle tâche
 
+; $13 — SYS_WIN_CREATE : une app ouvre sa fenêtre (SP-3.m G.2) ────────
+; Args (bloc ZP ADR-17) : $D0/$D1=x, $D2/$D3=y, $D4/$D5=w, $D6/$D7=h (16-bit).
+; Crée une fenêtre via kernel_wm_add (qui pose WM_OWNER[slot]=TASK_CUR appelant).
+; Retour : A = handle (slot id 0..7) ou $FF si plein. Backing store SDRAM
+; implicite par slot : base = ($06+slot):$0000 (64 KiB/slot ; utilisé G.4/G.4bis).
+; NB : sous Forbid (pas de préemption) ; WM_ARG_* partagé avec l'IRQ souris →
+; clobber possible si event souris pendant l'appel (rare ; partition ZP = polish).
+sys_win_create:
+        rep #$20
+        lda $D0
+        sta WM_ARG_X
+        lda $D2
+        sta WM_ARG_Y
+        lda $D4
+        sta WM_ARG_W
+        lda $D6
+        sta WM_ARG_H
+        sep #$20
+        lda #$00                ; v1 : pas de titre fourni par l'app
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        jsr kernel_wm_add       ; A = slot id (handle) ou $FF
+        rts
+
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)

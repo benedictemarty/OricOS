@@ -5,6 +5,27 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G2] - 2026-05-25
+
+### SP-3.m G.2 — SYS_WIN_CREATE : une app ouvre sa fenêtre
+
+#### Added
+- **`kernel/modules/wm.s` — `sys_win_create`** (syscall **$13**) : wrapper COP
+  autour de `kernel_wm_add`. Args via le bloc ZP ADR-17 `$D0-$D7` (x/y/w/h 16-bit)
+  → `WM_ARG_*` → création fenêtre + `WM_OWNER[slot]=TASK_CUR` (G.1). Retour A =
+  handle (slot 0..7) ou $FF. **Backing store SDRAM implicite par slot** : base =
+  `($06+slot):$0000` (64 KiB/slot, calcul trivial sans multiply ; utilisé G.4/G.4bis).
+- **`kernel/modules/handlers.s`** : `syscall_table[$13] = sys_win_create` (était
+  réservé `.repeat`). `$14-$3F` restent `sys_invalid`.
+- **`kernel/kernel.s`** : `TC_WIN_FLAG` ($01EF30), `TASK_WIN_HANDLE` ($015451).
+- **`kernel/modules/alloc.s` — `task_win_entry`** : remplit $D0-$D7, COP
+  SYS_WIN_CREATE, stocke le handle, puis dort. **`boot.s`** : crée task_win
+  (gated `TC_WIN_FLAG`).
+
+Validé : `test_oricos_boot` (TC_WIN_FLAG) — `TASK_WIN_HANDLE==2` (3e fenêtre),
+`WM_OWNER[2]==8` (task_win pid 8), `WM_COUNT==3`. Une tâche ouvre sa fenêtre via
+syscall. `test_syscall_table_size` mis à jour ($13≠invalid, $14=invalid). 563 verts.
+
 ## [Unreleased+SP-3.m-G1] - 2026-05-25
 
 ### SP-3.m G.1 — lien fenêtre↔tâche (WM_OWNER)

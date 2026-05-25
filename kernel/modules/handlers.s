@@ -79,9 +79,10 @@ syscall_table:
         .word sys_gfx_blit      ; $0F SYS_GFX_BLIT
         .word sys_gfx_line      ; $10 SYS_GFX_LINE
         .word sys_gfx_text      ; $11 SYS_GFX_TEXT
-        .word sys_sleep_ms      ; $12 SYS_SLEEP_MS   (stub)
-        .repeat 45
-        .word sys_invalid       ; $13-$3F réservés
+        .word sys_sleep_ms      ; $12 SYS_SLEEP_MS
+        .word sys_win_create    ; $13 SYS_WIN_CREATE (SP-3.m G.2)
+        .repeat 44
+        .word sys_invalid       ; $14-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

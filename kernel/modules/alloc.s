@@ -184,6 +184,37 @@ task_f_entry:
         cop #$AA
         bra task_f_entry
 
+; ─── task_win_entry : tâche qui ouvre une fenêtre (SP-3.m G.2) ────────
+; Remplit le bloc d'args ZP $D0-$D7 (x=100,y=80,w=200,h=120) puis appelle
+; SYS_WIN_CREATE ($13). Stocke le handle dans TASK_WIN_HANDLE, puis dort.
+.export task_win_entry
+task_win_entry:
+        lda #100                ; x = 100
+        sta $D0
+        lda #$00
+        sta $D1
+        lda #80                 ; y = 80
+        sta $D2
+        lda #$00
+        sta $D3
+        lda #200                ; w = 200
+        sta $D4
+        lda #$00
+        sta $D5
+        lda #120                ; h = 120
+        sta $D6
+        lda #$00
+        sta $D7
+        lda #$13                ; SYS_WIN_CREATE
+        cop #$AA
+        sta TASK_WIN_HANDLE     ; A = handle (slot) retourné
+tw_idle:
+        ldx #$0A                ; dort longtemps (boucle de garde)
+        ldy #$00
+        lda #$12                ; SYS_SLEEP_MS
+        cop #$AA
+        bra tw_idle
+
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
 ; quand aucune autre tâche n'est READY). Dort sur WAI jusqu'à l'IRQ suivante.

@@ -41,6 +41,7 @@ TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée 
 TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
 TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
 TASK_F_CTR      = $01544B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (test SYS_SLEEP_MS)
+TASK_WIN_HANDLE = $015451       ; SP-3.m G.2 : handle fenêtre retourné par SYS_WIN_CREATE (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -621,6 +622,7 @@ WIN_TITLE_NORMAL = $08           ; titlebar fenêtre non focus : darkgray
 NO_STP_FLAG      = $01EF00        ; SP-3.e v0.4 : $A5 (posé par --kernel) → pas de STP (live)
 TC_HELLOC_FLAG   = $01EF10        ; TC-poc-hello-c : $A5 (posé par le test) → exec bundle_hello_c (JSL)
 TC_HELLOC_TASK_FLAG = $01EF20     ; OS-2.g v2.b : $A5 → spawn bundle_hello_c comme TÂCHE schedulée
+TC_WIN_FLAG      = $01EF30        ; SP-3.m G.2 : $A5 → crée task_win (test SYS_WIN_CREATE)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

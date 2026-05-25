@@ -470,6 +470,7 @@ kernel_entry:
         sta IDLE_PID            ; idle : pas encore créée (0)
         sta IDLE_CTR            ; idle : compteur 0
         sta TASK_F_CTR          ; sleep : compteur tâche dormeuse 0
+        sta TASK_WIN_HANDLE     ; G.2 : handle fenêtre (init 0)
         ; OS-2.g v2.a g.3 : 1re page de pile dynamique = $04 (page 1 = pile
         ; système/task A, page 2 = frame task B, page 3 = I/O → on saute à 4).
         lda #$04
@@ -584,6 +585,15 @@ kernel_entry:
         ldy #>task_f_entry
         lda #$00
         jsr kernel_task_create
+        ; SP-3.m G.2 : task_win (gated TC_WIN_FLAG) — exerce SYS_WIN_CREATE.
+        lda TC_WIN_FLAG
+        cmp #$A5
+        bne _skip_task_win
+        ldx #<task_win_entry
+        ldy #>task_win_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_win:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
