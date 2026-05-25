@@ -6576,7 +6576,9 @@ _dr_h_ok:
         sta WM_TABLE+WM_OFF_H,X
 _dr_skip_dy:
         sep #$20
-        jsr kernel_wm_redraw    ; full redraw : efface titre/widgets fantômes lors du resize
+        ; SP-3.R S6 : dirty rect resize — efface ancien rect + redessine (vs full 393Ko).
+        ; _wm_capture_focused_rect en tête de _wm_do_resize a peuplé WM_DRAG_OLD_*.
+        jsr kernel_wm_redraw_drag
         jsr kernel_wm_draw_cursor
 _dr_done:
         rts
