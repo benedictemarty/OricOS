@@ -282,11 +282,43 @@ slt_next:
 ; clavier (KBD_WAITER≠0) ET une touche est dispo (ring non vide), la passe
 ; READY et efface KBD_WAITER. Clobbers A, Y (restaurés par le handler IRQ).
 .export kernel_kbd_wake
+; ── kernel_kbd_waiter_eligible : le waiter doit-il recevoir le clavier ? (G.3) ──
+; Routage clavier→focus. Out : C=1 si KBD_WAITER est éligible :
+;   - ne possède aucune fenêtre (tâche non-GUI, ex. task_e) → exempt, éligible ;
+;   - possède la fenêtre focus (WM_FOCUS) → éligible.
+; C=0 si KBD_WAITER possède une fenêtre NON focus → on retient la touche (elle
+; n'est pas pour lui ; il sera réveillé au prochain key une fois focus). Clobbers A,X.
+.export kernel_kbd_waiter_eligible
+kernel_kbd_waiter_eligible:
+        lda KBD_WAITER
+        sta KW_TMP
+        ldx #$00
+kwe_loop:
+        lda f:WM_OWNER,X
+        cmp KW_TMP
+        beq kwe_found
+        inx
+        cpx #WM_MAX
+        bcc kwe_loop
+        sec                             ; pas de fenêtre → exempt (éligible)
+        rts
+kwe_found:
+        txa                             ; A = slot possédé
+        cmp WM_FOCUS                    ; == fenêtre focus ? (cmp abs-long)
+        beq kwe_yes
+        clc                             ; fenêtre non-focus → non éligible
+        rts
+kwe_yes:
+        sec
+        rts
+
 kernel_kbd_wake:
         lda KBD_WAITER
         beq kwake_done                  ; personne n'attend
         lda KBD_RING_COUNT
         beq kwake_done                  ; ring vide → pas de réveil
+        jsr kernel_kbd_waiter_eligible  ; G.3 : routage clavier→focus
+        bcc kwake_done                  ; non éligible (fenêtre non-focus) → on retient
         lda KBD_WAITER
         jsr kernel_tcb_ptr              ; SCHED_PTR = &tcb[KBD_WAITER]
         lda #TASK_STATE_READY

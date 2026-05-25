@@ -434,6 +434,9 @@ wm_sf_zord_shift_done:
         lda DP_TMP
         sta f:WM_ZORDER,X
 wm_sf_zord_done:
+        ; G.3 : le focus a changé → réévalue le clavier (réveille le nouveau
+        ; propriétaire focus s'il attendait une touche déjà bufferisée).
+        jsr kernel_kbd_wake
         rts
 
 ; ── kernel_wm_move_focused : args WM_ARG_DX/DY (signé 16-bit) ───────

@@ -5,6 +5,31 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.m-G3] - 2026-05-25
+
+### SP-3.m G.3 — clavier → focus (routage)
+
+#### Added
+- **`kernel/modules/sched.s` — `kernel_kbd_waiter_eligible`** : décide si le waiter
+  clavier (`KBD_WAITER`) doit recevoir la touche : C=1 s'il ne possède **aucune
+  fenêtre** (tâche non-GUI, exempte) **ou** s'il possède la **fenêtre focus**
+  (`WM_FOCUS`) ; C=0 s'il possède une fenêtre **non-focus** (touche retenue).
+- **`kernel_kbd_wake`** : ne réveille le waiter que s'il est éligible → le clavier
+  va au **propriétaire de la fenêtre focus**. Une tâche GUI non-focus reste bloquée.
+- **`kernel/modules/wm.s` — `kernel_wm_set_focus`** : appelle `kernel_kbd_wake`
+  en fin (réveille le nouveau propriétaire focus si une touche est déjà bufferisée).
+- **`kernel/kernel.s`** : `KW_TMP` ($3C, scratch).
+
+Validé (non-régression) : 563 tests verts ; **task_e** (sans fenêtre → exempt)
+reçoit toujours sa touche → la branche « exempt » et le mécanisme sont OK.
+La branche **fenêtre-focus** (app GUI focus reçoit / non-focus retient) sera
+validée en intégration par **G.6** (app C fenêtrée au focus) — flux réaliste.
+
+#### Limite connue (→ polish #1 signaux génériques)
+`KBD_WAITER` est unique : une seule tâche peut attendre le clavier à la fois.
+Suffit en v1 (un seul focus) ; les signaux multi-bits par TCB (polish ADR-25)
+permettront plusieurs attentes + un test focus/non-focus simultané propre.
+
 ## [Unreleased+SP-3.m-G5] - 2026-05-25
 
 ### SP-3.m G.5 — exit → close (fin de v1.a)

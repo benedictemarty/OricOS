@@ -290,6 +290,7 @@ TC_FPTR         = $37            ; $37-$39 : pointeur 24-bit frame forgée (bank
 TC_CODE_BANK    = $3A            ; bank de code (PB) de la tâche à créer (entrée task_create).
                                 ; Posé par l'appelant avant l'appel ; 1 = tâche kernel.
 WCO_PID         = $3B            ; SP-3.m G.5 : scratch pid pour kernel_wm_close_owner
+KW_TMP          = $3C            ; SP-3.m G.3 : scratch pid pour kernel_kbd_waiter_eligible
 
 ; ─── Charset (Sprint 2.c+) ──────────────────────────────────────────
 ; Le rendu Oric 1 mode TEXT lit la fonte char depuis bank 0 $B400-$B7FF
