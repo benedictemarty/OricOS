@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-25
 
+### TC-llvmmos-target-oricos — Target llvm-mos `mos-oricos` v1.0
+
+#### Added
+- **`tools/oricos-sdk/`** : SDK userland C OricOS (target llvm-mos `mos-oricos`)
+  - `lib/crt0.S` : startup 65C816 en sections llvm-mos (`.init.000` DBR:=PBR,
+    `.init.200` zero-BSS, `.call_main` jsr main, `.after_main` SYS_EXIT+RTL)
+  - `lib/link.ld` : linker script (code à $0200, imag-regs ZP à $89-$A8)
+  - `include/oricos.h` : API publique 18 syscalls ADR-17 (inline asm COP #$AA)
+  - `mos-oricos.cfg` : config clang (mcpu=mosw65816, -flto, chemins platform)
+  - `install.sh` : script d'installation dans `$HOME/llvm-mos`
+- **`apps/hello_c/`** : première app OricOS en C (TC-poc-hello-c phase 1)
+  - `hello.c` : print_string + read_char + exit via `oricos.h`
+  - `Makefile` : `make → build/hello.oos` (bundle ADR-08 prêt à exécuter)
+- **Validation** : `clang --target=mos-oricos hello.c -lcrt0 -o hello.bin`
+  produit un binaire 65C816 8-bit (M=1/X=1, ADR-05 v2) commençant à $0200
+  avec la séquence PHK/PLB correcte. Bundle `.oos` = 600B.
+
 ### SP-3.R S5 — Split kernel.s en modules
 
 #### Changed
