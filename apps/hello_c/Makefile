@@ -10,8 +10,12 @@ BUNDLE     := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))../../tools/oricos-
 PYTHON     := python3
 
 TARGET     := --target=mos-oricos
+# -I (et non -isystem) pour le SDK : les chemins -I sont cherchés AVANT
+# les includes de plateforme (mos-platform/oricos/include) que le driver
+# ajoute automatiquement. Sinon le oricos.h plateforme (hors repo, non
+# versionné) shadowe le SDK → build non reproductible.
 CFLAGS     := $(TARGET) \
-              -isystem $(SDK_DIR)/include \
+              -I $(SDK_DIR)/include \
               -isystem $(LLVM_MOS)/mos-platform/common/include \
               -L$(LLVM_MOS)/mos-platform/oricos/lib \
               -L$(LLVM_MOS)/mos-platform/common/lib \

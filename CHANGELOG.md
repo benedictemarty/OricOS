@@ -5,6 +5,30 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+TC-poc-hello-c-hardening] - 2026-05-25
+
+### TC-poc-hello-c — durcissement post-revue (P0 repro + fix racine DBR)
+
+#### Fixed
+- **Reproductibilité build (P0) — `apps/hello_c/Makefile`** : `-isystem` → `-I`
+  pour le SDK. Le driver clang ajoute `mos-platform/oricos/include` avec une
+  priorité supérieure à `-isystem`, donc le `oricos.h` plateforme (hors repo,
+  non versionné) shadowait le SDK → build non reproductible. `-I` est cherché
+  avant les includes plateforme → le SDK versionné devient autoritaire.
+- **Reproductibilité build (P0) — `Makefile`** : ajout `KERNEL_DEPS =
+  $(wildcard kernel/modules/*.s)` aux prérequis de `kernel.o`. Sans ça, éditer
+  un module `.include`é ne déclenchait pas de rebuild → kernel obsolète testé
+  silencieusement (un faux FAIL puis faux PASS observés en séance).
+- **Fix racine DBR — `kernel/modules/console.s`** : le driver console écrit
+  désormais dans l'écran bank 0 via **adressage long** (indépendant du DBR) :
+  `kernel_print_char` utilise `STA [DP_PCPTR]` (bank byte $0E = 0) au lieu de
+  `STA (DP_PCPTR)` DBR-relatif ; `kernel_scroll_up` utilise `f:` (long,X). Une
+  app userland a DBR = son bank (≠ 0) ; l'ancien code écrivait l'écran dans le
+  mauvais bank. Corrige `SYS_PRINT_CHAR` **et** `SYS_PRINT_STRING` (ce dernier
+  était cassé pour DBR≠0 mais non testé — il passe par `kernel_print_char`).
+- **`kernel/modules/wm.s` — `sys_print_char`** : suppression du
+  `phb/plb` (DBR save/restore) devenu redondant grâce au fix racine console.
+
 ## [Unreleased+TC-poc-hello-c] - 2026-05-25
 
 ### TC-poc-hello-c — première app C llvm-mos sous OricOS

@@ -76,14 +76,18 @@ kernel_print_char:
         beq pc_lf
         cmp #$0D                 ; CR (\r) → début de ligne courante
         beq pc_cr
-        ; Char normal : store at CURSOR_ADDR (bank DBR=0 par défaut)
-        ; Setup pointer 16-bit DP_PCPTR ← CURSOR_ADDR ; DBR fournit bank 0.
+        ; Char normal : écrit en bank0:CURSOR_ADDR via [DP_PCPTR] (indirect
+        ; long, indépendant du DBR). Indispensable : appelé depuis une app
+        ; userland, DBR = bank de l'app (≠ 0) ; un STA (dp) DBR-relatif
+        ; écrirait dans le mauvais bank au lieu de l'écran bank 0.
         rep #$20
         lda CURSOR_ADDR
         sta DP_PCPTR             ; DP+$0C/$0D = low/high (16-bit)
         sep #$20
+        lda #$00
+        sta DP_PCPTR+2           ; DP+$0E = bank 0 (écran)
         lda DP_TMP
-        sta (DP_PCPTR)           ; opcode $92 — STA dp indirect, écrit DBR:CURSOR_ADDR
+        sta [DP_PCPTR]           ; opcode $87 — STA long indirect → bank0:CURSOR_ADDR
         ; Advance cursor
         rep #$20
         lda CURSOR_ADDR
@@ -154,9 +158,11 @@ pc_done:
 kernel_scroll_up:
         rep #$10                 ; X 16-bit (compteur > 255)
         ldx #$0000
+        ; f: force l'adressage long (bank 0 explicite) : indépendant du DBR
+        ; de l'appelant (peut être appelé depuis print_char en contexte app).
 scrl_copy:
-        lda SCREEN_BASE+SCREEN_COLS,X   ; src = ligne+1 (abs long,X)
-        sta SCREEN_BASE,X               ; dst = ligne
+        lda f:SCREEN_BASE+SCREEN_COLS,X ; src = ligne+1 (long,X → bank 0)
+        sta f:SCREEN_BASE,X             ; dst = ligne (long,X → bank 0)
         inx
         cpx #(SCREEN_END - SCREEN_BASE - SCREEN_COLS)  ; 1080 octets
         bcc scrl_copy
@@ -164,14 +170,14 @@ scrl_copy:
         ldx #$0000
 scrl_clear:
         lda #SCREEN_FILL
-        sta SCREEN_LAST_ROW,X
+        sta f:SCREEN_LAST_ROW,X
         inx
         cpx #SCREEN_COLS
         bcc scrl_clear
         sep #$10                 ; X repasse en 8-bit
         ; Restaure l'attribut INK 7 en tête d'écran.
         lda #$07
-        sta SCREEN_BASE
+        sta f:SCREEN_BASE
         rts
 
 ; ─── kernel_print_string : args DP+$08/$09 = ptr 16-bit en bank 1 ──

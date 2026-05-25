@@ -17,6 +17,11 @@ KERNEL_MAP  = $(BUILD)/kernel.map
 KERNEL_SRC  = kernel/kernel.s
 KERNEL_CFG  = kernel/kernel.cfg
 
+# Modules .include'és dans kernel.s : prérequis de la recompilation.
+# Sans ça, éditer un module ne déclenche pas de rebuild → kernel obsolète
+# testé silencieusement.
+KERNEL_DEPS = $(wildcard kernel/modules/*.s)
+
 APPS        = hello hello_c
 APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/hello_c/build/hello.oos
@@ -33,7 +38,7 @@ $(APPS):
 $(BUILD):
 	@mkdir -p $(BUILD)
 
-$(KERNEL_O): $(KERNEL_SRC) $(APP_BUNDLES) | $(BUILD)
+$(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) | $(BUILD)
 	$(AS) $(ASFLAGS) -l $(KERNEL_LST) -o $@ $<
 
 $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)

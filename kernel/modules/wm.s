@@ -2391,18 +2391,12 @@ sys_invalid:
         rts
 
 ; $01 — SYS_PRINT_CHAR : arg X = char ────────────────────────────────
-; kernel_print_char écrit via STA (DP_PCPTR) qui est DBR-relatif ; il faut
-; DBR=0 (bank0 = écran). Sauvegarde/restaure le DBR du caller (peut être ≠ 0
-; quand appelé depuis une app userland dont le bank ≠ 0, ex. hello_c bank 4).
+; kernel_print_char écrit en bank0 via adressage long ([DP_PCPTR]/f:) :
+; indépendant du DBR de l'appelant userland. Aucune gymnastique DBR requise.
 sys_print_char:
-        phb                     ; sauvegarde DBR du caller
-        lda #$00
-        pha
-        plb                     ; DBR ← 0 (bank console Oric 1)
         ldx DP_SYS_ARG_X        ; récupère l'arg X original
         txa
         jsr kernel_print_char
-        plb                     ; restaure DBR du caller
         rts
 
 ; $02 — SYS_PRINT_STRING : X=lo, Y=hi du pointeur (bank = DBR appelant) ─
