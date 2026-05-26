@@ -88,8 +88,10 @@ syscall_table:
         .word sys_ui_define     ; $18 SYS_UI_DEFINE (SP-3.n G.3b)
         .word sys_do_dlgbox     ; $19 SYS_DO_DLGBOX (SP-3.n G.5)
         .word sys_alert         ; $1A SYS_ALERT (SP-3.n G.6)
-        .repeat 37
-        .word sys_invalid       ; $1B-$3F réservés
+        .word sys_ctl_get_value ; $1B SYS_CTL_GET_VALUE (SP-3.o S.1)
+        .word sys_ctl_set_value ; $1C SYS_CTL_SET_VALUE (SP-3.o S.1)
+        .repeat 35
+        .word sys_invalid       ; $1D-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

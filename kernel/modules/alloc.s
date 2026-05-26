@@ -278,6 +278,55 @@ task_alert_entry:
         cop #$AA
         bra task_alert_entry    ; filet
 
+; ─── task_chk_entry : crée une checkbox + round-trip API valeur (SP-3.o S.1) ──
+; Ajoute une checkbox à la fenêtre 0, puis SYS_CTL_SET_VALUE(id,1) +
+; SYS_CTL_GET_VALUE(id) → stocke la valeur lue. Valide l'API valeur + le type CHECK.
+.export task_chk_entry
+task_chk_entry:
+        lda #$00                ; parent = fenêtre 0
+        sta WG_PARENT
+        lda #WG_TYPE_CHECK
+        sta WG_TYPE
+        lda #WG_COL_UNCHECKED
+        sta GFX_COLOR
+        lda #<chk_label
+        sta DP_PCPTR
+        lda #>chk_label
+        sta DP_PCPTR+1
+        lda #$00                ; value init 0 (via WG_CB/+14)
+        sta WG_CB
+        sta WG_CB+1
+        rep #$20
+        lda #6                  ; rel x
+        sta WM_ARG_X
+        lda #14                 ; rel y
+        sta WM_ARG_Y
+        lda #50                 ; rel w
+        sta WM_ARG_W
+        lda #12                 ; rel h
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT        ; id = index du nouveau widget
+        sta TASK_CHK_ID
+        jsr kernel_wm_add_widget
+        ; SYS_CTL_SET_VALUE(id, 1)
+        lda TASK_CHK_ID
+        tax
+        ldy #$01
+        lda #$1C
+        cop #$AA
+        ; SYS_CTL_GET_VALUE(id) → A
+        lda TASK_CHK_ID
+        tax
+        lda #$1B
+        cop #$AA
+        sta TASK_CHK_VAL        ; doit valoir 1
+        lda #$04                ; SYS_EXIT
+        cop #$AA
+        bra task_chk_entry      ; filet
+chk_label:
+        .byte "Opt", $00
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

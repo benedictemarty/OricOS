@@ -5,6 +5,27 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [Unreleased+SP-3.o-S1] - 2026-05-26
+
+### SP-3.o S.1 — API valeur de contrôle + checkbox (GenBoolean)
+
+#### Added
+- **`SYS_CTL_GET_VALUE` ($1B)** (X=id → A=value, $FF si id invalide) +
+  **`SYS_CTL_SET_VALUE` ($1C)** (X=id, Y=value). API de valeur des contrôles —
+  débloque checkbox + futurs ascenseurs/sliders.
+- **`WG_TYPE_CHECK`** ($02, GenBoolean) : value stockée en `+14` du record widget
+  (réutilise le champ callback — exclusif du bouton). `kernel_ctl_toggle`
+  (bascule value + couleur lightblue/lightgray + redraw).
+- **`_wm_widget_hit`** matche désormais CHECK ; **`_iac_go` dispatche par type**
+  (BUTTON→callback, CHECK→toggle) — garde indispensable : un clic checkbox ne
+  jsr plus la value comme un callback (anti-crash). `_ml_classify` (MainLoop)
+  bascule la checkbox avant `MSG_CONTROL`.
+- **`task_chk`** (gated TC_CHK_FLAG) : crée une checkbox + round-trip SET/GET value.
+
+Validé : `test_oricos_ctl_value` — SET_VALUE(1)+GET_VALUE→1. 575 tests verts.
+Suite SP-3.o : S.2 ascenseurs, S.3 GenView, S.4 radios/texte/liste.
+
 ## [Unreleased+SP-3.n-polish] - 2026-05-26
 
 ### SP-3.n polish — titres + libellés de boutons

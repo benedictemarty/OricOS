@@ -49,6 +49,8 @@ TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / key
 TASK_UI_HANDLE  = $015456       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
 TASK_DLG_RES    = $015457       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_dlg (test)
 TASK_ALERT_RES  = $015459       ; SP-3.n G.6 : retour SYS_ALERT lu par task_alert (test)
+TASK_CHK_VAL    = $01545A       ; SP-3.o S.1 : valeur checkbox lue par task_chk (test)
+TASK_CHK_ID     = $01545B       ; SP-3.o S.1 : id du widget checkbox créé (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -635,6 +637,15 @@ WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
 WG_TYPE_BUTTON   = $01
+WG_TYPE_CHECK    = $02           ; SP-3.o S.1 : checkbox (GenBoolean) ; value en +14
+; SP-3.o S.1 : API valeur de contrôle. Pour les contrôles « valeur » (check,
+; scrollbar…), le champ callback du record widget (+14/+15) est réutilisé comme
+; value(+14)/max(+15) — exclusif du callback (réservé aux boutons). Le rendu
+; reflète l'état via la couleur (+3) : coché = lightblue, décoché = lightgray.
+WG_OFF_VALUE     = 14
+WG_OFF_MAX       = 15
+WG_COL_CHECKED   = $09           ; lightblue (coché)
+WG_COL_UNCHECKED = $07           ; lightgray (décoché)
 WG_I             = $015A90       ; 1B : index boucle (_wm_draw_widgets_for_slot)
 WG_PARENT        = $015A91       ; 1B
 WG_TYPE          = $015A92       ; 1B
@@ -721,6 +732,7 @@ TC_UI_FLAG       = $01EF80        ; SP-3.n G.3b : $A5 → crée task_ui (test SY
 TC_DLG_FLAG      = $01EF90        ; SP-3.n G.5 : $A5 → crée task_dlg (test SYS_DO_DLGBOX)
 TC_ALERT_FLAG    = $01EFA0        ; SP-3.n G.6 : $A5 → crée task_alert (test SYS_ALERT)
 TC_GUIAPP_FLAG   = $01EFB0        ; SP-3.n G.7 : $A5 → spawn bundle_gui (app C démo GUI)
+TC_CHK_FLAG      = $01EFC0        ; SP-3.o S.1 : $A5 → crée task_chk (test API valeur/checkbox)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

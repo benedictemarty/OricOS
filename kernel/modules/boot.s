@@ -648,6 +648,15 @@ _skip_task_dlg:
         lda #$00
         jsr kernel_task_create
 _skip_task_alert:
+        ; SP-3.o S.1 : task_chk (gated TC_CHK_FLAG) — checkbox + API valeur.
+        lda TC_CHK_FLAG
+        cmp #$A5
+        bne _skip_task_chk
+        ldx #<task_chk_entry
+        ldy #>task_chk_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_chk:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

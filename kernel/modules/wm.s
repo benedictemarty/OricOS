@@ -2003,7 +2003,21 @@ _iac_go:
         asl a
         asl a
         asl a
-        tax                      ; offset entrée du bouton actif
+        tax                      ; offset entrée du widget actif
+        ; SP-3.o : dispatch par type. CHECK → toggle (value en +14, PAS un
+        ; callback) ; BUTTON → callback. Garde indispensable : sans elle, un clic
+        ; sur une checkbox ferait jsr (value) → crash.
+        lda WIDGET_TABLE+2,X
+        cmp #WG_TYPE_CHECK
+        beq _iac_check
+        cmp #WG_TYPE_BUTTON
+        beq _iac_button
+        rts                      ; autre type → rien
+_iac_check:
+        lda WIDGET_ACTIVE
+        jsr kernel_ctl_toggle    ; bascule value + couleur + redraw
+        rts
+_iac_button:
         lda WIDGET_TABLE+14,X
         sta WG_CB_VEC
         lda WIDGET_TABLE+15,X
@@ -2014,6 +2028,30 @@ _iac_go:
 _iac_call:
         ldx #$00
         jsr (.loword(WG_CB_VEC),X)  ; appel indirect (opcode $FC, vecteur en PBR=1)
+        rts
+
+; ── kernel_ctl_toggle : A = id widget checkbox → bascule sa value (0↔1) ──────
+; (SP-3.o S.1). Met aussi à jour la couleur (+3) pour refléter l'état coché, puis
+; repeint le desktop. Clobbe A, X.
+.export kernel_ctl_toggle
+kernel_ctl_toggle:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; X = id*16
+        lda WIDGET_TABLE+WG_OFF_VALUE,x
+        eor #$01                 ; toggle 0↔1
+        sta WIDGET_TABLE+WG_OFF_VALUE,x
+        ; couleur selon l'état (coché = lightblue, décoché = lightgray)
+        beq _ctog_unchecked
+        lda #WG_COL_CHECKED
+        bra _ctog_setcol
+_ctog_unchecked:
+        lda #WG_COL_UNCHECKED
+_ctog_setcol:
+        sta WIDGET_TABLE+3,x     ; couleur du widget
+        jsr kernel_wm_redraw     ; reflète visuellement le nouvel état
         rts
 
 ; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
@@ -2838,6 +2876,21 @@ mlc_md_notmenu:
         rts
 mlc_control:
         sta $DA                 ; $DA = id contrôle (index widget) ; l'app réagit
+        ; SP-3.o : si c'est une checkbox, bascule sa value (GenBoolean) avant le msg.
+        pha                     ; sauve l'id
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+2,x    ; type
+        cmp #WG_TYPE_CHECK
+        bne mlc_ctl_ret
+        pla                     ; id
+        pha
+        jsr kernel_ctl_toggle   ; bascule value + couleur + redraw
+mlc_ctl_ret:
+        pla                     ; jette l'id sauvé
         lda #MSG_CONTROL
         rts
 mlc_md_close_plp:
@@ -3244,6 +3297,38 @@ db_str_yes:
         .byte "Yes", $00
 db_str_no:
         .byte "No", $00
+
+; $1B — SYS_CTL_GET_VALUE : X = id contrôle → A = value (SP-3.o S.1) ─────
+; $FF si id invalide (≥ WIDGET_COUNT).
+sys_ctl_get_value:
+        lda DP_SYS_ARG_X
+        cmp WIDGET_COUNT
+        bcs scgv_bad
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+WG_OFF_VALUE,x
+        rts
+scgv_bad:
+        lda #$FF
+        rts
+
+; $1C — SYS_CTL_SET_VALUE : X = id contrôle, Y = value (SP-3.o S.1) ──────
+sys_ctl_set_value:
+        lda DP_SYS_ARG_X
+        cmp WIDGET_COUNT
+        bcs scsv_done
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        tya                     ; value (arg Y)
+        sta WIDGET_TABLE+WG_OFF_VALUE,x
+scsv_done:
+        rts
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :

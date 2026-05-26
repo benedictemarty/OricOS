@@ -785,7 +785,9 @@ _wh_used:
         lda WIDGET_TABLE+2,X
         cmp #WG_TYPE_BUTTON
         beq _wh_isbtn
-        jmp _wh_next             ; seuls les boutons sont cliquables
+        cmp #WG_TYPE_CHECK       ; SP-3.o : checkbox aussi cliquable
+        beq _wh_isbtn
+        jmp _wh_next             ; label → non cliquable
 _wh_isbtn:
         lda WIDGET_TABLE+1,X
         sta WG_PARENT
