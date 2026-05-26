@@ -12,11 +12,11 @@
 
 #include <oricos.h>
 
-/* Table GenUI déclarative : fenêtre (100,120,140,90) + 1 bouton rel(10,40,60,20).
- * Valeurs 16-bit little-endian (lo, hi). */
+/* Table GenUI déclarative : fenêtre (420,420,170,110) + 1 bouton rel(20,50,90,24).
+ * Placée dans une zone vide du desktop pour être bien visible. Valeurs 16-bit LE. */
 static const unsigned char gui_def[] = {
-    GU_WINDOW, 100, 0,  120, 0,  140, 0,  90, 0,
-    GU_BUTTON,  10, 0,   40, 0,   60, 0,  20, 0,
+    GU_WINDOW, 420 & 255, 420 >> 8,  420 & 255, 420 >> 8,  170, 0,  110, 0,
+    GU_BUTTON,  20, 0,   50, 0,   90, 0,  24, 0,
     GU_END
 };
 

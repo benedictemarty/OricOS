@@ -5,6 +5,21 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-G7b] - 2026-05-26
+
+### SP-3.n G.7 (suite) — démo gui_demo visible
+
+#### Changed
+- **`sys_ui_define`** : repeint le desktop (`kernel_wm_redraw`) après création de
+  la fenêtre déclarée → l'UI apparaît immédiatement (sans attendre un événement
+  souris). Indispensable pour voir la fenêtre du gui_demo au lancement.
+- **`apps/gui_demo/gui.c`** : fenêtre repositionnée en (420,420,170,110), bouton
+  rel(20,50,90,24) — zone vide du desktop → fenêtre nettement distincte des
+  fenêtres boot (OricOS/Editor). Taskbar : 3e entrée "Win2" (focus).
+
+Côté Phosphoric : nouvelle option `--gui-demo` (pose TC_GUIAPP_FLAG) pour lancer
+l'app depuis la CLI : `./oric1-emu --kernel build/kernel.bin --xvga --gui-demo`.
+
 ## [Unreleased+SP-3.n-G7] - 2026-05-26
 
 ### SP-3.n G.7 — app C GUI déclarative + MainLoop (arc SP-3.n CLOS)

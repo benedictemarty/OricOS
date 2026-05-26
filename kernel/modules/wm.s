@@ -2981,6 +2981,13 @@ sud_b_add:
         ply
         jmp sud_loop
 sud_done:
+        ; G.7 : repeint le desktop pour que l'UI déclarée apparaisse tout de suite
+        ; (sans attendre un événement souris). Sûr en contexte syscall (Forbid).
+        lda DLG_WIN
+        cmp #$FF
+        beq sud_noredraw
+        jsr kernel_wm_redraw
+sud_noredraw:
         lda DLG_WIN             ; A = handle de la fenêtre créée ($FF si aucune)
 sud_ret:
         rts
