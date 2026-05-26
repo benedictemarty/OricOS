@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S7v2-fixes] - 2026-05-26
+
+### SP-3.o S.7 v2 — Fix 2 bugs P0 (critique senior widgets/windows)
+
+#### Fixed
+- **Ascenseur (scrollbar) bloqué à mi-course** : le pouce ne descendait jamais
+  jusqu'en bas. `_wm_scroll_update` mappait la position souris vers `value` puis
+  la clampait au **max logique** du contrôle (ex. 40), alors que la course réelle
+  de la gouttière vaut `dimension − SCROLL_THUMB_SZ` (ex. `RELH 60 − 16 = 44`).
+  Désormais `value` est clampée à la **course de la gouttière** (vertical : `RELH` ;
+  horizontal : `RELW` ; moins l'épaisseur du pouce ; cap à 255, négatif→0). Le
+  pouce parcourt toute la gouttière.
+- **Curseur souris disparaissait** après un redraw ciblé (régression du
+  `kernel_wm_redraw_widget` de S.7) : repeindre la zone d'un contrôle écrasait le
+  curseur sans le redessiner et laissait son backing-store périmé. Nouveau
+  `_wm_redraw_ctl` (`php`/`sei` ; `kernel_wm_redraw_widget` ;
+  `kernel_wm_draw_cursor` qui invalide le backing et redessine ; `plp`/`rts`),
+  appelé sur les 3 sites de redraw ciblé (drag ascenseur, `_wte_store` champ texte,
+  `mlc_ctl_text` sur `MSG_CONTROL`). 588 verts.
+
 ## [Unreleased+SP-3.o-S7-redraw] - 2026-05-26
 
 ### SP-3.o S.7 — Redraw ciblé d'un contrôle (fix scintillement)

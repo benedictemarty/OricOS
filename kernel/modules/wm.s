@@ -2206,8 +2206,8 @@ _wte_store:
         tax
         lda TEXT_TMP_LEN
         sta WIDGET_TABLE+14,x    ; length mise à jour
-        lda TEXT_FOCUS_ID        ; SP-3.o S.7 : redraw ciblé du seul champ (pas de flicker)
-        jsr kernel_wm_redraw_widget
+        lda TEXT_FOCUS_ID        ; SP-3.o S.7 : redraw ciblé du seul champ + curseur
+        jsr _wm_redraw_ctl
 _wte_done:
         rts
 
@@ -2280,11 +2280,31 @@ _wm_scroll_update:
         tax                      ; X = id*16
         lda WIDGET_TABLE+2,x
         sta WG_TYPE              ; orientation
-        lda WIDGET_TABLE+WG_OFF_MAX,x
-        sta WG_RELH              ; max (low byte de WG_RELH suffit)
         lda WIDGET_TABLE+1,x
         sta WG_PARENT
+        ; SP-3.o S.7 v2 : plafond = COURSE réelle de la gouttière (dimension le
+        ; long de l'axe − taille du thumb), pas le « max » logique → le thumb
+        ; atteint le bas. value = offset pixel du thumb dans [0, course].
+        lda WG_TYPE
+        cmp #WG_TYPE_SCROLL_H
+        beq _scu_dim_h
         rep #$20
+        lda WIDGET_TABLE+10,x    ; V : hauteur gouttière (+10)
+        bra _scu_dim_done
+_scu_dim_h:
+        rep #$20
+        lda WIDGET_TABLE+8,x     ; H : largeur gouttière (+8)
+_scu_dim_done:
+        sec
+        sbc #SCROLL_THUMB_SZ     ; course = dim − thumb
+        bpl _scu_dim_pos
+        lda #$0000               ; dim < thumb → course nulle
+_scu_dim_pos:
+        cmp #$0100               ; cap 8-bit (value stockée sur 1 octet)
+        bcc _scu_dim_store
+        lda #$00FF
+_scu_dim_store:
+        sta WG_RELH              ; course (ceiling) 16-bit
         lda WIDGET_TABLE+4,x
         sta WG_RELX
         lda WIDGET_TABLE+6,x
@@ -2321,20 +2341,19 @@ _scu_h:
         sta WG_RELW              ; offset
         sep #$20
 _scu_clamp:
-        ; clamp offset [0, max] → A = value
-        lda WG_RELW+1
+        ; clamp offset [0, course] → A = value (16-bit puis octet bas)
+        rep #$20
+        lda WG_RELW
         bmi _scu_zero            ; offset négatif (souris avant la gouttière)
-        bne _scu_max             ; offset > 255 → max
-        lda WG_RELW              ; 0..255
-        cmp WG_RELH              ; >= max ?
+        cmp WG_RELH              ; >= course ?
         bcc _scu_store
-_scu_max:
-        lda WG_RELH              ; clamp à max
+        lda WG_RELH              ; clamp à la course
         bra _scu_store
 _scu_zero:
-        lda #$00
+        lda #$0000
 _scu_store:
-        pha                      ; value
+        sep #$20
+        pha                      ; value (octet bas)
         lda SCROLL_DRAG_ID
         asl a
         asl a
@@ -2346,7 +2365,19 @@ _scu_store:
         ; SP-3.o S.7 : redraw CIBLÉ du seul ascenseur (pas de clear desktop) →
         ; plus de scintillement plein écran pendant le drag.
         lda SCROLL_DRAG_ID
-        jsr kernel_wm_redraw_widget
+        jsr _wm_redraw_ctl
+        rts
+
+; ── _wm_redraw_ctl : redraw ciblé d'un contrôle (A=index) + curseur (S.7 v2) ──
+; Repeint UNIQUEMENT le contrôle puis redessine le curseur PAR-DESSUS (son fond
+; sous-jacent a changé). Sous sei : le backing-store curseur (CURSOR_SAVE) est
+; partagé avec l'IRQ souris (kernel_wm_cursor_blit) → section critique.
+_wm_redraw_ctl:
+        php
+        sei
+        jsr kernel_wm_redraw_widget   ; A = index du widget
+        jsr kernel_wm_draw_cursor     ; invalide backing périmé + redessine curseur
+        plp
         rts
 
 ; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
@@ -3242,7 +3273,7 @@ mlc_ctl_text:
         pla                     ; id
         pha
         sta TEXT_FOCUS_ID       ; ce champ prend le focus clavier
-        jsr kernel_wm_redraw_widget  ; SP-3.o S.7 : affiche le curseur (redraw ciblé)
+        jsr _wm_redraw_ctl      ; SP-3.o S.7 : redraw ciblé du champ + curseur
         bra mlc_ctl_ret
 mlc_ctl_list:
         pla                     ; id
