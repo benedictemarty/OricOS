@@ -246,3 +246,10 @@ bundle_win:
 bundle_gui:
         .incbin "../apps/gui_demo/build/gui.oos"
 
+; ─── Bundle view_demo (SP-3.o S.3c) ─────────────────────────────────────
+; App C démo GenView déclaratif : déclare fenêtre + GU_VIEW (table GenUI),
+; boucle MainLoop, lit l'offset scroll_y (SYS_CTL_GET_VALUE) sur MSG_CONTROL.
+.export bundle_view
+bundle_view:
+        .incbin "../apps/view_demo/build/view.oos"
+

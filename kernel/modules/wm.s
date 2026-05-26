@@ -3057,8 +3057,12 @@ sud_n1:
         jmp sud_title
 sud_n2:
         cmp #GU_BUTTON
-        bne sud_n3
+        bne sud_n2b
         jmp sud_button
+sud_n2b:
+        cmp #GU_VIEW
+        bne sud_n3
+        jmp sud_view
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_title:                      ; GU_TITLE + chaîne inline (AVANT GU_WINDOW)
@@ -3155,6 +3159,53 @@ sud_b_add:
         lda #$00
         sta WG_CB
         sta WG_CB+1
+        phy
+        jsr kernel_wm_add_widget
+        ply
+        jmp sud_loop
+sud_view:                       ; GU_VIEW : relx16 rely16 relw16 relh16 + max8
+        iny
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_W
+        iny
+        lda [$D0],y
+        sta WM_ARG_W+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_H
+        iny
+        lda [$D0],y
+        sta WM_ARG_H+1
+        iny
+        lda [$D0],y
+        sta WG_CB+1             ; max scroll (+15)
+        iny
+        lda DLG_WIN
+        cmp #$FF
+        bne sud_v_add
+        jmp sud_loop
+sud_v_add:
+        sta WG_PARENT
+        lda #WG_TYPE_VIEW
+        sta WG_TYPE
+        lda #WG_COL_VIEW_BODY
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1          ; pas de label
+        sta WG_CB               ; scroll_y init 0 (+14) ; WG_CB+1=max déjà posé
         phy
         jsr kernel_wm_add_widget
         ply

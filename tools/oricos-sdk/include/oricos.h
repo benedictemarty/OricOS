@@ -53,6 +53,8 @@
 #define SYS_UI_DEFINE       0x18
 #define SYS_DO_DLGBOX       0x19
 #define SYS_ALERT           0x1A
+#define SYS_CTL_GET_VALUE   0x1B
+#define SYS_CTL_SET_VALUE   0x1C
 
 /* ── Messages du MainLoop (SP-3.n) ───────────────────────────────── */
 #define MSG_NULL            0
@@ -67,6 +69,7 @@
 #define GU_WINDOW           1   /* + x16 y16 w16 h16 */
 #define GU_TITLE            2   /* + ptr16 (AVANT GU_WINDOW) */
 #define GU_BUTTON           3   /* + relx16 rely16 relw16 relh16 */
+#define GU_VIEW             4   /* + relx16 rely16 relw16 relh16 max8 (GenView) */
 
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
@@ -327,6 +330,37 @@ uint8_t oricos_do_dlgbox(const void *table) {
         : "a"
     );
     return res;
+}
+
+/* SYS_CTL_GET_VALUE : valeur d'un contrôle (checkbox 0/1, scroll/view offset). */
+static __attribute__((always_inline)) inline
+uint8_t oricos_ctl_get_value(uint8_t id) {
+    uint8_t v;
+    __asm__ volatile (
+        "ldx %[id]\n"
+        _ORICOS_LDA_SYS(SYS_CTL_GET_VALUE)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (v)
+        : [id] "r" (id)
+        : "a", "x"
+    );
+    return v;
+}
+
+/* Détail du dernier message MainLoop (bloc ZP $DA) : id contrôle pour MSG_CONTROL,
+ * id fenêtre pour MSG_CONTENT/MSG_CLOSE. À lire juste après oricos_main_loop(). */
+static __attribute__((always_inline)) inline
+uint8_t oricos_msg_id(void) {
+    uint8_t v;
+    __asm__ volatile (
+        "lda $DA\n"
+        "sta %[out]\n"
+        : [out] "=r" (v)
+        :
+        : "a"
+    );
+    return v;
 }
 
 #endif /* ORICOS_H */

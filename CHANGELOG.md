@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S3c] - 2026-05-26
+
+### SP-3.o S.3c — GenView déclaratif + démo C
+
+#### Added
+- **Tag `GU_VIEW`** ($04) dans `sys_ui_define` : un GenView peut être déclaré
+  dans une table GenUI (`GU_VIEW` relx16 rely16 relw16 relh16 max8). `sud_view`
+  lit le rect + le max scroll, crée un widget `WG_TYPE_VIEW` (scroll_y=0 en +14,
+  max en +15) attaché à la fenêtre courante. Miroir de `sud_button` sans label.
+- **App C `view_demo`** (`apps/view_demo/view.c`) : déclare une fenêtre + un
+  `GU_VIEW`, boucle MainLoop ; sur `MSG_CONTROL` lit l'offset `scroll_y` via
+  `SYS_CTL_GET_VALUE` et l'imprime ("view: scroll NN"). `MSG_CLOSE` → sortie.
+  Modèle GeoWorks : le système gère barre/offset, l'app lit et réagit.
+- **SDK** : `oricos_ctl_get_value(id)` (SYS_CTL_GET_VALUE $1B) +
+  `oricos_msg_id()` (lit le bloc ZP $DA = id du contrôle/fenêtre du dernier
+  message). Defines `GU_VIEW`, `SYS_CTL_GET_VALUE`, `SYS_CTL_SET_VALUE`.
+- Bundle `bundle_view` (console.s) + spawn gardé `TC_VIEWAPP_FLAG` ($01EFF0,
+  boot.s) + `view_demo` dans la liste APPS du Makefile.
+
 ## [Unreleased+SP-3.o-S3] - 2026-05-26
 
 ### SP-3.o S.3 — GenView (viewport scrollable managé)

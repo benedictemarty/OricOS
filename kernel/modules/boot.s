@@ -1350,6 +1350,21 @@ _skip_winapp:
         jsr kernel_app_spawn    ; A = pid de l'app (≠0 succès)
 _skip_guiapp:
 
+        ; ── SP-3.o S.3c : spawn bundle_view (app C GenView déclaratif) ──
+        ; TC_VIEWAPP_FLAG=$A5 → l'app C view_demo déclare fenêtre + GU_VIEW,
+        ; boucle MainLoop, lit scroll_y (SYS_CTL_GET_VALUE) sur MSG_CONTROL.
+        lda TC_VIEWAPP_FLAG
+        cmp #$A5
+        bne _skip_viewapp
+        lda #<bundle_view
+        sta DP_PTR
+        lda #>bundle_view
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn
+_skip_viewapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

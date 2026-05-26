@@ -475,6 +475,7 @@ GU_END            = $00         ; fin de table
 GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
 GU_TITLE          = $02         ; suivi d'une chaîne INLINE null-terminée (AVANT GU_WINDOW)
 GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 + label INLINE null-term
+GU_VIEW           = $04         ; suivi de relx16 rely16 relw16 relh16 + max8 (GenView, SP-3.o S.3c)
 ; Buffer de staging bank 1 : les chaînes inline (dans le bank de l'app) sont
 ; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
@@ -749,6 +750,7 @@ TC_GUIAPP_FLAG   = $01EFB0        ; SP-3.n G.7 : $A5 → spawn bundle_gui (app C
 TC_CHK_FLAG      = $01EFC0        ; SP-3.o S.1 : $A5 → crée task_chk (test API valeur/checkbox)
 TC_SCR_FLAG      = $01EFD0        ; SP-3.o S.2 : $A5 → crée task_scr (test scrollbar/drag)
 TC_VIEW_FLAG     = $01EFE0        ; SP-3.o S.3 : $A5 → crée task_view (test GenView/scroll)
+TC_VIEWAPP_FLAG  = $01EFF0        ; SP-3.o S.3c : $A5 → spawn bundle_view (app C GenView déclaratif)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
