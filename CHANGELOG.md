@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S7v2b-fix-corps] - 2026-05-26
+
+### SP-3.o S.7 v2b — Fix régression : corps de fenêtre effacé au clic d'un contrôle
+
+#### Fixed
+- **Corps de fenêtre effacé (fond gris → bleu) au clic sur un contrôle** :
+  régression introduite par v2. Le bloc de calcul de la **course** de la gouttière
+  dans `_wm_scroll_update` opérait en mode 16-bit (`rep #$20` puis immédiats
+  `sbc #SCROLL_THUMB_SZ` / `cmp #$0100`). Le tracking de mode A par ca65 générait
+  du code corrompu (même classe de bug que SP-3.h `_crh_test_max`), ce qui
+  effaçait le corps des fenêtres lors du full-redraw IRQ déclenché par le clic.
+  Réécrit en **calcul 8-bit pur** (dimensions de gouttière ≤ 255 : lecture de
+  l'octet bas de `+10`/`+8`, `sbc` 8-bit, clamp 8-bit comme la v1 — aucun `rep`/
+  `sep` ni immédiat 16-bit). Diagnostic par dump du framebuffer XVGA `$100000` :
+  corps intact + pouce atteignant le bas de la gouttière dans la fenêtre. 588 verts.
+
 ## [Unreleased+SP-3.o-S7v2-fixes] - 2026-05-26
 
 ### SP-3.o S.7 v2 — Fix 2 bugs P0 (critique senior widgets/windows)

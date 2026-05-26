@@ -2280,31 +2280,25 @@ _wm_scroll_update:
         tax                      ; X = id*16
         lda WIDGET_TABLE+2,x
         sta WG_TYPE              ; orientation
-        lda WIDGET_TABLE+1,x
-        sta WG_PARENT
-        ; SP-3.o S.7 v2 : plafond = COURSE réelle de la gouttière (dimension le
-        ; long de l'axe − taille du thumb), pas le « max » logique → le thumb
-        ; atteint le bas. value = offset pixel du thumb dans [0, course].
-        lda WG_TYPE
+        ; SP-3.o S.7 v2 : plafond = COURSE de la gouttière (dim le long de l'axe
+        ; − taille du thumb), pas le max logique → le thumb atteint le bas. Calcul
+        ; 8-bit pur (dim ≤ 255, pas de rep/sep ni immédiat 16-bit ici).
         cmp #WG_TYPE_SCROLL_H
-        beq _scu_dim_h
-        rep #$20
-        lda WIDGET_TABLE+10,x    ; V : hauteur gouttière (+10)
-        bra _scu_dim_done
-_scu_dim_h:
-        rep #$20
-        lda WIDGET_TABLE+8,x     ; H : largeur gouttière (+8)
-_scu_dim_done:
+        beq _scu_dimh
+        lda WIDGET_TABLE+10,x    ; V : hauteur gouttière (octet bas)
+        bra _scu_dimd
+_scu_dimh:
+        lda WIDGET_TABLE+8,x     ; H : largeur gouttière (octet bas)
+_scu_dimd:
         sec
         sbc #SCROLL_THUMB_SZ     ; course = dim − thumb
-        bpl _scu_dim_pos
-        lda #$0000               ; dim < thumb → course nulle
-_scu_dim_pos:
-        cmp #$0100               ; cap 8-bit (value stockée sur 1 octet)
-        bcc _scu_dim_store
-        lda #$00FF
-_scu_dim_store:
-        sta WG_RELH              ; course (ceiling) 16-bit
+        bcs _scu_dims            ; pas d'emprunt → ≥ 0
+        lda #$00                 ; dim < thumb → course nulle
+_scu_dims:
+        sta WG_RELH              ; course (ceiling 8-bit)
+        lda WIDGET_TABLE+1,x
+        sta WG_PARENT
+        rep #$20
         lda WIDGET_TABLE+4,x
         sta WG_RELX
         lda WIDGET_TABLE+6,x
@@ -2341,19 +2335,20 @@ _scu_h:
         sta WG_RELW              ; offset
         sep #$20
 _scu_clamp:
-        ; clamp offset [0, course] → A = value (16-bit puis octet bas)
-        rep #$20
-        lda WG_RELW
+        ; clamp offset [0, max] → A = value
+        lda WG_RELW+1
         bmi _scu_zero            ; offset négatif (souris avant la gouttière)
-        cmp WG_RELH              ; >= course ?
+        bne _scu_max             ; offset > 255 → max
+        lda WG_RELW              ; 0..255
+        cmp WG_RELH              ; >= max ?
         bcc _scu_store
-        lda WG_RELH              ; clamp à la course
+_scu_max:
+        lda WG_RELH              ; clamp à max
         bra _scu_store
 _scu_zero:
-        lda #$0000
+        lda #$00
 _scu_store:
-        sep #$20
-        pha                      ; value (octet bas)
+        pha                      ; value
         lda SCROLL_DRAG_ID
         asl a
         asl a
