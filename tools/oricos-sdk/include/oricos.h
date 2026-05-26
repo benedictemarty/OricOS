@@ -55,6 +55,7 @@
 #define SYS_ALERT           0x1A
 #define SYS_CTL_GET_VALUE   0x1B
 #define SYS_CTL_SET_VALUE   0x1C
+#define SYS_GET_TICKS       0x1D
 
 /* ── Messages du MainLoop (SP-3.n) ───────────────────────────────── */
 #define MSG_NULL            0
@@ -366,6 +367,22 @@ uint8_t oricos_msg_id(void) {
         : "a"
     );
     return v;
+}
+
+/* SYS_GET_TICKS : compteur de ticks scheduler 8-bit (libre, wrap à 256). Pour
+ * mesurer un délai sans souci de wrap : (uint8_t)(oricos_get_ticks() - t0) >= K. */
+static __attribute__((always_inline)) inline
+uint8_t oricos_get_ticks(void) {
+    uint8_t t;
+    __asm__ volatile (
+        _ORICOS_LDA_SYS(SYS_GET_TICKS)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (t)
+        :
+        : "a", "x", "y"   /* le COP ne préserve pas X/Y (cf. kernel_cop_handler) */
+    );
+    return t;
 }
 
 #endif /* ORICOS_H */

@@ -3890,6 +3890,13 @@ sys_ctl_set_value:
 scsv_done:
         rts
 
+; $1D — SYS_GET_TICKS : A = compteur de ticks scheduler 8-bit (Sprint 4 clock) ─
+; Compteur libre incrémenté par l'IRQ timer (VIA T1), wrap à 256. Les apps
+; mesurent un délai via la soustraction non signée wrap-safe : (now - last) >= K.
+sys_get_ticks:
+        lda TICK_COUNTER
+        rts
+
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)

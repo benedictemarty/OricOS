@@ -1417,6 +1417,21 @@ _skip_viewapp:
         jsr kernel_app_spawn
 _skip_ctlapp:
 
+        ; ── Sprint 4 : spawn bundle_clock (première vraie app C, pilotée temps) ──
+        ; TC_CLOCKAPP_FLAG=$A5 → l'app C clock crée sa fenêtre + anime une barre
+        ; rythmée par SYS_GET_TICKS, puis sort.
+        lda TC_CLOCKAPP_FLAG
+        cmp #$A5
+        bne _skip_clockapp
+        lda #<bundle_clock
+        sta DP_PTR
+        lda #>bundle_clock
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn
+_skip_clockapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

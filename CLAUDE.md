@@ -214,7 +214,10 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
       (cli handler COP). Repro build durcie (`-I` SDK + deps Makefile modules).
 - [~] libc minimal (TC-libc : `liboricos.a` — putchar/puts/printf/strlen/malloc
       bump bank-local ; cf. CHANGELOG). `printf` via syscalls : OK.
-- [ ] Première app C : `clock`.
+- [x] **Première app C : `clock`** (2026-05-26) : app pilotée par le temps
+      (`apps/clock/`) — fenêtre + barre de progression rythmée par `SYS_GET_TICKS`
+      ($1D) + `SYS_YIELD`, dessin `SYS_GFX_FILL_RECT`/`SYS_WIN_FLUSH`. Test
+      `test_oricos_clock`.
 
 ### Sprint 5 — Guest Oric 1
 - [ ] Lancement guest Oric 1 dans une fenêtre OricOS.

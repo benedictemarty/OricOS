@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+Sprint4-clock] - 2026-05-26
+
+### Sprint 4 — Première vraie app userland C : clock
+
+#### Added
+- **App C `clock`** (`apps/clock/clock.c`) : première vraie app userland pilotée
+  par le temps. Crée une fenêtre puis, tous les `STEP_TICKS` ticks scheduler
+  (lus via `SYS_GET_TICKS`, mesure non signée wrap-safe, CPU cédé via `SYS_YIELD`),
+  dessine une barre de progression croissante (`SYS_GFX_FILL_RECT` + `SYS_WIN_FLUSH`).
+  Sort après `N_STEPS` pas. Valide get_ticks + yield + dessin fenêtré en C.
+- **`SYS_GET_TICKS` ($1D)** : nouveau syscall — renvoie `TICK_COUNTER` (compteur
+  8-bit libre incrémenté par l'IRQ timer, wrap à 256). Slot d'extension v1 réservé
+  par ADR-17 ($13-$3F). SDK : `oricos_get_ticks()` (clobbers a/x/y — le COP ne
+  préserve pas X/Y, cf. `kernel_cop_handler`).
+- Bundle `bundle_clock` + spawn gardé `TC_CLOCKAPP_FLAG` ($01EE50) + `clock` au Makefile.
+
 ## [Unreleased+SP-3.o-S6] - 2026-05-26
 
 ### SP-3.o S.6 — Démo C contrôles déclaratifs (capstone, arc SP-3.o CLOS)

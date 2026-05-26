@@ -90,8 +90,9 @@ syscall_table:
         .word sys_alert         ; $1A SYS_ALERT (SP-3.n G.6)
         .word sys_ctl_get_value ; $1B SYS_CTL_GET_VALUE (SP-3.o S.1)
         .word sys_ctl_set_value ; $1C SYS_CTL_SET_VALUE (SP-3.o S.1)
-        .repeat 35
-        .word sys_invalid       ; $1D-$3F réservés
+        .word sys_get_ticks     ; $1D SYS_GET_TICKS (Sprint 4 clock)
+        .repeat 34
+        .word sys_invalid       ; $1E-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════

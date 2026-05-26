@@ -267,3 +267,10 @@ bundle_view:
 bundle_ctl:
         .incbin "../apps/ctl_demo/build/ctl.oos"
 
+; ─── Bundle clock (Sprint 4 : première vraie app C) ─────────────────────────
+; App C pilotée par le temps : fenêtre + barre de progression rythmée par
+; SYS_GET_TICKS (mesure wrap-safe + SYS_YIELD), dessin SYS_GFX_FILL_RECT/FLUSH.
+.export bundle_clock
+bundle_clock:
+        .incbin "../apps/clock/build/clock.oos"
+
