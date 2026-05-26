@@ -403,6 +403,8 @@ _wdws_draw:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_RADIO       ; 6 = radio → case colorée (comme checkbox)
+        beq _wdws_btn
         cmp #WG_TYPE_VIEW        ; 5 = GenView
         beq _wdws_view
         cmp #WG_TYPE_SCROLL_V    ; 3/4 → ascenseur (SCROLL_V/H)
@@ -979,6 +981,8 @@ _wh_used:
         cmp #WG_TYPE_SCROLL_H
         beq _wh_isbtn
         cmp #WG_TYPE_VIEW        ; SP-3.o S.3 : GenView cliquable (barre intégrée)
+        beq _wh_isbtn
+        cmp #WG_TYPE_RADIO       ; SP-3.o S.4a : radio cliquable
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

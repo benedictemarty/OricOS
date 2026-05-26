@@ -53,6 +53,8 @@ TASK_CHK_VAL    = $01545A       ; SP-3.o S.1 : valeur checkbox lue par task_chk 
 TASK_CHK_ID     = $01545B       ; SP-3.o S.1 : id du widget checkbox créé (test)
 TASK_SCR_ID     = $01545C       ; SP-3.o S.2 : id du scrollbar créé par task_scr (test)
 TASK_VIEW_ID    = $01545D       ; SP-3.o S.3 : id du GenView créé par task_view (test)
+TASK_RAD_ID0    = $01545E       ; SP-3.o S.4a : id du 1er radio créé par task_radio (test)
+TASK_RAD_ID1    = $01545F       ; SP-3.o S.4a : id du 2e radio créé par task_radio (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -648,6 +650,8 @@ WG_TYPE_SCROLL_V = $03           ; SP-3.o S.2 : ascenseur vertical ; value(+14)/
 WG_TYPE_SCROLL_H = $04           ; SP-3.o S.2 : ascenseur horizontal
 WG_TYPE_VIEW     = $05           ; SP-3.o S.3 : GenView (viewport scrollable) ;
                                  ; scroll_y(+14) / content_h(+15), scrollbar intégré bord droit
+WG_TYPE_RADIO    = $06           ; SP-3.o S.4a : radio (GenItemGroup) ; selected(+14)/group(+15)
+                                 ; exclusion mutuelle par group id ; rendu = case colorée (comme check)
 SCROLL_THUMB_SZ  = 16            ; taille du thumb (px) le long de la gouttière
 VIEW_SB_W        = 12            ; largeur de la barre intégrée du GenView (bord droit)
 WG_COL_TRACK     = $08           ; gouttière : darkgray
@@ -751,6 +755,7 @@ TC_CHK_FLAG      = $01EFC0        ; SP-3.o S.1 : $A5 → crée task_chk (test AP
 TC_SCR_FLAG      = $01EFD0        ; SP-3.o S.2 : $A5 → crée task_scr (test scrollbar/drag)
 TC_VIEW_FLAG     = $01EFE0        ; SP-3.o S.3 : $A5 → crée task_view (test GenView/scroll)
 TC_VIEWAPP_FLAG  = $01EFF0        ; SP-3.o S.3c : $A5 → spawn bundle_view (app C GenView déclaratif)
+TC_RAD_FLAG      = $01EE00        ; SP-3.o S.4a : $A5 → crée task_radio (test radios/exclusion)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

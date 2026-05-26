@@ -420,6 +420,85 @@ view_loop:
         cop #$AA
         bra view_loop
 
+; ─── task_radio_entry : 2 radios exclusifs + boucle MainLoop (SP-3.o S.4a) ────
+; Crée sa fenêtre, ajoute 2 radios du même groupe (radio 0 sélectionné au départ),
+; puis tourne le MainLoop. Le test clique le radio 1 → exclusion : radio 1
+; sélectionné (value=1), radio 0 désélectionné (value=0).
+.export task_radio_entry
+task_radio_entry:
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        rep #$20
+        lda #260
+        sta WM_ARG_X
+        lda #210
+        sta WM_ARG_Y
+        lda #140
+        sta WM_ARG_W
+        lda #90
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add       ; A = handle (slot)
+        pha
+        jsr kernel_wm_set_focus
+        pla
+        sta WG_PARENT           ; parent commun aux 2 radios
+        ; ── radio 0 (sélectionné au départ) rel(12,14,20,20), group=1 ──
+        lda #WG_TYPE_RADIO
+        sta WG_TYPE
+        lda #WG_COL_CHECKED
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        lda #$01
+        sta WG_CB               ; value=1 (sélectionné)
+        lda #$01
+        sta WG_CB+1             ; group id = 1
+        rep #$20
+        lda #12
+        sta WM_ARG_X
+        lda #14
+        sta WM_ARG_Y
+        lda #20
+        sta WM_ARG_W
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_RAD_ID0
+        jsr kernel_wm_add_widget
+        ; ── radio 1 (désélectionné) rel(12,44,20,20), group=1 ──
+        lda WG_PARENT
+        sta WG_PARENT
+        lda #WG_TYPE_RADIO
+        sta WG_TYPE
+        lda #WG_COL_UNCHECKED
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB               ; value=0
+        lda #$01
+        sta WG_CB+1             ; group id = 1
+        rep #$20
+        lda #12
+        sta WM_ARG_X
+        lda #44
+        sta WM_ARG_Y
+        lda #20
+        sta WM_ARG_W
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_RAD_ID1
+        jsr kernel_wm_add_widget
+radio_loop:
+        lda #$17                ; SYS_MAIN_LOOP
+        cop #$AA
+        bra radio_loop
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

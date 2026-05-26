@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S4a] - 2026-05-26
+
+### SP-3.o S.4a — Radios mutuellement exclusifs (GenItemGroup)
+
+#### Added
+- **`WG_TYPE_RADIO`** ($06) : radio (GenItemGroup). Réutilise le champ +14/+15
+  du record widget comme `selected`(+14, 0/1) et `group id`(+15). Rendu = case
+  colorée (lightblue sélectionné / lightgray non), comme la checkbox.
+- **`kernel_ctl_radio_select`** (A=id) : lit le group id du radio cliqué,
+  désélectionne tous les autres radios du même groupe (value=0, couleur décochée),
+  puis sélectionne le cliqué (value=1, couleur cochée) et repeint.
+- Dispatch clic : `mlc_control` (chemin MainLoop) + `_iac_go` (chemin desktop
+  IRQ) → `RADIO` → `kernel_ctl_radio_select`. Hit-test `_wm_widget_hit` +
+  dispatch dessin `_wdws_draw` étendus à `WG_TYPE_RADIO` (rendu comme bouton).
+- **`task_radio`** (gated `TC_RAD_FLAG` $01EE00) : crée une fenêtre + 2 radios
+  du même groupe (radio 0 sélectionné au départ) puis boucle MainLoop. Ids
+  exposés en `TASK_RAD_ID0`/`TASK_RAD_ID1` ($01545E/$01545F) pour le test.
+
 ## [Unreleased+SP-3.o-S3c] - 2026-05-26
 
 ### SP-3.o S.3c — GenView déclaratif + démo C

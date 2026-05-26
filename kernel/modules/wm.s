@@ -2019,12 +2019,18 @@ _iac_go:
         lda WIDGET_TABLE+2,X
         cmp #WG_TYPE_CHECK
         beq _iac_check
+        cmp #WG_TYPE_RADIO       ; SP-3.o S.4a : radio cliquable depuis le desktop
+        beq _iac_radio
         cmp #WG_TYPE_BUTTON
         beq _iac_button
         rts                      ; autre type → rien
 _iac_check:
         lda WIDGET_ACTIVE
         jsr kernel_ctl_toggle    ; bascule value + couleur + redraw
+        rts
+_iac_radio:
+        lda WIDGET_ACTIVE
+        jsr kernel_ctl_radio_select
         rts
 _iac_button:
         lda WIDGET_TABLE+14,X
@@ -2061,6 +2067,63 @@ _ctog_unchecked:
 _ctog_setcol:
         sta WIDGET_TABLE+3,x     ; couleur du widget
         jsr kernel_wm_redraw     ; reflète visuellement le nouvel état
+        rts
+
+; ── kernel_ctl_radio_select : A = id radio → sélection exclusive dans son groupe ─
+; (SP-3.o S.4a). Le groupe = champ +15 (WG_OFF_MAX). Désélectionne tous les autres
+; radios du même groupe (value=0, couleur décochée), puis sélectionne celui-ci
+; (value=1, couleur cochée) et repeint. Clobbe A, X, WG_I, WG_CB.
+.export kernel_ctl_radio_select
+kernel_ctl_radio_select:
+        sta WG_CB                ; mémorise l'id cliqué
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+WG_OFF_MAX,x
+        sta WG_CB+1              ; group id du radio cliqué
+        lda #$00
+        sta WG_I
+_crs_loop:
+        lda WG_I
+        cmp WIDGET_COUNT
+        bcs _crs_done
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+0,x
+        and #$01
+        beq _crs_next            ; slot inutilisé
+        lda WIDGET_TABLE+2,x
+        cmp #WG_TYPE_RADIO
+        bne _crs_next
+        lda WIDGET_TABLE+WG_OFF_MAX,x
+        cmp WG_CB+1              ; même groupe ?
+        bne _crs_next
+        lda #$00
+        sta WIDGET_TABLE+WG_OFF_VALUE,x   ; désélectionne
+        lda #WG_COL_UNCHECKED
+        sta WIDGET_TABLE+3,x
+_crs_next:
+        lda WG_I
+        inc a
+        sta WG_I
+        bra _crs_loop
+_crs_done:
+        lda WG_CB                ; sélectionne le radio cliqué
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda #$01
+        sta WIDGET_TABLE+WG_OFF_VALUE,x
+        lda #WG_COL_CHECKED
+        sta WIDGET_TABLE+3,x
+        jsr kernel_wm_redraw
         rts
 
 ; ── _wm_scroll_update : met à jour la value de l'ascenseur SCROLL_DRAG_ID ─────
@@ -3003,11 +3066,18 @@ mlc_control:
         beq mlc_ctl_scroll
         cmp #WG_TYPE_VIEW       ; SP-3.o S.3 : GenView → scroll vertical (barre intégrée)
         beq mlc_ctl_scroll
+        cmp #WG_TYPE_RADIO      ; SP-3.o S.4a : radio → sélection exclusive
+        beq mlc_ctl_radio
         bra mlc_ctl_ret         ; bouton : rien de plus
 mlc_ctl_check:
         pla                     ; id
         pha
         jsr kernel_ctl_toggle   ; bascule value + couleur + redraw
+        bra mlc_ctl_ret
+mlc_ctl_radio:
+        pla                     ; id
+        pha
+        jsr kernel_ctl_radio_select  ; sélectionne ce radio, désélectionne le groupe
         bra mlc_ctl_ret
 mlc_ctl_scroll:                 ; S.2 : arme le drag + positionne la value au clic
         pla                     ; id
