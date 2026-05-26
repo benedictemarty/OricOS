@@ -216,6 +216,12 @@ str_b3_guest_in:
 str_b3_guest_out:
         .byte "GUEST: BACK N OK", $0A, $00
 
+; ════════════════════════════════════════════════════════════════════
+; SP-3.o S.6 : images d'apps embarquées → segment BUNDLES (haut, $7000+),
+; hors du segment CODE (qui approchait son plafond $5400).
+; ════════════════════════════════════════════════════════════════════
+        .segment "BUNDLES"
+
 ; ─── Bundle hello (Sprint 2.m.1) ────────────────────────────────────
 ; Première app standalone OricOS, source asm dans `apps/hello/hello.s`,
 ; buildée par ld65 + tool oricos-bundle.py → format .oosobj.
@@ -252,4 +258,12 @@ bundle_gui:
 .export bundle_view
 bundle_view:
         .incbin "../apps/view_demo/build/view.oos"
+
+; ─── Bundle ctl_demo (SP-3.o S.6, capstone) ─────────────────────────────────
+; App C démo contrôles déclaratifs : déclare fenêtre + checkbox + ascenseur +
+; champ texte (table GenUI), boucle MainLoop, lit la valeur de chaque contrôle
+; touché (SYS_CTL_GET_VALUE) sur MSG_CONTROL. Clôt l'arc SP-3.o depuis userland C.
+.export bundle_ctl
+bundle_ctl:
+        .incbin "../apps/ctl_demo/build/ctl.oos"
 

@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S6] - 2026-05-26
+
+### SP-3.o S.6 — Démo C contrôles déclaratifs (capstone, arc SP-3.o CLOS)
+
+#### Added
+- **App C `ctl_demo`** (`apps/ctl_demo/ctl.c`) : déclare une fenêtre + checkbox +
+  ascenseur vertical + champ texte via une table GenUI inline, tourne le MainLoop,
+  et sur chaque `MSG_CONTROL` lit la valeur du contrôle touché (`SYS_CTL_GET_VALUE`)
+  et l'imprime. `MSG_CLOSE` → sortie. Capstone de l'arc SP-3.o (contrôles
+  GeoWorks : déclaration + messages + lecture de valeur depuis userland C).
+- Bundle `bundle_ctl` + spawn gardé `TC_CTLAPP_FLAG` ($01EE40) + `ctl_demo` au Makefile.
+
+#### Changed
+- **Segment `BUNDLES`** (kernel.cfg, $7000+) : les images d'apps `.incbin`
+  (hello/hello_c/win/gui/view/ctl) sortent du segment CODE vers ce segment haut,
+  au-dessus de toutes les données runtime. Motif : le CODE approchait son plafond
+  $5400 (données `TICK_COUNTER`) ; les bundles (~6 Ko) le saturaient. CODE
+  redescend de $5233 à ~$4327 (~3,8 Ko de marge regagnée) ; BUNDLES a de la place
+  jusqu'à $E1FF. Chaque module repasse en `.segment "CODE"` après console.s.
+
 ## [Unreleased+SP-3.o-S5] - 2026-05-26
 
 ### SP-3.o S.5 — Tags GenUI déclaratifs des contrôles

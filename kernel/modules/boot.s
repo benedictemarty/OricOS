@@ -1401,6 +1401,22 @@ _skip_guiapp:
         jsr kernel_app_spawn
 _skip_viewapp:
 
+        ; ── SP-3.o S.6 : spawn bundle_ctl (app C démo contrôles déclaratifs) ──
+        ; TC_CTLAPP_FLAG=$A5 → l'app C ctl_demo déclare fenêtre + checkbox +
+        ; ascenseur + champ texte, boucle MainLoop, lit la valeur de chaque
+        ; contrôle touché (SYS_CTL_GET_VALUE) sur MSG_CONTROL.
+        lda TC_CTLAPP_FLAG
+        cmp #$A5
+        bne _skip_ctlapp
+        lda #<bundle_ctl
+        sta DP_PTR
+        lda #>bundle_ctl
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn
+_skip_ctlapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

@@ -791,6 +791,7 @@ TC_RAD_FLAG      = $01EE00        ; SP-3.o S.4a : $A5 → crée task_radio (test
 TC_TEXT_FLAG     = $01EE10        ; SP-3.o S.4b : $A5 → crée task_text (test champ texte éditable)
 TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test liste/sélection)
 TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test tags GenUI déclaratifs)
+TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C démo contrôles)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
