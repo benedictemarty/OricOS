@@ -61,6 +61,7 @@ TASK_RAD_ID0    = $01545E       ; SP-3.o S.4a : id du 1er radio créé par task_
 TASK_RAD_ID1    = $01545F       ; SP-3.o S.4a : id du 2e radio créé par task_radio (test)
 TASK_TEXT_ID    = $015460       ; SP-3.o S.4b : id du champ texte créé par task_text (test)
 TASK_LIST_ID    = $015461       ; SP-3.o S.4c : id de la liste créée par task_list (test)
+TASK_GENUI_ID   = $015462       ; SP-3.o S.5 : id du 1er contrôle déclaré par task_genui (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -497,6 +498,12 @@ GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
 GU_TITLE          = $02         ; suivi d'une chaîne INLINE null-terminée (AVANT GU_WINDOW)
 GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 + label INLINE null-term
 GU_VIEW           = $04         ; suivi de relx16 rely16 relw16 relh16 + max8 (GenView, SP-3.o S.3c)
+; SP-3.o S.5 : tags déclaratifs des contrôles « valeur/saisie » (rect 8 o + extra).
+GU_CHECK          = $05         ; + relx16 rely16 relw16 relh16 + value8 (checkbox)
+GU_SCROLL_V       = $06         ; + relx16 rely16 relw16 relh16 + max8 (ascenseur vertical)
+GU_SCROLL_H       = $07         ; + relx16 rely16 relw16 relh16 + max8 (ascenseur horizontal)
+GU_RADIO          = $08         ; + relx16 rely16 relw16 relh16 + value8 + group8 (radio)
+GU_TEXT           = $09         ; + relx16 rely16 relw16 relh16 + maxlen8 (champ texte)
 ; Buffer de staging bank 1 : les chaînes inline (dans le bank de l'app) sont
 ; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
@@ -783,6 +790,7 @@ TC_VIEWAPP_FLAG  = $01EFF0        ; SP-3.o S.3c : $A5 → spawn bundle_view (app
 TC_RAD_FLAG      = $01EE00        ; SP-3.o S.4a : $A5 → crée task_radio (test radios/exclusion)
 TC_TEXT_FLAG     = $01EE10        ; SP-3.o S.4b : $A5 → crée task_text (test champ texte éditable)
 TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test liste/sélection)
+TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test tags GenUI déclaratifs)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

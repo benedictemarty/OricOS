@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S5] - 2026-05-26
+
+### SP-3.o S.5 — Tags GenUI déclaratifs des contrôles
+
+#### Added
+- **Tags `GU_CHECK`($05)/`GU_SCROLL_V`($06)/`GU_SCROLL_H`($07)/`GU_RADIO`($08)/
+  `GU_TEXT`($09)** dans `sys_ui_define` : les contrôles valeur/saisie sont
+  désormais déclarables dans une table GenUI (comme `GU_BUTTON`/`GU_VIEW`).
+  Format : rect (relx16 rely16 relw16 relh16) + extra (value/max/group/maxlen 8 o).
+- Helpers **`_sud_rect`** (lit le rect 8 o → WM_ARG_*) et **`_sud_attach`**
+  (attache le widget à DLG_WIN si valide) pour factoriser les handlers (compacité).
+- **`task_genui`** (gated `TC_GENUI_FLAG` $01EE30) : déclare fenêtre + checkbox +
+  radio + ascenseur V + champ texte via une table GenUI bank 1. Id du 1er
+  contrôle exposé en `TASK_GENUI_ID` ($015462).
+- **SDK** : defines `GU_CHECK`/`GU_SCROLL_V`/`GU_SCROLL_H`/`GU_RADIO`/`GU_TEXT`.
+
+#### Deferred
+- `GU_LIST` : nécessite un pointeur vers le blob d'items, qui réside dans la bank
+  de l'app (pas bank 1) → mécanisme de copie à concevoir. Reporté.
+
 ## [Unreleased+SP-3.o-S4c] - 2026-05-26
 
 ### SP-3.o S.4c — Liste sélectionnable (GenList)

@@ -611,6 +611,45 @@ list_loop:
         cop #$AA
         bra list_loop
 
+; ─── Table GenUI démo pour task_genui (SP-3.o S.5) ───────────────────────────
+; Fenêtre + checkbox(coché) + radio(grp 2) + ascenseur V + champ texte.
+genui_table:
+        .byte GU_WINDOW
+        .word 220, 210, 160, 120
+        .byte GU_CHECK
+        .word 12, 14, 20, 20
+        .byte $01                       ; value = 1 (coché)
+        .byte GU_RADIO
+        .word 12, 40, 20, 20
+        .byte $00, $02                  ; value = 0, group = 2
+        .byte GU_SCROLL_V
+        .word 130, 14, 12, 90
+        .byte 50                        ; max
+        .byte GU_TEXT
+        .word 12, 66, 100, 20
+        .byte 14                        ; maxlen
+        .byte GU_END
+
+; ─── task_genui_entry : déclare une UI via GenUI (tags S.5) + MainLoop ───────
+; Pointe $D0 sur genui_table (bank 1) et appelle SYS_UI_DEFINE : le kernel crée
+; la fenêtre + les 4 contrôles déclarés. Le test vérifie leur type/valeur initiale.
+.export task_genui_entry
+task_genui_entry:
+        lda #<genui_table
+        sta $D0
+        lda #>genui_table
+        sta $D1
+        lda #$01
+        sta $D2                 ; pointeur 24-bit $01:genui_table
+        lda WIDGET_COUNT
+        sta TASK_GENUI_ID       ; id du 1er contrôle déclaré (checkbox)
+        lda #$18                ; SYS_UI_DEFINE
+        cop #$AA
+genui_loop:
+        lda #$17                ; SYS_MAIN_LOOP
+        cop #$AA
+        bra genui_loop
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

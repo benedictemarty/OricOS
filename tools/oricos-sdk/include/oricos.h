@@ -70,6 +70,11 @@
 #define GU_TITLE            2   /* + ptr16 (AVANT GU_WINDOW) */
 #define GU_BUTTON           3   /* + relx16 rely16 relw16 relh16 */
 #define GU_VIEW             4   /* + relx16 rely16 relw16 relh16 max8 (GenView) */
+#define GU_CHECK            5   /* + relx16 rely16 relw16 relh16 value8 (checkbox) */
+#define GU_SCROLL_V         6   /* + relx16 rely16 relw16 relh16 max8 (ascenseur V) */
+#define GU_SCROLL_H         7   /* + relx16 rely16 relw16 relh16 max8 (ascenseur H) */
+#define GU_RADIO            8   /* + relx16 rely16 relw16 relh16 value8 group8 (radio) */
+#define GU_TEXT             9   /* + relx16 rely16 relw16 relh16 maxlen8 (champ texte) */
 
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0

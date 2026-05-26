@@ -702,6 +702,15 @@ _skip_task_text:
         lda #$00
         jsr kernel_task_create
 _skip_task_list:
+        ; SP-3.o S.5 : task_genui (gated TC_GENUI_FLAG) — tags GenUI déclaratifs.
+        lda TC_GENUI_FLAG
+        cmp #$A5
+        bne _skip_task_genui
+        ldx #<task_genui_entry
+        ldy #>task_genui_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_genui:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

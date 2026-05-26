@@ -3297,8 +3297,28 @@ sud_n2:
         jmp sud_button
 sud_n2b:
         cmp #GU_VIEW
-        bne sud_n3
+        bne sud_n2c
         jmp sud_view
+sud_n2c:
+        cmp #GU_CHECK
+        bne sud_n2d
+        jmp sud_check
+sud_n2d:
+        cmp #GU_SCROLL_V
+        bne sud_n2e
+        jmp sud_scrollv
+sud_n2e:
+        cmp #GU_SCROLL_H
+        bne sud_n2f
+        jmp sud_scrollh
+sud_n2f:
+        cmp #GU_RADIO
+        bne sud_n2g
+        jmp sud_radio
+sud_n2g:
+        cmp #GU_TEXT
+        bne sud_n3
+        jmp sud_text
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_title:                      ; GU_TITLE + chaîne inline (AVANT GU_WINDOW)
@@ -3445,6 +3465,134 @@ sud_v_add:
         phy
         jsr kernel_wm_add_widget
         ply
+        jmp sud_loop
+
+; ── _sud_rect : lit relx16 rely16 relw16 relh16 → WM_ARG_X/Y/W/H (SP-3.o S.5) ──
+; Entrée : Y pointe sur le tag. Sortie : Y → 1er octet extra (après les 8 o rect).
+_sud_rect:
+        iny
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_W
+        iny
+        lda [$D0],y
+        sta WM_ARG_W+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_H
+        iny
+        lda [$D0],y
+        sta WM_ARG_H+1
+        iny
+        rts
+
+; ── _sud_attach : attache le widget courant à DLG_WIN (si valide) (SP-3.o S.5) ──
+; Préserve Y. WG_TYPE/GFX_COLOR/DP_PCPTR/WG_CB/WM_ARG_* doivent être posés.
+_sud_attach:
+        lda DLG_WIN
+        cmp #$FF
+        beq _sa_skip
+        sta WG_PARENT
+        phy
+        jsr kernel_wm_add_widget
+        ply
+_sa_skip:
+        rts
+
+; ── sud_check : GU_CHECK relx16 rely16 relw16 relh16 + value8 ────────────────
+sud_check:
+        jsr _sud_rect           ; Y → value
+        lda [$D0],y
+        sta WG_CB               ; value (+14)
+        iny
+        lda #$00
+        sta WG_CB+1
+        ldx #WG_COL_UNCHECKED
+        lda WG_CB
+        beq sud_ck_col
+        ldx #WG_COL_CHECKED
+sud_ck_col:
+        stx GFX_COLOR
+        lda #WG_TYPE_CHECK
+        sta WG_TYPE
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        jsr _sud_attach
+        jmp sud_loop
+
+; ── sud_radio : GU_RADIO relx16 rely16 relw16 relh16 + value8 + group8 ───────
+sud_radio:
+        jsr _sud_rect           ; Y → value
+        lda [$D0],y
+        sta WG_CB               ; value (+14)
+        iny
+        lda [$D0],y
+        sta WG_CB+1             ; group (+15)
+        iny
+        ldx #WG_COL_UNCHECKED
+        lda WG_CB
+        beq sud_rd_col
+        ldx #WG_COL_CHECKED
+sud_rd_col:
+        stx GFX_COLOR
+        lda #WG_TYPE_RADIO
+        sta WG_TYPE
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        jsr _sud_attach
+        jmp sud_loop
+
+; ── sud_scrollv / sud_scrollh : GU_SCROLL_* relx16..relh16 + max8 ────────────
+sud_scrollv:
+        lda #WG_TYPE_SCROLL_V
+        bra sud_scroll_common
+sud_scrollh:
+        lda #WG_TYPE_SCROLL_H
+sud_scroll_common:
+        sta WG_TYPE
+        jsr _sud_rect           ; Y → max
+        lda #$00
+        sta WG_CB               ; value = 0 (+14)
+        lda [$D0],y
+        sta WG_CB+1             ; max (+15)
+        iny
+        lda #WG_COL_TRACK
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        jsr _sud_attach
+        jmp sud_loop
+
+; ── sud_text : GU_TEXT relx16 rely16 relw16 relh16 + maxlen8 ─────────────────
+sud_text:
+        jsr _sud_rect           ; Y → maxlen
+        lda #$00
+        sta WG_CB               ; value (ignoré, mis à 0 par add_widget pour TEXT)
+        lda [$D0],y
+        sta WG_CB+1             ; maxlen (+15)
+        iny
+        lda #$0F
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1          ; strptr auto-câblé par kernel_wm_add_widget
+        lda #WG_TYPE_TEXT
+        sta WG_TYPE
+        jsr _sud_attach
         jmp sud_loop
 
 ; ── _sud_copy_inline : copie la chaîne inline [$D0],y (bank app) → UI_STR_BUF ──
