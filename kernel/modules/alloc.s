@@ -327,6 +327,43 @@ task_chk_entry:
 chk_label:
         .byte "Opt", $00
 
+; ─── task_scr_entry : crée un ascenseur vertical + boucle MainLoop (SP-3.o S.2) ──
+; Ajoute un scrollbar V à la fenêtre 0 (rel 60,14,12×60, max=40), puis tourne une
+; boucle MainLoop (mode app-driven → le drag du thumb est actif). Le test injecte
+; clic+drag et lit la value du widget. Ne sort pas (le test lit l'état).
+.export task_scr_entry
+task_scr_entry:
+        lda #$00                ; parent = fenêtre 0
+        sta WG_PARENT
+        lda #WG_TYPE_SCROLL_V
+        sta WG_TYPE
+        lda #WG_COL_TRACK
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1          ; pas de label
+        lda #$00
+        sta WG_CB               ; value init 0 (+14)
+        lda #40
+        sta WG_CB+1             ; max = 40 (+15)
+        rep #$20
+        lda #60                 ; rel x
+        sta WM_ARG_X
+        lda #14                 ; rel y
+        sta WM_ARG_Y
+        lda #12                 ; w
+        sta WM_ARG_W
+        lda #60                 ; h (longueur gouttière)
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_SCR_ID         ; id du scrollbar
+        jsr kernel_wm_add_widget
+scr_loop:
+        lda #$17                ; SYS_MAIN_LOOP (bloque ; le drag met à jour la value)
+        cop #$AA
+        bra scr_loop            ; boucle (le test lit la value du widget)
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

@@ -402,8 +402,15 @@ _wdws_draw:
         sta WM_ARG_H
         sep #$20
         lda WG_TYPE
-        bne _wdws_btn
+        beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_SCROLL_V    ; >= 3 → ascenseur (SCROLL_V/H)
+        bcs _wdws_scroll
+        bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
+_wdws_label:
         jsr kernel_tk_label
+        bra _wdws_next
+_wdws_scroll:
+        jsr kernel_tk_scrollbar  ; SP-3.o S.2 : gouttière + thumb
         bra _wdws_next
 _wdws_btn:
         lda WG_I
@@ -423,6 +430,85 @@ _wdws_next:
         sta WG_I
         jmp _wdws_loop
 _wdws_done:
+        rts
+
+; ── kernel_tk_scrollbar : dessine un ascenseur (SP-3.o S.2) ──────────────────
+; In : WM_ARG_X/Y/W/H = rect ABSOLU de la gouttière, WG_TYPE = orientation
+; (SCROLL_V/H), WG_I = index widget (pour relire value en +14). Dessine la
+; gouttière (track color) puis le thumb (position = value le long de la gouttière)
+; sur le framebuffer XVGA ($100000). Clobbe A, X, temps TK_*/DP_TMP.
+kernel_tk_scrollbar:
+        ; sauve le rect gouttière
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. gouttière (rect complet, couleur track)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI          ; base = framebuffer XVGA $100000
+        lda #WG_COL_TRACK
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. thumb : relit value (+14) du widget WG_I
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+WG_OFF_VALUE,x
+        sta TK_BTN_PRESSED       ; réutilise comme temp « offset value » (1B)
+        lda WG_TYPE
+        cmp #WG_TYPE_SCROLL_H
+        beq _tks_h
+        ; vertical : thumb (TK_X, TK_Y+value, TK_W, THUMB_SZ)
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_BTN_PRESSED
+        and #$00FF
+        clc
+        adc TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda #SCROLL_THUMB_SZ
+        sta WM_ARG_H
+        sep #$20
+        bra _tks_fill
+_tks_h:
+        ; horizontal : thumb (TK_X+value, TK_Y, THUMB_SZ, TK_H)
+        rep #$20
+        lda TK_BTN_PRESSED
+        and #$00FF
+        clc
+        adc TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda #SCROLL_THUMB_SZ
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+_tks_fill:
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #WG_COL_THUMB
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -785,7 +871,11 @@ _wh_used:
         lda WIDGET_TABLE+2,X
         cmp #WG_TYPE_BUTTON
         beq _wh_isbtn
-        cmp #WG_TYPE_CHECK       ; SP-3.o : checkbox aussi cliquable
+        cmp #WG_TYPE_CHECK       ; SP-3.o S.1 : checkbox cliquable
+        beq _wh_isbtn
+        cmp #WG_TYPE_SCROLL_V    ; SP-3.o S.2 : ascenseurs cliquables
+        beq _wh_isbtn
+        cmp #WG_TYPE_SCROLL_H
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

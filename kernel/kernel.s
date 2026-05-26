@@ -51,6 +51,7 @@ TASK_DLG_RES    = $015457       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_
 TASK_ALERT_RES  = $015459       ; SP-3.n G.6 : retour SYS_ALERT lu par task_alert (test)
 TASK_CHK_VAL    = $01545A       ; SP-3.o S.1 : valeur checkbox lue par task_chk (test)
 TASK_CHK_ID     = $01545B       ; SP-3.o S.1 : id du widget checkbox créé (test)
+TASK_SCR_ID     = $01545C       ; SP-3.o S.2 : id du scrollbar créé par task_scr (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -478,7 +479,10 @@ GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 + label I
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
 ; persistante à la fois (réutilisé après upload du titre en SDRAM).
 UI_STR_BUF        = $015580      ; 32 octets
-.assert UI_STR_BUF + 32 <= $015600, error, "UI_STR_BUF recouvre IRQ_HANDLER ($5600)"
+; SP-3.o S.2 : id du scrollbar en cours de drag (thumb), $FF = aucun. Persiste
+; entre les appels MainLoop (le drag couvre down→moved*→up).
+SCROLL_DRAG_ID    = $0155A0
+.assert SCROLL_DRAG_ID + 1 <= $015600, error, "scroll/UI buf recouvre IRQ_HANDLER ($5600)"
 ; Tags de la command table DoDlgBox (SP-3.n G.5, SYS_DO_DLGBOX $19, style GEOS).
 ; Le dialogue EST une donnée : l'app passe la table, le kernel l'exécute modalement.
 DB_END            = $00         ; fin de table
@@ -638,6 +642,11 @@ WIDGET_ENTSZ     = 16
 WG_TYPE_LABEL    = $00
 WG_TYPE_BUTTON   = $01
 WG_TYPE_CHECK    = $02           ; SP-3.o S.1 : checkbox (GenBoolean) ; value en +14
+WG_TYPE_SCROLL_V = $03           ; SP-3.o S.2 : ascenseur vertical ; value(+14)/max(+15)
+WG_TYPE_SCROLL_H = $04           ; SP-3.o S.2 : ascenseur horizontal
+SCROLL_THUMB_SZ  = 16            ; taille du thumb (px) le long de la gouttière
+WG_COL_TRACK     = $08           ; gouttière : darkgray
+WG_COL_THUMB     = $0F           ; thumb : blanc
 ; SP-3.o S.1 : API valeur de contrôle. Pour les contrôles « valeur » (check,
 ; scrollbar…), le champ callback du record widget (+14/+15) est réutilisé comme
 ; value(+14)/max(+15) — exclusif du callback (réservé aux boutons). Le rendu
@@ -733,6 +742,7 @@ TC_DLG_FLAG      = $01EF90        ; SP-3.n G.5 : $A5 → crée task_dlg (test SY
 TC_ALERT_FLAG    = $01EFA0        ; SP-3.n G.6 : $A5 → crée task_alert (test SYS_ALERT)
 TC_GUIAPP_FLAG   = $01EFB0        ; SP-3.n G.7 : $A5 → spawn bundle_gui (app C démo GUI)
 TC_CHK_FLAG      = $01EFC0        ; SP-3.o S.1 : $A5 → crée task_chk (test API valeur/checkbox)
+TC_SCR_FLAG      = $01EFD0        ; SP-3.o S.2 : $A5 → crée task_scr (test scrollbar/drag)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

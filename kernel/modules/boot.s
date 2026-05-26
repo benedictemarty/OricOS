@@ -657,6 +657,15 @@ _skip_task_alert:
         lda #$00
         jsr kernel_task_create
 _skip_task_chk:
+        ; SP-3.o S.2 : task_scr (gated TC_SCR_FLAG) — ascenseur + drag.
+        lda TC_SCR_FLAG
+        cmp #$A5
+        bne _skip_task_scr
+        ldx #<task_scr_entry
+        ldy #>task_scr_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_scr:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

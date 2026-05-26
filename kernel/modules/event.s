@@ -30,7 +30,10 @@ kernel_event_init:
         sta EVENT_RING_COUNT
         sta EVENT_WAITER         ; G.2 : aucune tâche en attente
         sta WM_APP_DRIVEN        ; G.3c : 0 = shell (auto-close) ; $A5 si une app
-        rts                      ;        pilote SYS_MAIN_LOOP
+                                 ;        pilote SYS_MAIN_LOOP
+        lda #$FF
+        sta SCROLL_DRAG_ID       ; SP-3.o S.2 : aucun ascenseur en drag
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_event_wait — bloque la tâche courante jusqu'à un événement (G.5)

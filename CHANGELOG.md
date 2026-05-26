@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+
+## [Unreleased+SP-3.o-S2] - 2026-05-26
+
+### SP-3.o S.2 — ascenseurs (scrollbars V/H) + thumb-drag
+
+#### Added
+- **`WG_TYPE_SCROLL_V`/`_H`** : ascenseurs. value(+14)/max(+15). Rendu
+  `kernel_tk_scrollbar` (gouttière darkgray + thumb blanc positionné à `value`
+  le long de la gouttière), dispatché dans `_wm_draw_widgets_for_slot`.
+- **Thumb-drag dans le MainLoop** : `SCROLL_DRAG_ID` (état entre appels) ;
+  `_ml_classify` — clic sur scrollbar (`mlc_ctl_scroll`) arme le drag + pose la
+  value ; `EV_MOUSE_MOVED` met à jour la value ; `EV_MOUSE_UP` termine. value =
+  `clamp(souris - début gouttière, 0, max)` (`_wm_scroll_update`) → `MSG_CONTROL`.
+- **`task_scr`** (gated TC_SCR_FLAG) : scrollbar V + boucle MainLoop.
+
+#### Fixed
+- **Conflit drag fenêtre ↔ contrôle** : `wm_step_arm_drag` teste désormais le
+  widget AVANT d'armer le drag de fenêtre. Un clic sur un contrôle (scrollbar,
+  bouton, checkbox) **n'arme plus** le drag de fenêtre (sinon draguer un thumb
+  déplaçait toute la fenêtre, figeant la value).
+
+Validé : `test_oricos_scrollbar` — clic à y=140 (value=26) puis drag à y=130
+(value=16, la value suit la souris). 576 tests verts. Suite : S.3 GenView.
+
 ## [Unreleased+SP-3.o-S1] - 2026-05-26
 
 ### SP-3.o S.1 — API valeur de contrôle + checkbox (GenBoolean)

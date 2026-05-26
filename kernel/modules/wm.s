@@ -1970,14 +1970,23 @@ wm_step_modal_ok:
         jsr kernel_wm_draw_cursor
         rts
 wm_step_arm_drag:
-        lda #$01                 ; clic intérieur → arme le drag
-        sta WM_DRAG_ARMED
         lda #$00
         sta WM_RESIZE_ARMED
-        ; v0.3 : bouton sous le curseur → WIDGET_ACTIVE (sinon $FF).
-        jsr _wm_widget_hit
-        ; v0.4 : si un bouton est actif et a un callback non nul, l'invoquer.
-        jsr _wm_invoke_active_cb
+        ; SP-3.o : tester d'abord si un contrôle est sous le curseur. Si oui, le
+        ; clic est POUR le contrôle (toggle/scroll/bouton) → on N'ARME PAS le drag
+        ; de fenêtre (sinon un drag de scrollbar déplacerait la fenêtre entière).
+        jsr _wm_widget_hit       ; WIDGET_ACTIVE = contrôle touché ou $FF
+        lda WIDGET_ACTIVE
+        cmp #$FF
+        bne wm_step_on_control
+        lda #$01                 ; clic intérieur (pas un contrôle) → arme le drag
+        sta WM_DRAG_ARMED
+        bra wm_step_arm_done
+wm_step_on_control:
+        lda #$00
+        sta WM_DRAG_ARMED        ; clic sur un contrôle → pas de drag fenêtre
+        jsr _wm_invoke_active_cb ; action shell : bouton cb / checkbox toggle
+wm_step_arm_done:
         ; Focus changé → desktop modifié → full-redraw + curseur.
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
@@ -2052,6 +2061,85 @@ _ctog_unchecked:
 _ctog_setcol:
         sta WIDGET_TABLE+3,x     ; couleur du widget
         jsr kernel_wm_redraw     ; reflète visuellement le nouvel état
+        rts
+
+; ── _wm_scroll_update : met à jour la value de l'ascenseur SCROLL_DRAG_ID ─────
+; (SP-3.o S.2). value = clamp(position souris - début de la gouttière, 0, max).
+; V : MOUSE_Y - abs_y ; H : MOUSE_X - abs_x. Stocke value (+14), redraw.
+; Temps : WG_RELX/Y (abs), WG_RELW (offset 16-bit), WG_RELH (max). Clobbe A,X,Y.
+_wm_scroll_update:
+        lda SCROLL_DRAG_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; X = id*16
+        lda WIDGET_TABLE+2,x
+        sta WG_TYPE              ; orientation
+        lda WIDGET_TABLE+WG_OFF_MAX,x
+        sta WG_RELH              ; max (low byte de WG_RELH suffit)
+        lda WIDGET_TABLE+1,x
+        sta WG_PARENT
+        rep #$20
+        lda WIDGET_TABLE+4,x
+        sta WG_RELX
+        lda WIDGET_TABLE+6,x
+        sta WG_RELY
+        sep #$20
+        lda WG_PARENT
+        jsr kernel_wm_offset     ; X = parent*10 (clobbe X)
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,x
+        clc
+        adc WG_RELX
+        sta WG_RELX              ; abs_x
+        lda WM_TABLE+WM_OFF_Y,x
+        clc
+        adc WG_RELY
+        sta WG_RELY              ; abs_y
+        ; offset = (V) MOUSE_Y - abs_y  |  (H) MOUSE_X - abs_x   (16-bit signé)
+        sep #$20
+        lda WG_TYPE
+        cmp #WG_TYPE_SCROLL_H
+        beq _scu_h
+        rep #$20
+        lda MOUSE_Y
+        sec
+        sbc WG_RELY
+        sta WG_RELW              ; offset
+        sep #$20
+        bra _scu_clamp
+_scu_h:
+        rep #$20
+        lda MOUSE_X
+        sec
+        sbc WG_RELX
+        sta WG_RELW              ; offset
+        sep #$20
+_scu_clamp:
+        ; clamp offset [0, max] → A = value
+        lda WG_RELW+1
+        bmi _scu_zero            ; offset négatif (souris avant la gouttière)
+        bne _scu_max             ; offset > 255 → max
+        lda WG_RELW              ; 0..255
+        cmp WG_RELH              ; >= max ?
+        bcc _scu_store
+_scu_max:
+        lda WG_RELH              ; clamp à max
+        bra _scu_store
+_scu_zero:
+        lda #$00
+_scu_store:
+        pha                      ; value
+        lda SCROLL_DRAG_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        pla
+        sta WIDGET_TABLE+WG_OFF_VALUE,x
+        jsr kernel_wm_redraw
         rts
 
 ; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
@@ -2832,11 +2920,34 @@ _ml_classify:
         beq mlc_key
         cmp #EV_MOUSE_DOWN
         beq mlc_mdown
-        lda #MSG_NULL           ; up/moved/null → pas de message
+        cmp #EV_MOUSE_MOVED
+        beq mlc_moved
+        cmp #EV_MOUSE_UP
+        beq mlc_up
+        lda #MSG_NULL
         rts
 mlc_key:
         lda #MSG_KEY            ; keycode déjà en $D1
         rts
+mlc_moved:                      ; SP-3.o S.2 : si drag d'ascenseur en cours → maj value
+        lda SCROLL_DRAG_ID
+        cmp #$FF
+        bne mlc_moved_go
+        jmp mlc_null            ; pas de drag → événement ignoré
+mlc_moved_go:
+        jsr _wm_scroll_update
+        lda SCROLL_DRAG_ID
+        sta $DA
+        lda #MSG_CONTROL
+        rts
+mlc_up:                         ; fin de drag d'ascenseur
+        lda SCROLL_DRAG_ID
+        cmp #$FF
+        beq mlc_up_none
+        lda #$FF
+        sta SCROLL_DRAG_ID
+mlc_up_none:
+        jmp mlc_null            ; relâché → pas de message supplémentaire
 mlc_mdown:
         ; G.3c : clic dans la barre de menu (y < MENU_BAR_H) → MSG_MENU.
         lda $D7                 ; where_y high byte
@@ -2876,7 +2987,7 @@ mlc_md_notmenu:
         rts
 mlc_control:
         sta $DA                 ; $DA = id contrôle (index widget) ; l'app réagit
-        ; SP-3.o : si c'est une checkbox, bascule sa value (GenBoolean) avant le msg.
+        ; SP-3.o : action selon le type du contrôle cliqué.
         pha                     ; sauve l'id
         asl a
         asl a
@@ -2885,10 +2996,22 @@ mlc_control:
         tax
         lda WIDGET_TABLE+2,x    ; type
         cmp #WG_TYPE_CHECK
-        bne mlc_ctl_ret
+        beq mlc_ctl_check
+        cmp #WG_TYPE_SCROLL_V
+        beq mlc_ctl_scroll
+        cmp #WG_TYPE_SCROLL_H
+        beq mlc_ctl_scroll
+        bra mlc_ctl_ret         ; bouton : rien de plus
+mlc_ctl_check:
         pla                     ; id
         pha
         jsr kernel_ctl_toggle   ; bascule value + couleur + redraw
+        bra mlc_ctl_ret
+mlc_ctl_scroll:                 ; S.2 : arme le drag + positionne la value au clic
+        pla                     ; id
+        pha
+        sta SCROLL_DRAG_ID
+        jsr _wm_scroll_update
 mlc_ctl_ret:
         pla                     ; jette l'id sauvé
         lda #MSG_CONTROL
