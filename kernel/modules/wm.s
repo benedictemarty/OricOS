@@ -2206,7 +2206,8 @@ _wte_store:
         tax
         lda TEXT_TMP_LEN
         sta WIDGET_TABLE+14,x    ; length mise à jour
-        jsr kernel_wm_redraw
+        lda TEXT_FOCUS_ID        ; SP-3.o S.7 : redraw ciblé du seul champ (pas de flicker)
+        jsr kernel_wm_redraw_widget
 _wte_done:
         rts
 
@@ -2342,7 +2343,10 @@ _scu_store:
         tax
         pla
         sta WIDGET_TABLE+WG_OFF_VALUE,x
-        jsr kernel_wm_redraw
+        ; SP-3.o S.7 : redraw CIBLÉ du seul ascenseur (pas de clear desktop) →
+        ; plus de scintillement plein écran pendant le drag.
+        lda SCROLL_DRAG_ID
+        jsr kernel_wm_redraw_widget
         rts
 
 ; ── _wm_chrome_hit : teste si (MOUSE_X,Y) touche un bouton chrome de WIN_SLOT ──
@@ -3238,7 +3242,7 @@ mlc_ctl_text:
         pla                     ; id
         pha
         sta TEXT_FOCUS_ID       ; ce champ prend le focus clavier
-        jsr kernel_wm_redraw    ; affiche le curseur
+        jsr kernel_wm_redraw_widget  ; SP-3.o S.7 : affiche le curseur (redraw ciblé)
         bra mlc_ctl_ret
 mlc_ctl_list:
         pla                     ; id

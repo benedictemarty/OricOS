@@ -623,7 +623,34 @@ _wdws_check_parent:
         beq _wdws_draw
         jmp _wdws_next
 _wdws_draw:
-        ; dessiner ce widget
+        jsr _wm_draw_widget_body   ; dessine ce widget (X = offset, WG_I/WIN_SLOT posés)
+        jmp _wdws_next
+
+; ── kernel_wm_redraw_widget : redraw CIBLÉ d'un seul widget (A = index) ───────
+; (SP-3.o S.7) Ne touche QUE la zone du contrôle (pas de clear desktop) → évite
+; le scintillement plein écran pendant le drag d'ascenseur / les maj de valeur.
+; Le contrôle (scrollbar/view/checkbox…) repeint entièrement sa propre zone.
+.export kernel_wm_redraw_widget
+kernel_wm_redraw_widget:
+        sta WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+0,X
+        and #$01
+        beq _wrw_done           ; slot libre → rien
+        lda WIDGET_TABLE+1,X
+        sta WIN_SLOT
+        jsr _wm_draw_widget_body
+_wrw_done:
+        rts
+
+; ── _wm_draw_widget_body : dessine le widget d'offset X (WG_I/WIN_SLOT posés) ──
+; Lit type/couleur/rect rel/strptr, calcule la position absolue, puis dispatch
+; vers le rendu du type. Chaque handler se termine par rts. Clobbe A,X,Y,WG_*.
+_wm_draw_widget_body:
         lda WIDGET_TABLE+2,X
         sta WG_TYPE
         lda WIDGET_TABLE+3,X
@@ -676,19 +703,19 @@ _wdws_draw:
         bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
 _wdws_label:
         jsr kernel_tk_label
-        bra _wdws_next
+        rts
 _wdws_text:
         jsr kernel_tk_text_field ; SP-3.o S.4b : boîte + texte + curseur si focus
-        bra _wdws_next
+        rts
 _wdws_list:
         jsr kernel_tk_list       ; SP-3.o S.4c : boîte + items + ligne sélectionnée
-        bra _wdws_next
+        rts
 _wdws_scroll:
         jsr kernel_tk_scrollbar  ; SP-3.o S.2 : gouttière + thumb
-        bra _wdws_next
+        rts
 _wdws_view:
         jsr kernel_tk_view       ; SP-3.o S.3 : viewport + scrollbar intégré
-        bra _wdws_next
+        rts
 _wdws_btn:
         lda WG_I
         cmp WIDGET_ACTIVE
@@ -701,6 +728,7 @@ _wdws_btn_normal:
         sta TK_BTN_PRESSED
 _wdws_btn_draw:
         jsr kernel_tk_button
+        rts
 _wdws_next:
         lda WG_I
         inc a

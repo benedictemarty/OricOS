@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S7-redraw] - 2026-05-26
+
+### SP-3.o S.7 — Redraw ciblé d'un contrôle (fix scintillement)
+
+#### Fixed
+- **Scintillement plein écran** au drag d'ascenseur et à l'édition de champ texte :
+  `_wm_scroll_update` et `_wm_text_edit` (+ prise de focus `mlc_ctl_text`)
+  appelaient `kernel_wm_redraw` (efface tout le desktop via `kernel_gfx_clear`
+  puis repeint icônes + toutes les fenêtres + widgets) à **chaque** événement
+  souris/clavier → flash visible plein écran.
+
+#### Changed
+- **`kernel_wm_redraw_widget` (A = index widget)** : nouveau point d'entrée qui
+  repeint **uniquement** la zone du contrôle visé (le contrôle repeint
+  entièrement sa propre région : track+thumb pour un ascenseur, box+texte+curseur
+  pour un champ, etc.). Refactor de la boucle de dessin : le corps par-widget de
+  `_wm_draw_widgets_for_slot` est extrait en `_wm_draw_widget_body` (réutilisé par
+  la boucle complète ET par le redraw ciblé). Comportement inchangé (584 verts).
+
 ## [Unreleased+Sprint4-clock] - 2026-05-26
 
 ### Sprint 4 — Première vraie app userland C : clock
