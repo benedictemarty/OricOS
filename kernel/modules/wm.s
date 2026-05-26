@@ -3001,6 +3001,8 @@ mlc_control:
         beq mlc_ctl_scroll
         cmp #WG_TYPE_SCROLL_H
         beq mlc_ctl_scroll
+        cmp #WG_TYPE_VIEW       ; SP-3.o S.3 : GenView → scroll vertical (barre intégrée)
+        beq mlc_ctl_scroll
         bra mlc_ctl_ret         ; bouton : rien de plus
 mlc_ctl_check:
         pla                     ; id

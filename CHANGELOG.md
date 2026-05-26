@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+
+## [Unreleased+SP-3.o-S3] - 2026-05-26
+
+### SP-3.o S.3 — GenView (viewport scrollable managé)
+
+#### Added
+- **`WG_TYPE_VIEW`** : GenView = viewport + scrollbar **intégré** (bord droit).
+  scroll_y(+14)/max(+15). Rendu `kernel_tk_view` : corps (lightgray) + gouttière
+  (darkgray, bord droit `VIEW_SB_W`=12) + thumb (blanc) à `scroll_y`.
+- **Drag du view** : `mlc_control` traite VIEW comme un scroll vertical (réutilise
+  `SCROLL_DRAG_ID` + `_wm_scroll_update`) → `scroll_y = clamp(souris - haut viewport,
+  0, max)` → `MSG_CONTROL`. L'app lit `scroll_y` via `SYS_CTL_GET_VALUE` et redessine
+  son contenu décalé (modèle GeoWorks : le système scrolle, l'app peint).
+- **`task_view`** (gated TC_VIEW_FLAG) : crée sa fenêtre + un GenView + boucle MainLoop.
+
+Validé : `test_oricos_genview` — clic à y=234 (scroll_y=20) puis drag à y=244
+(scroll_y=30, le scroll suit). 577 tests verts. Reste S.3c (tag GU_VIEW déclaratif
++ démo C qui redessine son contenu) ; thumb proportionnel = polish.
+
 ## [Unreleased+SP-3.o-S2] - 2026-05-26
 
 ### SP-3.o S.2 — ascenseurs (scrollbars V/H) + thumb-drag

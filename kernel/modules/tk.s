@@ -403,7 +403,9 @@ _wdws_draw:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
-        cmp #WG_TYPE_SCROLL_V    ; >= 3 → ascenseur (SCROLL_V/H)
+        cmp #WG_TYPE_VIEW        ; 5 = GenView
+        beq _wdws_view
+        cmp #WG_TYPE_SCROLL_V    ; 3/4 → ascenseur (SCROLL_V/H)
         bcs _wdws_scroll
         bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
 _wdws_label:
@@ -411,6 +413,9 @@ _wdws_label:
         bra _wdws_next
 _wdws_scroll:
         jsr kernel_tk_scrollbar  ; SP-3.o S.2 : gouttière + thumb
+        bra _wdws_next
+_wdws_view:
+        jsr kernel_tk_view       ; SP-3.o S.3 : viewport + scrollbar intégré
         bra _wdws_next
 _wdws_btn:
         lda WG_I
@@ -506,6 +511,102 @@ _tks_fill:
         sta GFX_BASE_MID
         lda #$10
         sta GFX_BASE_HI
+        lda #WG_COL_THUMB
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        rts
+
+; ── kernel_tk_view : dessine un GenView (SP-3.o S.3) ─────────────────────────
+; In : WM_ARG = rect ABSOLU du viewport, WG_I = index widget (scroll_y en +14).
+; Dessine : corps (lightgray, largeur W-VIEW_SB_W) + barre intégrée bord droit
+; (gouttière darkgray + thumb blanc à Y+scroll_y). L'app peint son contenu par
+; dessus. Clobbe A, X, temps TK_*.
+kernel_tk_view:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. corps (X, Y, W-VIEW_SB_W, H)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sec
+        sbc #VIEW_SB_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #WG_COL_VIEW_BODY
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. gouttière (X+W-VIEW_SB_W, Y, VIEW_SB_W, H)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda TK_X
+        clc
+        adc TK_W
+        sec
+        sbc #VIEW_SB_W
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda #VIEW_SB_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #WG_COL_TRACK
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 3. thumb (X+W-VIEW_SB_W, Y+scroll_y, VIEW_SB_W, THUMB_SZ)
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+WG_OFF_VALUE,x   ; scroll_y (clampé par le drag, 8-bit)
+        sta TK_BTN_PRESSED                 ; temp
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        rep #$20
+        lda TK_X
+        clc
+        adc TK_W
+        sec
+        sbc #VIEW_SB_W
+        sta WM_ARG_X
+        lda TK_BTN_PRESSED
+        and #$00FF
+        clc
+        adc TK_Y
+        sta WM_ARG_Y
+        lda #VIEW_SB_W
+        sta WM_ARG_W
+        lda #SCROLL_THUMB_SZ
+        sta WM_ARG_H
+        sep #$20
         lda #WG_COL_THUMB
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
@@ -876,6 +977,8 @@ _wh_used:
         cmp #WG_TYPE_SCROLL_V    ; SP-3.o S.2 : ascenseurs cliquables
         beq _wh_isbtn
         cmp #WG_TYPE_SCROLL_H
+        beq _wh_isbtn
+        cmp #WG_TYPE_VIEW        ; SP-3.o S.3 : GenView cliquable (barre intégrée)
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

@@ -364,6 +364,62 @@ scr_loop:
         cop #$AA
         bra scr_loop            ; boucle (le test lit la value du widget)
 
+; ─── task_view_entry : crée un GenView + boucle MainLoop (SP-3.o S.3) ─────────
+; Ajoute un GenView à la fenêtre 0 (rel 20,20,120×60, scroll max=40) puis tourne
+; une boucle MainLoop. Le test drague le view → scroll_y suit (lu en +14).
+.export task_view_entry
+task_view_entry:
+        ; crée sa propre fenêtre (250,200,150,90) pour éviter tout chevauchement
+        ; avec les widgets de la fenêtre 0.
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        rep #$20
+        lda #250
+        sta WM_ARG_X
+        lda #200
+        sta WM_ARG_Y
+        lda #150
+        sta WM_ARG_W
+        lda #90
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add       ; A = handle (slot)
+        sta WG_PARENT           ; parent du view = cette fenêtre
+        pha
+        jsr kernel_wm_set_focus
+        pla
+        ; ajoute le GenView dans cette fenêtre
+        sta WG_PARENT
+        lda #WG_TYPE_VIEW
+        sta WG_TYPE
+        lda #WG_COL_VIEW_BODY
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB               ; scroll_y init 0 (+14)
+        lda #40
+        sta WG_CB+1             ; scroll max = 40 (+15)
+        rep #$20
+        lda #10                 ; rel x
+        sta WM_ARG_X
+        lda #14                 ; rel y
+        sta WM_ARG_Y
+        lda #120                ; viewport w
+        sta WM_ARG_W
+        lda #60                 ; viewport h
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_VIEW_ID
+        jsr kernel_wm_add_widget
+view_loop:
+        lda #$17                ; SYS_MAIN_LOOP
+        cop #$AA
+        bra view_loop
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

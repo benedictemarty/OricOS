@@ -666,6 +666,15 @@ _skip_task_chk:
         lda #$00
         jsr kernel_task_create
 _skip_task_scr:
+        ; SP-3.o S.3 : task_view (gated TC_VIEW_FLAG) — GenView + scroll.
+        lda TC_VIEW_FLAG
+        cmp #$A5
+        bne _skip_task_view
+        ldx #<task_view_entry
+        ldy #>task_view_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_view:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
