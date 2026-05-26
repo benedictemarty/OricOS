@@ -1122,30 +1122,47 @@ kernel_gfx_fill_rect16:
         lda #GPU_OP_FILL_RECT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        ; Poll busy (timeout 256, cohérent avec les autres helpers GPU — prérequis v0.2 async)
+        ldx #$00
+gfx_fr16_wait:
+        lda GPU_STATUS_IO
+        and #GPU_STATUS_BUSY
+        beq gfx_fr16_done
+        inx
+        bne gfx_fr16_wait
+gfx_fr16_done:
         rts
 
 ; ── kernel_wm_compose : composite les backing stores → framebuffer XVGA (G.4bis) ──
-; Pour chaque fenêtre USED : BLIT son backing store ($06+slot:0000) vers le
-; framebuffer ($100000) à sa position (x,y). dst = $100000 + y*512 + (x>>1) (BPL 512, 4bpp).
-; byte_w = w>>1, byte_h = h (BLIT v0.1 8-bit : w≤510, h≤255). Modèle GrafPort :
-; l'app dessine dans son backing store (coords locales), le compositor le place
-; à l'écran. v1 : recompose complète, pas de clipping z-order (overlap simple).
-; Pré-cond : mode N M=X=1, DBR=0. Clobbers A, X, Y.
+; Itère WM_ZORDER (fond→premier plan) pour respecter le Z-order lors du BLIT.
+; Seules les fenêtres USED|VISIBLE sont composées (les fenêtres minimisées sont skippées).
+; WCMP_SLOT = index ZORDER (0..WM_ZORDER_N-1). WCMP_XB = slot id temporaire avant x/2.
+; dst = $100000 + y*512 + (x>>1) (BPL 512, 4bpp). byte_w = w>>1, byte_h = h.
+; Modèle GrafPort : l'app dessine dans son backing store (coords locales), le
+; compositor le place à l'écran. Pré-cond : mode N M=X=1, DBR=0. Clobbers A, X, Y.
 .export kernel_wm_compose
 kernel_wm_compose:
         lda #$00
-        sta WCMP_SLOT
+        sta WCMP_SLOT                   ; index dans WM_ZORDER (0..WM_ZORDER_N-1)
 wcmp_loop:
         lda WCMP_SLOT
-        jsr kernel_wm_offset            ; X = slot*10
+        cmp WM_ZORDER_N                 ; index >= N → terminé
+        bcc wcmp_not_done
+        jmp wcmp_done
+wcmp_not_done:
+        tax
+        lda f:WM_ZORDER,X              ; A = slot id (depuis ZORDER, long,X)
+        sta WCMP_XB                     ; sauvegarde slot id avant overwrite par x/2
+        jsr kernel_wm_offset           ; X = slot*10 (A = slot id en entrée)
         lda WM_TABLE+WM_OFF_FLAGS,X
-        and #WM_F_USED
-        beq wcmp_next                   ; slot libre → skip
+        and #(WM_F_USED | WM_F_VISIBLE)
+        cmp #(WM_F_USED | WM_F_VISIBLE)
+        bne wcmp_next                   ; fenêtre cachée/minimisée → skip
         ; src = backing store = ($06+slot):$0000
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
-        lda WCMP_SLOT
+        lda WCMP_XB                     ; slot id
         clc
         adc #$06
         sta GFX_BASE_HI
@@ -1153,7 +1170,7 @@ wcmp_loop:
         rep #$20
         lda WM_TABLE+WM_OFF_X,X
         lsr a                           ; xb = x>>1
-        sta WCMP_XB
+        sta WCMP_XB                     ; WCMP_XB = xb (slot id no longer needed)
         lda WM_TABLE+WM_OFF_Y,X
         asl a                           ; y*2 = (mid,hi) de y*512
         sta WCMP_MIDHI
@@ -1178,15 +1195,15 @@ wcmp_loop:
         lsr a                           ; w>>1
         sep #$20
         sta GFX_ARG3_LO                 ; byte_w
-        lda WM_TABLE+WM_OFF_H,X          ; h (octet bas)
+        lda WM_TABLE+WM_OFF_H,X         ; h (octet bas)
         sta GFX_ARG3_MID                ; byte_h
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
 wcmp_next:
-        lda WCMP_SLOT           ; (INC sans mode abs-long → lda/inc/sta)
+        lda WCMP_SLOT
         inc a
         sta WCMP_SLOT
-        cmp #WM_MAX
-        bcc wcmp_loop
+        jmp wcmp_loop           ; bra hors de portée → JMP absolu (même bank)
+wcmp_done:
         rts
 
 ; ── kernel_wm_redraw : efface le desktop + dessine toutes les fenêtres ──
@@ -3014,10 +3031,13 @@ swc_done:
         rts
 
 ; $14 — SYS_WIN_FLUSH : composite les backing stores → framebuffer XVGA (G.4bis)
-; Anticipé en G.4bis : une app dessine en local (SYS_GFX_*) puis FLUSH pour
-; rendre son backing store visible à l'écran sans connaître l'adresse XVGA.
+; Après le BLIT, invalide CURSOR_VALID : le framebuffer sous le curseur a changé,
+; le backing curseur (CURSOR_SAVE) est périmé. La prochaine opération curseur
+; sauvegarde du contenu frais. Évite la corruption curseur stationnaire post-flush.
 sys_win_flush:
         jsr kernel_wm_compose
+        lda #$00
+        sta CURSOR_VALID         ; invalide backing curseur (framebuffer modifié sous curseur)
         lda #$00
         rts
 

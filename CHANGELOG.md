@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+debug-gpu-toolbox-3bugs] - 2026-05-26
+
+### Debug GPU toolbox kernel — 3 bugs supplémentaires
+
+#### Fixed
+- **`kernel_wm_compose` (wm.s) : Z-order ignoré → composite dans le mauvais ordre**
+  Le compositor itérait les slots 0..WM_MAX-1 (ordre d'allocation) au lieu de
+  WM_ZORDER (ordre fond→premier plan maintenu par le WM). Pour des fenêtres
+  superposées, la fenêtre de premier plan pouvait être BLITtée AVANT celle
+  d'arrière-plan, qui l'écrasait ensuite. Fix : itération sur WM_ZORDER[0..N-1]
+  comme `_wm_draw_windows`. Slot id sauvegardé dans WCMP_XB avant overwrite par x/2.
+  Branches hors-portée (>127 bytes) remplacées par `bcc/jmp wcmp_done` et `jmp wcmp_loop`.
+- **`kernel_wm_compose` (wm.s) : fenêtres minimisées composées à tort**
+  La condition ne vérifiait que `WM_F_USED` ; les fenêtres cachées/minimisées
+  (`WM_F_VISIBLE` absent) étaient quand même BLITtées, affichant du contenu périmé.
+  Fix : contrôle `(WM_F_USED | WM_F_VISIBLE)` identique à `_wm_draw_one`.
+- **`kernel_gfx_fill_rect16` (wm.s) : poll loop manquant après GPU_TRIGGER**
+  Seul helper GPU sans attente après déclenchement (tous les autres : clear, fill_rect,
+  blit, line, text, text16 ont un poll loop). Latent v0.1 (GPU synchrone) mais critique
+  pour v0.2 async : des commandes enchaînées sans poll risquent de se chevaucher.
+  Fix : ajout du poll loop `ldx #0 / gfx_fr16_wait / lda GPU_STATUS_IO ...`
+- **`sys_win_flush` (wm.s) : CURSOR_VALID non invalidé après BLIT**
+  Après `kernel_wm_compose`, le framebuffer sous le curseur était modifié mais
+  CURSOR_SAVE restait périmé. La prochaine `kernel_wm_cursor_restore` écrivait
+  l'ancien fond (pré-flush) à la position du curseur, corrompant l'affichage si le
+  curseur ne bougeait pas. Fix : `lda #0 / sta CURSOR_VALID` après le BLIT.
+
 ## [Unreleased+debug-wm-compose] - 2026-05-26
 
 ### Debug GPU toolbox kernel — Fix kernel_wm_compose (bug critique)
