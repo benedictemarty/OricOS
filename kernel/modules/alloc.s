@@ -218,11 +218,11 @@ task_ui_entry:
         cop #$AA
         bra task_ui_entry       ; filet
 
-; Table GenUI démo : titre "UI" + fenêtre (300,200,120,90) + 1 bouton.
-; (GU_TITLE AVANT GU_WINDOW : le titre est uploadé à la création de la fenêtre.)
+; Table GenUI démo : titre "UI" (inline) + fenêtre (300,200,120,90) + bouton "OK".
+; (GU_TITLE AVANT GU_WINDOW ; chaînes INLINE null-terminées.)
 genui_demo:
         .byte GU_TITLE
-        .word genui_ui_title    ; pointer titre (bank 1, 16-bit)
+        .byte "UI", $00         ; titre inline
         .byte GU_WINDOW
         .word 300               ; x
         .word 200               ; y
@@ -233,9 +233,8 @@ genui_demo:
         .word 60                ; rel y
         .word 44                ; rel w
         .word 18                ; rel h
+        .byte "OK", $00         ; label inline
         .byte GU_END
-genui_ui_title:
-        .byte "UI", $00
 
 ; ─── task_dlg_entry : ouvre un dialogue modal via command table (SP-3.n G.5) ──
 ; SYS_DO_DLGBOX ($19) avec db_demo (dialogue 200,150,160,80 + boutons OK/Cancel).

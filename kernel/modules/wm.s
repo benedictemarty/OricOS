@@ -2883,14 +2883,13 @@ sud_n2:
         jmp sud_button
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
-sud_title:                      ; GU_TITLE doit précéder GU_WINDOW (titre uploadé à la création)
-        iny
-        lda [$D0],y
+sud_title:                      ; GU_TITLE + chaîne inline (AVANT GU_WINDOW)
+        iny                     ; Y → 1er caractère du titre
+        jsr _sud_copy_inline    ; copie la chaîne inline → UI_STR_BUF (Y avance après le null)
+        lda #<UI_STR_BUF
         sta WM_ARG_TITLE_LO
-        iny
-        lda [$D0],y
+        lda #>UI_STR_BUF
         sta WM_ARG_TITLE_HI
-        iny
         jmp sud_loop
 sud_window:
         iny                     ; passe le tag → x16 y16 w16 h16
@@ -2958,7 +2957,9 @@ sud_button:                     ; GU_BUTTON : relx16 rely16 relw16 relh16 (8 o)
         lda [$D0],y
         sta WM_ARG_H+1
         iny
-        ; attache un bouton (label par défaut) à la fenêtre courante
+        ; label INLINE du bouton → staging bank 1 (Y avance après le null)
+        jsr _sud_copy_inline
+        ; attache le bouton à la fenêtre courante
         lda DLG_WIN
         cmp #$FF
         bne sud_b_add
@@ -2969,9 +2970,9 @@ sud_b_add:
         sta WG_TYPE
         lda #$07
         sta GFX_COLOR
-        lda #<db_btn_str        ; label par défaut (cosmétique v1)
+        lda #<UI_STR_BUF        ; label inline stagé en bank 1
         sta DP_PCPTR
-        lda #>db_btn_str
+        lda #>UI_STR_BUF
         sta DP_PCPTR+1
         lda #$00
         sta WG_CB
@@ -2980,6 +2981,24 @@ sud_b_add:
         jsr kernel_wm_add_widget
         ply
         jmp sud_loop
+
+; ── _sud_copy_inline : copie la chaîne inline [$D0],y (bank app) → UI_STR_BUF ──
+; (bank 1, null-terminée, max 31 + null). Y avance jusqu'APRÈS le null. Clobbe A,X.
+_sud_copy_inline:
+        ldx #$00
+_sci_loop:
+        lda [$D0],y
+        sta f:UI_STR_BUF,x
+        iny
+        cmp #$00                ; le caractère copié était-il le null ?
+        beq _sci_done
+        inx
+        cpx #31
+        bcc _sci_loop
+        lda #$00                ; tronque + force null à 31
+        sta f:UI_STR_BUF,x
+_sci_done:
+        rts
 sud_done:
         ; G.7 : repeint le desktop pour que l'UI déclarée apparaisse tout de suite
         ; (sans attendre un événement souris). Sûr en contexte syscall (Forbid).
@@ -3007,14 +3026,22 @@ sys_do_dlgbox:
         ldy #$00
 ddb_parse:
         lda [$D0],y
-        beq ddb_show            ; DB_END
+        bne ddb_p1
+        jmp ddb_show            ; DB_END
+ddb_p1:
         cmp #DB_POSITION
-        beq ddb_pos
+        bne ddb_p2
+        jmp ddb_pos
+ddb_p2:
         cmp #DB_OK
-        beq ddb_addok
+        bne ddb_p3
+        jmp ddb_addok
+ddb_p3:
         cmp #DB_CANCEL
-        beq ddb_addcancel
-        bra ddb_show            ; tag inconnu → stop
+        bne ddb_p4
+        jmp ddb_addcancel
+ddb_p4:
+        jmp ddb_show            ; tag inconnu → stop
 ddb_pos:
         iny
         lda [$D0],y
@@ -3050,23 +3077,31 @@ ddb_pos:
         ply
         sta DLG_WIN
         jsr kernel_wm_set_modal ; A = DLG_WIN → WM_MODAL
-        bra ddb_parse
+        jmp ddb_parse
 ddb_addok:
         iny
         lda WIDGET_COUNT        ; id = index du nouveau widget
         sta DLG_OK_ID
+        lda #<db_str_ok         ; label "OK"
+        sta DP_PCPTR
+        lda #>db_str_ok
+        sta DP_PCPTR+1
         lda #10                 ; rel x
         ldx #50                 ; rel y
         jsr _ddb_add_button
-        bra ddb_parse
+        jmp ddb_parse
 ddb_addcancel:
         iny
         lda WIDGET_COUNT
         sta DLG_CANCEL_ID
+        lda #<db_str_cancel     ; label "Cancel"
+        sta DP_PCPTR
+        lda #>db_str_cancel
+        sta DP_PCPTR+1
         lda #60                 ; rel x
         ldx #50                 ; rel y
         jsr _ddb_add_button
-        bra ddb_parse
+        jmp ddb_parse
 ddb_show:
         ; ── boucle modale : attend un clic sur un bouton terminant ──
 ddb_loop:
@@ -3128,15 +3163,42 @@ sys_alert:
         jsr kernel_wm_add       ; A = handle
         sta DLG_WIN
         jsr kernel_wm_set_modal
-        ; bouton gauche (OK/Yes) — toujours présent, terminant → retour 1
+        ; bouton gauche (terminant → retour 1) : label "Yes" si YESNO, sinon "OK"
+        lda DP_SYS_ARG_X
+        cmp #ALERT_YESNO
+        beq sa_left_yes
+        lda #<db_str_ok
+        sta DP_PCPTR
+        lda #>db_str_ok
+        sta DP_PCPTR+1
+        bra sa_left_go
+sa_left_yes:
+        lda #<db_str_yes
+        sta DP_PCPTR
+        lda #>db_str_yes
+        sta DP_PCPTR+1
+sa_left_go:
         lda WIDGET_COUNT
         sta DLG_OK_ID
         lda #10
         ldx #44
         jsr _ddb_add_button
-        ; si type != ALERT_OK, ajoute le bouton droit (Cancel/No) → retour 0
+        ; si type != ALERT_OK, bouton droit (retour 0) : "No" si YESNO sinon "Cancel"
         lda DP_SYS_ARG_X
         beq sa_run
+        cmp #ALERT_YESNO
+        beq sa_right_no
+        lda #<db_str_cancel
+        sta DP_PCPTR
+        lda #>db_str_cancel
+        sta DP_PCPTR+1
+        bra sa_right_go
+sa_right_no:
+        lda #<db_str_no
+        sta DP_PCPTR
+        lda #>db_str_no
+        sta DP_PCPTR+1
+sa_right_go:
         lda WIDGET_COUNT
         sta DLG_CANCEL_ID
         lda #100
@@ -3145,9 +3207,9 @@ sys_alert:
 sa_run:
         jmp ddb_show            ; réutilise la boucle modale (rts → COP handler)
 
-; ── _ddb_add_button : ajoute un bouton dialogue. A = rel x, X = rel y. ──
-; Parent = DLG_WIN, taille fixe 44×18, label "OK"/"Cancel" partagé db_btn_str.
-; Clobbers A, X, Y (l'appelant ddb_* n'a plus besoin de Y ici).
+; ── _ddb_add_button : ajoute un bouton dialogue (DLG_WIN, 44×18). A = rel x,
+; X = rel y. Le LABEL est posé par l'appelant dans DP_PCPTR (chaîne bank 1)
+; AVANT l'appel → libellés distincts OK/Cancel/Yes/No. Clobbers A, X.
 _ddb_add_button:
         sta WM_DP_TMP           ; rel x (8-bit)
         stx WM_DP_TMP+1         ; rel y
@@ -3157,10 +3219,6 @@ _ddb_add_button:
         sta WG_TYPE
         lda #$07
         sta GFX_COLOR
-        lda #<db_btn_str
-        sta DP_PCPTR
-        lda #>db_btn_str
-        sta DP_PCPTR+1
         lda #$00
         sta WG_CB
         sta WG_CB+1
@@ -3178,8 +3236,14 @@ _ddb_add_button:
         sep #$20
         jsr kernel_wm_add_widget
         rts
-db_btn_str:
+db_str_ok:
         .byte "OK", $00
+db_str_cancel:
+        .byte "Cancel", $00
+db_str_yes:
+        .byte "Yes", $00
+db_str_no:
+        .byte "No", $00
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :

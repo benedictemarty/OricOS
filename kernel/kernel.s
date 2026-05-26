@@ -469,8 +469,14 @@ MSG_CONTROL       = 5            ; G.4
 ; comme un flux de tags (modèle déclaratif GeoWorks). v1 : fenêtre + titre.
 GU_END            = $00         ; fin de table
 GU_WINDOW         = $01         ; suivi de x16 y16 w16 h16 (8 octets)
-GU_TITLE          = $02         ; suivi d'un pointer titre 16-bit (bank 1) — AVANT GU_WINDOW
-GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 (bouton enfant)
+GU_TITLE          = $02         ; suivi d'une chaîne INLINE null-terminée (AVANT GU_WINDOW)
+GU_BUTTON         = $03         ; suivi de relx16 rely16 relw16 relh16 + label INLINE null-term
+; Buffer de staging bank 1 : les chaînes inline (dans le bank de l'app) sont
+; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
+; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
+; persistante à la fois (réutilisé après upload du titre en SDRAM).
+UI_STR_BUF        = $015580      ; 32 octets
+.assert UI_STR_BUF + 32 <= $015600, error, "UI_STR_BUF recouvre IRQ_HANDLER ($5600)"
 ; Tags de la command table DoDlgBox (SP-3.n G.5, SYS_DO_DLGBOX $19, style GEOS).
 ; Le dialogue EST une donnée : l'app passe la table, le kernel l'exécute modalement.
 DB_END            = $00         ; fin de table

@@ -5,6 +5,26 @@ All notable changes to the OricOS kernel project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased+SP-3.n-polish] - 2026-05-26
+
+### SP-3.n polish — titres + libellés de boutons
+
+#### Changed
+- **GenUI chaînes INLINE** : `GU_TITLE`/`GU_BUTTON` portent désormais une chaîne
+  null-terminée INLINE dans la table (plus de pointeur — trivial en C, évite de
+  splitter une adresse dans un initialiseur const). `sys_ui_define` les stage en
+  bank 1 (`UI_STR_BUF` $015580, gap après NMI_HANDLER) via `_sud_copy_inline` →
+  le rendu titre/label (qui lit en bank 1) les trouve. v1 : 1 label persistant à
+  la fois (réutilisé après upload du titre en SDRAM).
+- **Libellés distincts dialogue/alerte** : `_ddb_add_button` prend le label via
+  DP_PCPTR (posé par l'appelant). DoDlgBox : "OK"/"Cancel". SYS_ALERT : "OK"
+  (OK/OK-Cancel) ou "Yes"/"No" (Yes-No) — plus de boutons tous nommés "OK".
+- **`apps/gui_demo`** : titre "Demo C" + bouton "Clic" (déclarés inline) →
+  visibles à l'écran (titlebar, bouton, taskbar "Demo C").
+
+Branches `bra`→`jmp` (routines agrandies). 574 tests verts. Vérifié au screenshot
+XVGA (`--gui-demo`) : titre et libellé affichés.
+
 ## [Unreleased+SP-3.n-G7b] - 2026-05-26
 
 ### SP-3.n G.7 (suite) — démo gui_demo visible

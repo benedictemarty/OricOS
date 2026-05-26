@@ -12,11 +12,13 @@
 
 #include <oricos.h>
 
-/* Table GenUI déclarative : fenêtre (420,420,170,110) + 1 bouton rel(20,50,90,24).
- * Placée dans une zone vide du desktop pour être bien visible. Valeurs 16-bit LE. */
+/* Table GenUI déclarative : titre + fenêtre (420,420,170,110) + bouton rel(20,50,
+ * 90,24) avec libellé. Chaînes INLINE null-terminées (dans le bank de l'app) —
+ * pas de pointeur à splitter. Valeurs 16-bit little-endian. */
 static const unsigned char gui_def[] = {
+    GU_TITLE, 'D','e','m','o',' ','C', 0,
     GU_WINDOW, 420 & 255, 420 >> 8,  420 & 255, 420 >> 8,  170, 0,  110, 0,
-    GU_BUTTON,  20, 0,   50, 0,   90, 0,  24, 0,
+    GU_BUTTON,  20, 0,   50, 0,   90, 0,  24, 0,  'C','l','i','c', 0,
     GU_END
 };
 
