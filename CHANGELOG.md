@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+debug-wm-compose] - 2026-05-26
+
+### Debug GPU toolbox kernel — Fix kernel_wm_compose (bug critique)
+
+#### Fixed
+- **`kernel_wm_compose` (wm.s) : BLIT destination erronée → affichage invisible**
+  Bug critique dans la compositing loop du Window Manager. L'adresse SDRAM de
+  destination du BLIT était calculée comme `y*512 + x/2` depuis la base `$000000`,
+  alors que le framebuffer XVGA (ADR-20) est localisé à `$100000`. Conséquence :
+  `SYS_WIN_FLUSH` ($14) ne produisait aucun affichage visible ; les backing stores
+  des fenêtres étaient écrits dans une zone SDRAM non affichée par le compositor
+  hardware.
+  Fix : ajout de `clc / adc #$10` sur `GFX_ARG2_HI` (octet de poids fort de
+  l'adresse 24-bit destination), immédiatement après le calcul `y*512 + x/2`.
+  La destination est désormais `$100000 + y*512 + x/2` pour chaque fenêtre USED.
+  Commentaires de la fonction corrigés (`$000000` → `$100000`).
+- **Commentaire erroné dans `kernel_wm_redraw`** : le commentaire mentionnait
+  `$000000` comme base framebuffer alors que le code utilisait déjà correctement
+  `$100000`. Corrigé pour éviter toute confusion future.
+
 ## [Unreleased+SP-3.o-S7v2b-fix-corps] - 2026-05-26
 
 ### SP-3.o S.7 v2b — Fix régression : corps de fenêtre effacé au clic d'un contrôle
