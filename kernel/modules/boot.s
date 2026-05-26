@@ -684,6 +684,15 @@ _skip_task_view:
         lda #$00
         jsr kernel_task_create
 _skip_task_radio:
+        ; SP-3.o S.4b : task_text (gated TC_TEXT_FLAG) — champ texte éditable.
+        lda TC_TEXT_FLAG
+        cmp #$A5
+        bne _skip_task_text
+        ldx #<task_text_entry
+        ldy #>task_text_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_text:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

@@ -287,6 +287,102 @@ _tkb_face_set:
         jsr kernel_tk_label
         rts
 
+; ── kernel_tk_text_field : champ texte éditable (SP-3.o S.4b) ────────────────
+; In : WM_ARG_X/Y/W/H = rect ABSOLU, DP_PCPTR = buffer (bank1, null-term, posé par
+; _wdws_draw), WG_I = index widget. Dessine face blanche + cadre + texte noir +
+; un curseur (barre noire) après le texte si ce champ a le focus (TEXT_FOCUS_ID).
+.export kernel_tk_text_field
+kernel_tk_text_field:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. face blanche
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$0F
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. cadre darkgray
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$08
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; 3. texte (buffer via DP_PCPTR) noir à (x+4, y+2)
+        rep #$20
+        lda TK_X
+        clc
+        adc #4
+        sta WM_ARG_X
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        jsr kernel_tk_label
+        ; 4. curseur si focalisé
+        lda WG_I
+        cmp TEXT_FOCUS_ID
+        bne _tktf_done
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+14,X    ; length (0..15)
+        rep #$20
+        and #$00FF
+        asl a                    ; *8 (largeur fonte)
+        asl a
+        asl a
+        clc
+        adc TK_X
+        clc
+        adc #4
+        sta WM_ARG_X             ; curseur_x = x + 4 + length*8
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        lda #2
+        sta WM_ARG_W             ; curseur 2px de large
+        lda TK_H
+        sec
+        sbc #4
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$00
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+_tktf_done:
+        rts
+
 ; ── kernel_wm_add_widget : enregistre un widget managé (SP-3.d v0.2) ───
 ; Args : WG_PARENT (id fenêtre), WG_TYPE (0=label,1=button),
 ;        WM_ARG_X/Y/W/H (rect RELATIF à la fenêtre), GFX_COLOR (label),
@@ -295,7 +391,9 @@ _tkb_face_set:
 kernel_wm_add_widget:
         lda WIDGET_COUNT
         cmp #WIDGET_MAX
-        bcs _waw_full
+        bcc _waw_ok
+        rts                      ; table pleine
+_waw_ok:
         asl a
         asl a
         asl a
@@ -327,6 +425,23 @@ kernel_wm_add_widget:
         sta WIDGET_TABLE+14,X
         lda WG_CB+1
         sta WIDGET_TABLE+15,X
+        ; SP-3.o S.4b : champ texte → câble son buffer (TEXT_BUFS + offset widget,
+        ; car TEXT_BUF_SZ == WIDGET_ENTSZ == 16) et l'initialise vide (length 0).
+        ; +15 (maxlen) reste ce que l'appelant a mis dans WG_CB+1.
+        lda WG_TYPE
+        cmp #WG_TYPE_TEXT
+        bne _waw_count
+        txa                      ; X = offset widget = offset buffer
+        clc
+        adc #<TEXT_BUFS
+        sta WIDGET_TABLE+12,X    ; strptr lo = TEXT_BUFS + offset
+        lda #$00
+        adc #>TEXT_BUFS
+        sta WIDGET_TABLE+13,X    ; strptr hi
+        lda #$00
+        sta WIDGET_TABLE+14,X    ; length = 0
+        sta f:TEXT_BUFS,X        ; buffer[0] = 0 (chaîne vide)
+_waw_count:
         lda WIDGET_COUNT
         inc a
         sta WIDGET_COUNT
@@ -403,6 +518,8 @@ _wdws_draw:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_TEXT        ; 7 = champ texte éditable
+        beq _wdws_text
         cmp #WG_TYPE_RADIO       ; 6 = radio → case colorée (comme checkbox)
         beq _wdws_btn
         cmp #WG_TYPE_VIEW        ; 5 = GenView
@@ -412,6 +529,9 @@ _wdws_draw:
         bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
 _wdws_label:
         jsr kernel_tk_label
+        bra _wdws_next
+_wdws_text:
+        jsr kernel_tk_text_field ; SP-3.o S.4b : boîte + texte + curseur si focus
         bra _wdws_next
 _wdws_scroll:
         jsr kernel_tk_scrollbar  ; SP-3.o S.2 : gouttière + thumb
@@ -983,6 +1103,8 @@ _wh_used:
         cmp #WG_TYPE_VIEW        ; SP-3.o S.3 : GenView cliquable (barre intégrée)
         beq _wh_isbtn
         cmp #WG_TYPE_RADIO       ; SP-3.o S.4a : radio cliquable
+        beq _wh_isbtn
+        cmp #WG_TYPE_TEXT        ; SP-3.o S.4b : champ texte cliquable (prend le focus)
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

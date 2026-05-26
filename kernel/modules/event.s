@@ -33,6 +33,7 @@ kernel_event_init:
                                  ;        pilote SYS_MAIN_LOOP
         lda #$FF
         sta SCROLL_DRAG_ID       ; SP-3.o S.2 : aucun ascenseur en drag
+        sta TEXT_FOCUS_ID        ; SP-3.o S.4b : aucun champ texte focalisé
         rts
 
 ; ════════════════════════════════════════════════════════════════════

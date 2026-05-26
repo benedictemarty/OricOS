@@ -2021,6 +2021,8 @@ _iac_go:
         beq _iac_check
         cmp #WG_TYPE_RADIO       ; SP-3.o S.4a : radio cliquable depuis le desktop
         beq _iac_radio
+        cmp #WG_TYPE_TEXT        ; SP-3.o S.4b : champ texte → focus clavier
+        beq _iac_text
         cmp #WG_TYPE_BUTTON
         beq _iac_button
         rts                      ; autre type → rien
@@ -2031,6 +2033,11 @@ _iac_check:
 _iac_radio:
         lda WIDGET_ACTIVE
         jsr kernel_ctl_radio_select
+        rts
+_iac_text:
+        lda WIDGET_ACTIVE
+        sta TEXT_FOCUS_ID
+        jsr kernel_wm_redraw
         rts
 _iac_button:
         lda WIDGET_TABLE+14,X
@@ -2124,6 +2131,77 @@ _crs_done:
         lda #WG_COL_CHECKED
         sta WIDGET_TABLE+3,x
         jsr kernel_wm_redraw
+        rts
+
+; ── _wm_text_edit : édite le buffer du champ texte focalisé (SP-3.o S.4b) ─────
+; Touche ASCII en $D1. Backspace ($08/$7F) supprime le dernier caractère ;
+; caractère imprimable ($20-$7E) ajouté en fin si length < maxlen. Met à jour
+; length (+14) et repeint. Pointeur 24-bit DP_PTR = $01:buffer. Clobbe A,X,Y.
+.export _wm_text_edit
+_wm_text_edit:
+        lda TEXT_FOCUS_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                      ; X = id*16
+        lda WIDGET_TABLE+12,x
+        sta DP_PTR
+        lda WIDGET_TABLE+13,x
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2             ; $01:buffer
+        lda WIDGET_TABLE+14,x
+        sta TEXT_TMP_LEN
+        lda WIDGET_TABLE+15,x
+        sta TEXT_TMP_MAX
+        lda $D1                  ; keycode ASCII
+        cmp #$08
+        beq _wte_back
+        cmp #$7F
+        beq _wte_back
+        cmp #$20
+        bcc _wte_done            ; non imprimable
+        cmp #$7F
+        bcs _wte_done            ; >= DEL
+        ; A = char imprimable. Insertion si length < maxlen.
+        pha                      ; sauve char
+        lda TEXT_TMP_LEN
+        cmp TEXT_TMP_MAX
+        bcs _wte_full            ; plein
+        lda TEXT_TMP_LEN
+        tay                      ; Y = length
+        pla                      ; char
+        sta [DP_PTR],y           ; buffer[length] = char
+        iny
+        lda #$00
+        sta [DP_PTR],y           ; buffer[length+1] = 0
+        lda TEXT_TMP_LEN
+        inc a
+        sta TEXT_TMP_LEN
+        bra _wte_store
+_wte_full:
+        pla                      ; jette le char (champ plein)
+        bra _wte_done
+_wte_back:
+        lda TEXT_TMP_LEN
+        beq _wte_done            ; déjà vide
+        dec a
+        sta TEXT_TMP_LEN
+        tay
+        lda #$00
+        sta [DP_PTR],y           ; buffer[length-1] = 0
+_wte_store:
+        lda TEXT_FOCUS_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda TEXT_TMP_LEN
+        sta WIDGET_TABLE+14,x    ; length mise à jour
+        jsr kernel_wm_redraw
+_wte_done:
         rts
 
 ; ── _wm_scroll_update : met à jour la value de l'ascenseur SCROLL_DRAG_ID ─────
@@ -2990,7 +3068,18 @@ _ml_classify:
         lda #MSG_NULL
         rts
 mlc_key:
-        lda #MSG_KEY            ; keycode déjà en $D1
+        ; SP-3.o S.4b : si un champ texte a le focus, la touche édite son buffer
+        ; (insertion / backspace) et l'app reçoit MSG_CONTROL ; sinon MSG_KEY.
+        lda TEXT_FOCUS_ID
+        cmp #$FF
+        beq mlc_key_plain
+        jsr _wm_text_edit
+        lda TEXT_FOCUS_ID
+        sta $DA                ; id du champ modifié
+        lda #MSG_CONTROL
+        rts
+mlc_key_plain:
+        lda #MSG_KEY           ; keycode déjà en $D1
         rts
 mlc_moved:                      ; SP-3.o S.2 : si drag d'ascenseur en cours → maj value
         lda SCROLL_DRAG_ID
@@ -3068,6 +3157,8 @@ mlc_control:
         beq mlc_ctl_scroll
         cmp #WG_TYPE_RADIO      ; SP-3.o S.4a : radio → sélection exclusive
         beq mlc_ctl_radio
+        cmp #WG_TYPE_TEXT       ; SP-3.o S.4b : champ texte → prend le focus clavier
+        beq mlc_ctl_text
         bra mlc_ctl_ret         ; bouton : rien de plus
 mlc_ctl_check:
         pla                     ; id
@@ -3078,6 +3169,12 @@ mlc_ctl_radio:
         pla                     ; id
         pha
         jsr kernel_ctl_radio_select  ; sélectionne ce radio, désélectionne le groupe
+        bra mlc_ctl_ret
+mlc_ctl_text:
+        pla                     ; id
+        pha
+        sta TEXT_FOCUS_ID       ; ce champ prend le focus clavier
+        jsr kernel_wm_redraw    ; affiche le curseur
         bra mlc_ctl_ret
 mlc_ctl_scroll:                 ; S.2 : arme le drag + positionne la value au clic
         pla                     ; id

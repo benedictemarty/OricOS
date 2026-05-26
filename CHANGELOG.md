@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S4b] - 2026-05-26
+
+### SP-3.o S.4b — Champ texte éditable (GenText/LineEdit)
+
+#### Added
+- **`WG_TYPE_TEXT`** ($07) : champ texte éditable. Chaque widget TEXT a un buffer
+  16 octets en bank 1 (`TEXT_BUFS`+id*16, câblé auto par `kernel_wm_add_widget`
+  car `TEXT_BUF_SZ == WIDGET_ENTSZ`), `length`(+14) / `maxlen`(+15, défaut 14).
+- **Focus clavier** : `TEXT_FOCUS_ID` ($FF=aucun, init dans `kernel_event_init`).
+  Clic sur un champ → `mlc_ctl_text`/`_iac_text` posent le focus + redraw (curseur).
+- **Édition** : `mlc_key` route les touches vers `_wm_text_edit` quand un champ est
+  focalisé (l'app reçoit `MSG_CONTROL`+id au lieu de `MSG_KEY`). `_wm_text_edit` :
+  caractère imprimable ($20-$7E) ajouté si length<maxlen, backspace ($08/$7F)
+  retire le dernier ; pointeur 24-bit `DP_PTR`=$01:buffer pour écrire (`sta [DP_PTR],y`).
+- **Rendu** `kernel_tk_text_field` : face blanche + cadre darkgray + texte noir
+  (buffer) + curseur (barre noire 2px) après le texte si le champ a le focus.
+- Hit-test `_wm_widget_hit` + dispatch dessin `_wdws_draw` étendus à `WG_TYPE_TEXT`.
+- **`task_text`** (gated `TC_TEXT_FLAG` $01EE10) : fenêtre + champ texte rel(12,14,
+  110,20) maxlen=14 + MainLoop. Id exposé en `TASK_TEXT_ID` ($015460).
+
 ## [Unreleased+SP-3.o-S4a] - 2026-05-26
 
 ### SP-3.o S.4a — Radios mutuellement exclusifs (GenItemGroup)

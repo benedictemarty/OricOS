@@ -499,6 +499,58 @@ radio_loop:
         cop #$AA
         bra radio_loop
 
+; ─── task_text_entry : champ texte éditable + boucle MainLoop (SP-3.o S.4b) ───
+; Crée sa fenêtre + un champ texte (rel 12,14,110×20, maxlen=14) puis tourne le
+; MainLoop. Le test clique le champ (focus) puis tape des touches → le buffer du
+; widget se remplit (lu via strptr / WIDGET_TABLE[id*16+14]=length).
+.export task_text_entry
+task_text_entry:
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        rep #$20
+        lda #270
+        sta WM_ARG_X
+        lda #220
+        sta WM_ARG_Y
+        lda #150
+        sta WM_ARG_W
+        lda #70
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add       ; A = handle (slot)
+        pha
+        jsr kernel_wm_set_focus
+        pla
+        sta WG_PARENT
+        lda #WG_TYPE_TEXT
+        sta WG_TYPE
+        lda #$0F
+        sta GFX_COLOR           ; couleur (non utilisée par le rendu champ, face blanche)
+        lda #$00
+        sta DP_PCPTR            ; strptr auto-câblé par kernel_wm_add_widget
+        sta DP_PCPTR+1
+        sta WG_CB               ; length init (ignoré, mis à 0)
+        lda #TEXT_MAX_LEN
+        sta WG_CB+1             ; maxlen (+15)
+        rep #$20
+        lda #12
+        sta WM_ARG_X
+        lda #14
+        sta WM_ARG_Y
+        lda #110
+        sta WM_ARG_W
+        lda #20
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_TEXT_ID
+        jsr kernel_wm_add_widget
+text_loop:
+        lda #$17                ; SYS_MAIN_LOOP
+        cop #$AA
+        bra text_loop
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.
