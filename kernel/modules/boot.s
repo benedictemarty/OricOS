@@ -693,6 +693,15 @@ _skip_task_radio:
         lda #$00
         jsr kernel_task_create
 _skip_task_text:
+        ; SP-3.o S.4c : task_list (gated TC_LIST_FLAG) — liste + sélection.
+        lda TC_LIST_FLAG
+        cmp #$A5
+        bne _skip_task_list
+        ldx #<task_list_entry
+        ldy #>task_list_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_list:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset

@@ -383,6 +383,151 @@ kernel_tk_text_field:
 _tktf_done:
         rts
 
+; ── kernel_tk_list : liste d'items (SP-3.o S.4c) ─────────────────────────────
+; In : WM_ARG_X/Y/W/H = rect ABSOLU, DP_PCPTR = blob d'items (bank1, slots de
+; LIST_ITEM_STRIDE octets null-term posé par _wdws_draw), WG_I = index widget
+; (relit count en +15, selected en +14). Face lightgray + cadre + 1 ligne par
+; item ; la ligne sélectionnée a un fond lightblue. Item i en y = TK_Y + i*16.
+; Scratch : TEXT_TMP_LEN = i, TEXT_TMP_MAX = count, WG_RELW = i*8 (16-bit).
+.export kernel_tk_list
+kernel_tk_list:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. face lightgray
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$07
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. cadre darkgray
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$08
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; 3. count + boucle items
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+15,X    ; count
+        sta TEXT_TMP_MAX
+        lda #$00
+        sta TEXT_TMP_LEN         ; i = 0
+_tkl_loop:
+        lda TEXT_TMP_LEN
+        cmp TEXT_TMP_MAX
+        bcc _tkl_go
+        rts
+_tkl_go:
+        ; highlight si i == selected
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+14,X    ; selected
+        cmp TEXT_TMP_LEN
+        bne _tkl_text
+        rep #$20
+        lda TEXT_TMP_LEN
+        and #$00FF
+        asl a                    ; i*16
+        asl a
+        asl a
+        asl a
+        clc
+        adc TK_Y
+        sta WM_ARG_Y             ; item_y
+        lda TK_X
+        inc a
+        sta WM_ARG_X             ; x+1
+        lda TK_W
+        dec a
+        dec a
+        sta WM_ARG_W             ; w-2
+        lda #LIST_ITEM_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$09
+        sta GFX_COLOR            ; lightblue highlight
+        jsr kernel_gfx_fill_rect16
+_tkl_text:
+        ; DP_PCPTR = blob + i*LIST_ITEM_STRIDE
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        rep #$20
+        lda TEXT_TMP_LEN
+        and #$00FF
+        asl a                    ; i*8
+        asl a
+        asl a
+        sta WG_RELW              ; temp
+        lda WIDGET_TABLE+12,X    ; strptr (blob base, 16-bit)
+        clc
+        adc WG_RELW
+        sta DP_PCPTR             ; item ptr lo/hi
+        sep #$20
+        lda #$01
+        sta DP_PCPTR+2
+        ; position texte : x = TK_X+4, y = TK_Y + i*16 + 2
+        rep #$20
+        lda TEXT_TMP_LEN
+        and #$00FF
+        asl a
+        asl a
+        asl a
+        asl a                    ; i*16
+        clc
+        adc TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        lda TK_X
+        clc
+        adc #4
+        sta WM_ARG_X
+        sep #$20
+        lda #$00
+        sta GFX_COLOR            ; texte noir
+        jsr kernel_tk_label
+        ; i++
+        lda TEXT_TMP_LEN
+        inc a
+        sta TEXT_TMP_LEN
+        jmp _tkl_loop
+
 ; ── kernel_wm_add_widget : enregistre un widget managé (SP-3.d v0.2) ───
 ; Args : WG_PARENT (id fenêtre), WG_TYPE (0=label,1=button),
 ;        WM_ARG_X/Y/W/H (rect RELATIF à la fenêtre), GFX_COLOR (label),
@@ -518,6 +663,8 @@ _wdws_draw:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_LIST        ; 8 = liste (GenList)
+        beq _wdws_list
         cmp #WG_TYPE_TEXT        ; 7 = champ texte éditable
         beq _wdws_text
         cmp #WG_TYPE_RADIO       ; 6 = radio → case colorée (comme checkbox)
@@ -532,6 +679,9 @@ _wdws_label:
         bra _wdws_next
 _wdws_text:
         jsr kernel_tk_text_field ; SP-3.o S.4b : boîte + texte + curseur si focus
+        bra _wdws_next
+_wdws_list:
+        jsr kernel_tk_list       ; SP-3.o S.4c : boîte + items + ligne sélectionnée
         bra _wdws_next
 _wdws_scroll:
         jsr kernel_tk_scrollbar  ; SP-3.o S.2 : gouttière + thumb
@@ -1105,6 +1255,8 @@ _wh_used:
         cmp #WG_TYPE_RADIO       ; SP-3.o S.4a : radio cliquable
         beq _wh_isbtn
         cmp #WG_TYPE_TEXT        ; SP-3.o S.4b : champ texte cliquable (prend le focus)
+        beq _wh_isbtn
+        cmp #WG_TYPE_LIST        ; SP-3.o S.4c : liste cliquable (sélection d'item)
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

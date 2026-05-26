@@ -32,8 +32,12 @@
 
 ; ─── Constantes ─────────────────────────────────────────────────────
 TICK_COUNTER    = $015400
-SENTINEL_BASE   = $015000
-VERSION_BASE    = $015010
+; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
+; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
+; widgets) et écrasait ces données runtime → corruption. La plus basse donnée
+; est désormais TICK_COUNTER ($015400), plafond effectif du CODE.
+SENTINEL_BASE   = $016300        ; 6 octets ("ORIOS\0" sentinelle boot)
+VERSION_BASE    = $016310        ; 5 octets (version kernel)
 TASK_CUR        = $015432       ; PID actuellement RUNNING (1..16)
 TASK_A_CTR      = $015440
 TASK_B_CTR      = $015444
@@ -56,6 +60,7 @@ TASK_VIEW_ID    = $01545D       ; SP-3.o S.3 : id du GenView créé par task_vie
 TASK_RAD_ID0    = $01545E       ; SP-3.o S.4a : id du 1er radio créé par task_radio (test)
 TASK_RAD_ID1    = $01545F       ; SP-3.o S.4a : id du 2e radio créé par task_radio (test)
 TASK_TEXT_ID    = $015460       ; SP-3.o S.4b : id du champ texte créé par task_text (test)
+TASK_LIST_ID    = $015461       ; SP-3.o S.4c : id de la liste créée par task_list (test)
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -358,6 +363,19 @@ FS_OPEN_RESULT   = $01617B      ; 1 (0=OK, 1=NOT_FOUND)
 FS_NEXT_CLUSTER  = $01617C      ; 4 cluster suivant (>= $0FFFFFF8 = EOC)
 FS_QUERY_CLUSTER = $016180      ; 4 cluster en entrée (caller setup)
 
+; SP-3.o S.4b : champs texte éditables (GenText/LineEdit). Zone haute libre
+; (au-dessus des structures FS). 8 buffers (1 par id widget) de 16 octets en
+; bank 1 ; strptr du widget TEXT = TEXT_BUFS + id*16. TEXT_FOCUS_ID = id du champ
+; ayant le focus clavier ($FF = aucun) ; les touches arrivant via MainLoop quand
+; un champ est focalisé éditent son buffer.
+TEXT_BUFS        = $016200      ; 8 × 16 = 128 octets ($6200-$627F)
+TEXT_BUF_SZ      = 16
+TEXT_MAX_LEN     = 14           ; 14 caractères + null (buffer 16o : char[len], null[len+1])
+TEXT_FOCUS_ID    = $016280      ; 1B : id champ texte focalisé, $FF=aucun
+TEXT_TMP_LEN     = $016281      ; 1B : scratch longueur courante (édition)
+TEXT_TMP_MAX     = $016282      ; 1B : scratch longueur max (édition)
+.assert TEXT_TMP_MAX < $01E000, error, "région TEXT hors zone RAM bank 1"
+
 ; Filename 11B en zero page (DP+$40..$4A)
 DP_FILENAME      = $40
 
@@ -483,17 +501,6 @@ GU_VIEW           = $04         ; suivi de relx16 rely16 relw16 relh16 + max8 (G
 ; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
 ; persistante à la fois (réutilisé après upload du titre en SDRAM).
-; SP-3.o S.4b : champs texte éditables (GenText/LineEdit). 8 buffers (1 par id
-; widget) de 16 octets en bank 1 ; strptr du widget TEXT = TEXT_BUFS + id*16.
-; TEXT_FOCUS_ID = id du champ qui a le focus clavier ($FF = aucun) ; les touches
-; arrivant via MainLoop quand un champ est focalisé éditent son buffer.
-TEXT_BUFS         = $015490      ; 8 × 16 = 128 octets ($5490-$550F)
-TEXT_BUF_SZ       = 16
-TEXT_MAX_LEN      = 14           ; 14 caractères + null (buffer 16o : char[len], null[len+1])
-TEXT_FOCUS_ID     = $015510      ; 1B : id champ texte focalisé, $FF=aucun
-TEXT_TMP_LEN      = $015511      ; 1B : scratch longueur courante (édition)
-TEXT_TMP_MAX      = $015512      ; 1B : scratch longueur max (édition)
-.assert TEXT_BUFS + 8*TEXT_BUF_SZ <= $015580, error, "TEXT_BUFS recouvre UI_STR_BUF"
 UI_STR_BUF        = $015580      ; 32 octets
 ; SP-3.o S.2 : id du scrollbar en cours de drag (thumb), $FF = aucun. Persiste
 ; entre les appels MainLoop (le drag couvre down→moved*→up).
@@ -666,6 +673,10 @@ WG_TYPE_RADIO    = $06           ; SP-3.o S.4a : radio (GenItemGroup) ; selected
                                  ; exclusion mutuelle par group id ; rendu = case colorée (comme check)
 WG_TYPE_TEXT     = $07           ; SP-3.o S.4b : champ texte éditable (GenText/LineEdit) ;
                                  ; strptr(+12/13)=buffer TEXT_BUFS+id*16, length(+14)/maxlen(+15)
+WG_TYPE_LIST     = $08           ; SP-3.o S.4c : liste (GenList) ; strptr(+12/13)=blob d'items
+                                 ; (count slots de LIST_ITEM_STRIDE o), selected(+14)/count(+15)
+LIST_ITEM_STRIDE = 8             ; octets par item (7 caractères + null)
+LIST_ITEM_H      = 16            ; hauteur d'une ligne d'item (px) — puissance de 2 (>>4)
 SCROLL_THUMB_SZ  = 16            ; taille du thumb (px) le long de la gouttière
 VIEW_SB_W        = 12            ; largeur de la barre intégrée du GenView (bord droit)
 WG_COL_TRACK     = $08           ; gouttière : darkgray
@@ -771,6 +782,7 @@ TC_VIEW_FLAG     = $01EFE0        ; SP-3.o S.3 : $A5 → crée task_view (test G
 TC_VIEWAPP_FLAG  = $01EFF0        ; SP-3.o S.3c : $A5 → spawn bundle_view (app C GenView déclaratif)
 TC_RAD_FLAG      = $01EE00        ; SP-3.o S.4a : $A5 → crée task_radio (test radios/exclusion)
 TC_TEXT_FLAG     = $01EE10        ; SP-3.o S.4b : $A5 → crée task_text (test champ texte éditable)
+TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test liste/sélection)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+SP-3.o-S4c] - 2026-05-26
+
+### SP-3.o S.4c — Liste sélectionnable (GenList)
+
+#### Added
+- **`WG_TYPE_LIST`** ($08) : liste d'items. `strptr`(+12/13) = blob d'items
+  (slots de `LIST_ITEM_STRIDE`=8 o, null-term), `selected`(+14)/`count`(+15).
+- **`kernel_tk_list`** : face lightgray + cadre + 1 ligne par item (hauteur
+  `LIST_ITEM_H`=16), la ligne sélectionnée a un fond lightblue.
+- **`kernel_ctl_list_select`** : `row = (MOUSE_Y - abs_y) / 16`, clampé à
+  `[0, count-1]` ; stocke `selected`(+14) + redraw. Dispatch clic `mlc_ctl_list`
+  (MainLoop) + `_iac_list` (desktop IRQ). Hit-test + dessin étendus à `WG_TYPE_LIST`.
+- **`task_list`** (gated `TC_LIST_FLAG` $01EE20) : fenêtre + liste 3 items
+  (blob `list_demo_items`) + MainLoop. Id exposé en `TASK_LIST_ID` ($015461).
+
+#### Fixed
+- **Collision layout** : le segment CODE avait grandi au-delà de `$5000` (toolkit
+  widgets accumulés S.1→S.4) et écrasait `SENTINEL_BASE`/`VERSION_BASE` (données
+  runtime à `$015000`/`$015010`) → corruption (crash scheduler après quelques
+  ticks, MainLoop muet). Relocalisés en `$016300`/`$016310` (zone RAM haute
+  libre, au-dessus de FS et de la région TEXT). La plus basse donnée est
+  désormais `TICK_COUNTER` ($015400) = plafond effectif du CODE.
+
 ## [Unreleased+SP-3.o-S4b] - 2026-05-26
 
 ### SP-3.o S.4b — Champ texte éditable (GenText/LineEdit)

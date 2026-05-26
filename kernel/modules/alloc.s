@@ -551,6 +551,66 @@ text_loop:
         cop #$AA
         bra text_loop
 
+; ─── Blob d'items démo pour task_list (SP-3.o S.4c) ──────────────────────────
+; 3 items de LIST_ITEM_STRIDE (8) octets, null-term + padding.
+list_demo_items:
+        .byte 'O','n','e',0,0,0,0,0
+        .byte 'T','w','o',0,0,0,0,0
+        .byte 'S','i','x',0,0,0,0,0
+
+; ─── task_list_entry : liste d'items + boucle MainLoop (SP-3.o S.4c) ──────────
+; Crée sa fenêtre + une liste (rel 12,14,110×48, 3 items) puis tourne le MainLoop.
+; Le test clique l'item 2 → selected=2 (lu en WIDGET_TABLE[id*16+14]).
+.export task_list_entry
+task_list_entry:
+        lda #$00
+        sta WM_ARG_TITLE_LO
+        sta WM_ARG_TITLE_HI
+        rep #$20
+        lda #280
+        sta WM_ARG_X
+        lda #230
+        sta WM_ARG_Y
+        lda #140
+        sta WM_ARG_W
+        lda #80
+        sta WM_ARG_H
+        sep #$20
+        jsr kernel_wm_add       ; A = handle
+        pha
+        jsr kernel_wm_set_focus
+        pla
+        sta WG_PARENT
+        lda #WG_TYPE_LIST
+        sta WG_TYPE
+        lda #$07
+        sta GFX_COLOR
+        lda #<list_demo_items
+        sta DP_PCPTR            ; strptr = blob (bank1)
+        lda #>list_demo_items
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB               ; selected = 0 (+14)
+        lda #$03
+        sta WG_CB+1             ; count = 3 (+15)
+        rep #$20
+        lda #12
+        sta WM_ARG_X
+        lda #14
+        sta WM_ARG_Y
+        lda #110
+        sta WM_ARG_W
+        lda #48
+        sta WM_ARG_H
+        sep #$20
+        lda WIDGET_COUNT
+        sta TASK_LIST_ID
+        jsr kernel_wm_add_widget
+list_loop:
+        lda #$17                ; SYS_MAIN_LOOP
+        cop #$AA
+        bra list_loop
+
 ; ─── task_f_entry : tâche dormeuse (OS-2.g v2.b, test SYS_SLEEP_MS) ────
 ; Boucle : incrémente TASK_F_CTR puis dort 3 ticks via SYS_SLEEP_MS ($12).
 ; Exerce le blocage/réveil piloté par le timer. TASK_F_CTR>0 prouve le réveil.

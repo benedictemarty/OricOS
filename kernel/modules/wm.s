@@ -2023,6 +2023,8 @@ _iac_go:
         beq _iac_radio
         cmp #WG_TYPE_TEXT        ; SP-3.o S.4b : champ texte → focus clavier
         beq _iac_text
+        cmp #WG_TYPE_LIST        ; SP-3.o S.4c : liste → sélection d'item
+        beq _iac_list
         cmp #WG_TYPE_BUTTON
         beq _iac_button
         rts                      ; autre type → rien
@@ -2038,6 +2040,10 @@ _iac_text:
         lda WIDGET_ACTIVE
         sta TEXT_FOCUS_ID
         jsr kernel_wm_redraw
+        rts
+_iac_list:
+        lda WIDGET_ACTIVE
+        jsr kernel_ctl_list_select
         rts
 _iac_button:
         lda WIDGET_TABLE+14,X
@@ -2202,6 +2208,62 @@ _wte_store:
         sta WIDGET_TABLE+14,x    ; length mise à jour
         jsr kernel_wm_redraw
 _wte_done:
+        rts
+
+; ── kernel_ctl_list_select : A = id liste → sélectionne l'item sous la souris ─
+; (SP-3.o S.4c). row = (MOUSE_Y - abs_y) / LIST_ITEM_H, clampé à [0, count-1].
+; Stocke selected (+14) et repeint. abs_y = fenêtre parente + rel_y. Clobbe A,X,Y.
+.export kernel_ctl_list_select
+kernel_ctl_list_select:
+        sta WG_CB                ; mémorise l'id
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+1,X
+        sta WG_PARENT
+        lda WIDGET_TABLE+15,X
+        sta TEXT_TMP_MAX         ; count
+        rep #$20
+        lda WIDGET_TABLE+6,X
+        sta WG_RELY              ; rel_y
+        sep #$20
+        lda WG_PARENT
+        jsr kernel_wm_offset     ; X = parent*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WG_RELY
+        sta WG_RELY              ; abs_y
+        lda MOUSE_Y
+        sec
+        sbc WG_RELY              ; delta = MOUSE_Y - abs_y (16-bit)
+        bmi _cls_zero
+        lsr a                    ; / LIST_ITEM_H (16)
+        lsr a
+        lsr a
+        lsr a
+        sep #$20
+        cmp TEXT_TMP_MAX         ; row >= count ?
+        bcc _cls_store
+        lda TEXT_TMP_MAX
+        dec a                    ; clamp à count-1
+        bra _cls_store
+_cls_zero:
+        sep #$20
+        lda #$00
+_cls_store:
+        pha                      ; row
+        lda WG_CB
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        pla                      ; row
+        sta WIDGET_TABLE+14,X    ; selected
+        jsr kernel_wm_redraw
         rts
 
 ; ── _wm_scroll_update : met à jour la value de l'ascenseur SCROLL_DRAG_ID ─────
@@ -3159,6 +3221,8 @@ mlc_control:
         beq mlc_ctl_radio
         cmp #WG_TYPE_TEXT       ; SP-3.o S.4b : champ texte → prend le focus clavier
         beq mlc_ctl_text
+        cmp #WG_TYPE_LIST       ; SP-3.o S.4c : liste → sélection d'item au clic
+        beq mlc_ctl_list
         bra mlc_ctl_ret         ; bouton : rien de plus
 mlc_ctl_check:
         pla                     ; id
@@ -3175,6 +3239,11 @@ mlc_ctl_text:
         pha
         sta TEXT_FOCUS_ID       ; ce champ prend le focus clavier
         jsr kernel_wm_redraw    ; affiche le curseur
+        bra mlc_ctl_ret
+mlc_ctl_list:
+        pla                     ; id
+        pha
+        jsr kernel_ctl_list_select  ; sélectionne l'item sous la souris + redraw
         bra mlc_ctl_ret
 mlc_ctl_scroll:                 ; S.2 : arme le drag + positionne la value au clic
         pla                     ; id
