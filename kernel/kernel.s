@@ -280,8 +280,9 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $79-$7B   3B       GFX_FONT_*         font_addr 24-bit (GPU TEXT)
 ;  $7C-$7E   3B       GFX_STR_*          string_addr 24-bit (GPU TEXT)
 ;  $7F       1B       (libre)
-;  $80-$88   9B       WIN_X/Y/W/H/…      args kernel_window_draw legacy (SP-3.c)
-;  $89-$FF   119B     (libres)
+;  $80-$8F   16B      WIN_X/…/TMP        args kernel_window_draw legacy (SP-3.c) + tmp scratch
+;  $90-$91   2B       GFX_BPL_LO/HI      stride GPU configurable (ADR-27 opt.b, SET_BPL)
+;  $92-$FF   110B     (libres)
 ; ════════════════════════════════════════════════════════════════════
 
 ; Zero page kernel (DP=0)
@@ -569,6 +570,7 @@ GPU_OP_FILL_RECT16 = $06         ; coords 16-bit packed (ADR-21 v0.2)
 GPU_OP_BLIT      = $03
 GPU_OP_LINE      = $04
 GPU_OP_TEXT      = $05
+GPU_OP_SET_BPL   = $08           ; ADR-27 opt.b : stride configurable (ARG1[15:0]=bpl, 0→512)
 GPU_STATUS_BUSY  = $80
 GPU_STATUS_ERR   = $40
 
@@ -852,6 +854,9 @@ GFX_FONT_HI      = $7B
 GFX_STR_LO       = $7C           ; string_addr 24-bit (null-terminated)
 GFX_STR_MID      = $7D
 GFX_STR_HI       = $7E
+; ── ADR-27 opt.b : stride GPU configurable (SET_BPL) ───────────────────
+GFX_BPL_LO       = $90           ; stride 16-bit (octets/ligne) ; 0 → défaut XVGA 512
+GFX_BPL_HI       = $91
 
 ; ── SP-3.d : toolkit (label/frame/button) — adresses SDRAM ─────────────
 TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)

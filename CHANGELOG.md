@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+adr27-bpl-configurable] - 2026-05-27
+
+### Added — ADR-27 opt.b : stride GPU configurable (SET_BPL)
+- **`kernel_gfx_set_bpl`** (gfx.s) : émet `GPU_OP_SET_BPL` ($08) avec
+  `GFX_BPL_LO/HI` (ZP `$90/$91`) → fixe la stride persistante du GPU. 0 → 512.
+  `sep #$20` explicite en tête (8-bit), conforme M=X=1.
+- Constantes `GPU_OP_SET_BPL = $08` et `GFX_BPL_LO/HI` (kernel.s).
+
+### Fixed
+- Régression `.smart` ca65 : helper sans `sep #$20` corrompait l'assemblage de
+  `kernel_gfx_clear` (mode A 16-bit propagé) → échec compositeur (`win_draw`,
+  `ctl_demo`). Fix : ancrage 8-bit explicite. Diagnostic via bisection (le code
+  mort décalait/perturbait le tracking de mode lexical).
+
+### Note
+- Reste à faire (migration kernel ADR-27, < 50 %) : backing store compact +
+  pose `bpl=byte_w` par fenêtre dans `kernel_wm_compose`, reset `bpl=0` avant
+  `kernel_wm_redraw`. Le helper est en place mais pas encore câblé dans compose.
+
 ## [Unreleased+blit-v0.2-16bit] - 2026-05-27
 
 ### Fixed — GPU BLIT v0.2 : encodage 16-bit byte_w/byte_h (Bug A)

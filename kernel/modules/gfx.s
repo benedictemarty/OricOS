@@ -31,6 +31,43 @@ gwb_found:
         sta GFX_BASE_HI
         rts
 
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_set_bpl — fixe la stride GPU persistante (ADR-27 opt.b)
+; ════════════════════════════════════════════════════════════════════
+; Args ZP : GFX_BPL_LO/HI ($89-$8A) = stride 16-bit (octets/ligne). 0 → 512.
+; Effets : toutes les ops de dessin suivantes (FILL_RECT*, LINE, TEXT*, et la
+;          SOURCE du BLIT) utilisent cette stride jusqu'au prochain SET_BPL.
+;          Permet un backing store compact (stride = largeur fenêtre).
+; ⚠️ État global GPU : repasser à 512 (GFX_BPL=0) avant tout dessin direct dans
+;    le framebuffer XVGA (kernel_wm_redraw, etc.). Cf. ADR-27 §hazard.
+; Modifie : A. Préserve : X, Y.
+; ════════════════════════════════════════════════════════════════════
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_set_bpl — fixe la stride GPU persistante (ADR-27 opt.b)
+; ════════════════════════════════════════════════════════════════════
+; Args ZP : GFX_BPL_LO/HI ($90-$91) = stride 16-bit (octets/ligne). 0 → 512.
+; Effets : toutes les ops de dessin suivantes (FILL_RECT*, LINE, TEXT*, et la
+;          SOURCE du BLIT) utilisent cette stride jusqu'au prochain SET_BPL.
+;          Permet un backing store compact (stride = largeur fenêtre).
+; ⚠️ État global GPU : repasser à 512 (GFX_BPL=0) avant tout dessin direct dans
+;    le framebuffer XVGA (kernel_wm_redraw, etc.). Cf. ADR-27 §hazard.
+; Pré-cond : mode N. `sep #$20` force A 8-bit (cohérent .smart + I/O 8-bit).
+; Modifie : A. Préserve : X, Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_set_bpl
+kernel_gfx_set_bpl:
+        sep #$20                ; A 8-bit (I/O ports) ; informe .smart
+        lda GFX_BPL_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BPL_HI
+        sta GPU_ARG1_MID_IO
+        lda #$00
+        sta GPU_ARG1_HI_IO
+        lda #GPU_OP_SET_BPL
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        rts
+
 .export kernel_gfx_clear
 kernel_gfx_clear:
         ; ARG1 = base
