@@ -732,10 +732,16 @@ task_wdraw_entry:
         cop #$AA
         ; G.4bis : composite les backing stores → framebuffer XVGA (tâche kernel
         ; → appel direct ; en vrai une app passerait par un futur SYS_WIN_FLUSH).
+        ; PH-test-winflaky : la tâche NE SORT PAS (boucle compose+yield) → la
+        ; fenêtre reste ouverte et le pixel composité ($10A032=$FF) est un ÉTAT
+        ; STABLE (re-composé à chaque tour, restauré même après un redraw) →
+        ; test_oricos_win_draw déterministe (plus de pixel transitoire flaky).
+        ; (Le flux exit→close est couvert par test_oricos_win_app.)
+task_wdraw_loop:
         jsr kernel_wm_compose
-        lda #$04                ; SYS_EXIT
+        lda #$05                ; SYS_YIELD (rend le CPU, fenêtre persistante)
         cop #$AA
-        bra task_wdraw_entry    ; filet
+        bra task_wdraw_loop
 
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,

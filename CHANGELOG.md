@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+scroll-wgrelh+windraw-determ] - 2026-05-27
+
+### Fixed
+- **`_wm_scroll_update` (wm.s) : corruption de course par l'IRQ** — `WG_RELX/Y/W/H`
+  sont des scratch partagés avec l'IRQ (`kernel_wm_mouse_step`→redraw→`_wm_draw_widget_body`
+  écrit `WG_RELH`). Un mouse IRQ corrompait la COURSE entre son calcul et le clamp →
+  la value de l'ascenseur plafonnait à mi-course (~50 %, observé en interactif). Fix :
+  section critique `sei`/`cli` autour du seul calcul (redraw hors-sei pour ne pas
+  affamer le `cursor_blit` IRQ). `sei/cli` et non `php/plp` (éviter la désync `.smart`).
+- **`task_wdraw` (alloc.s) : déterminisme de `test_oricos_win_draw`** — la tâche démo
+  faisait `compose→SYS_EXIT` (ferme la fenêtre) → le pixel composité `$10A032=$FF`
+  n'était que transitoire, rendant le test sensible au layout (PH-test-winflaky : un
+  simple décalage de 2 octets le faisait faux-échouer). Fix : la tâche boucle
+  `compose+SYS_YIELD` → fenêtre persistante, pixel = état STABLE → test robuste.
+  (Le flux exit→close reste couvert par `test_oricos_win_app`.) 595 tests verts.
+
 ## [Unreleased+scroll-hang-fix] - 2026-05-27
 
 ### Fixed — GUI gelée après drag d'ascenseur au max

@@ -2294,6 +2294,14 @@ _cls_store:
 ; V : MOUSE_Y - abs_y ; H : MOUSE_X - abs_x. Stocke value (+14), redraw.
 ; Temps : WG_RELX/Y (abs), WG_RELW (offset 16-bit), WG_RELH (max). Clobbe A,X,Y.
 _wm_scroll_update:
+        ; Section critique : WG_RELX/Y/W/H sont des scratch partagés avec l'IRQ
+        ; (kernel_wm_mouse_step → redraw → _wm_draw_widget_body écrit WG_RELH).
+        ; Sans masquage, un mouse IRQ corrompt la COURSE (WG_RELH) entre son calcul
+        ; et le clamp → la value plafonnait à mi-course (~50 %, observé interactif).
+        ; Appelée uniquement depuis le MainLoop (I=0) → sei/cli (pas php/plp :
+        ; éviter la désync .smart sur plp). Redraw HORS sei (cli avant) pour ne pas
+        ; affamer le cursor_blit IRQ (sinon traces curseur).
+        sei
         lda SCROLL_DRAG_ID
         asl a
         asl a
@@ -2379,6 +2387,8 @@ _scu_store:
         tax
         pla
         sta WIDGET_TABLE+WG_OFF_VALUE,x
+        cli                      ; fin section critique (WG_* + value posés) ; I=0
+                                 ; (appelée depuis le MainLoop) → redraw avec IRQ actif.
         ; SP-3.o S.7 : redraw CIBLÉ du seul ascenseur (pas de clear desktop) →
         ; plus de scintillement plein écran pendant le drag.
         lda SCROLL_DRAG_ID
