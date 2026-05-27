@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+gpu-arg-race-fix] - 2026-05-27
+
+### Fixed — OS-gpu-race : commandes GPU atomiques vs IRQ (option 2)
+- Les 7 helpers GPU (`kernel_gfx_set_bpl`/`_clear`/`_fill_rect`/`_blit`/`_line`/
+  `_text` dans gfx.s + `kernel_gfx_fill_rect16` dans wm.s) bracketés `php;sei …
+  plp`. Un mouse IRQ ne peut plus clobber les registres ARG/CMD entre le setup
+  et le TRIGGER d'une commande en cours (race latente révélée par l'instruction
+  ADR-27). `php/plp` préserve le flag I (cli en syscall, sei en IRQ) et ne
+  perturbe pas le tracking `.smart` (pas de rep/sep). Transparent — 594 verts.
+- Pré-requis au flip backing store compact (ADR-27 opt.b, §0bis).
+
 ## [Unreleased+adr27-bpl-configurable] - 2026-05-27
 
 ### Added — ADR-27 opt.b : stride GPU configurable (SET_BPL)

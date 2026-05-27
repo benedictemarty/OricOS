@@ -1059,6 +1059,8 @@ kwmin_done:
 ; ARG2 = y<<12|x, ARG3 = h<<12|w. Modifie A. Préserve X, Y.
 .export kernel_gfx_fill_rect16
 kernel_gfx_fill_rect16:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
         lda GFX_BASE_MID
@@ -1131,6 +1133,7 @@ gfx_fr16_wait:
         inx
         bne gfx_fr16_wait
 gfx_fr16_done:
+        plp
         rts
 
 ; ── kernel_wm_compose : composite les backing stores → framebuffer XVGA (G.4bis) ──

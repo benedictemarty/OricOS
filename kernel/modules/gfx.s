@@ -56,6 +56,8 @@ gwb_found:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_set_bpl
 kernel_gfx_set_bpl:
+        php                     ; OS-gpu-race : section critique GPU atomique
+        sei                     ; (un mouse IRQ ne doit pas clobber ARG/CMD entre setup et trigger)
         sep #$20                ; A 8-bit (I/O ports) ; informe .smart
         lda GFX_BPL_LO
         sta GPU_ARG1_LO_IO
@@ -66,10 +68,13 @@ kernel_gfx_set_bpl:
         lda #GPU_OP_SET_BPL
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        plp                     ; restaure I (cli si syscall, sei si IRQ)
         rts
 
 .export kernel_gfx_clear
 kernel_gfx_clear:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -101,6 +106,7 @@ gfx_clear_wait:
         inx
         bne gfx_clear_wait
 gfx_clear_done:
+        plp
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -122,6 +128,8 @@ gfx_clear_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_fill_rect
 kernel_gfx_fill_rect:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -160,6 +168,7 @@ gfx_fill_wait:
         inx
         bne gfx_fill_wait
 gfx_fill_done:
+        plp
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -179,6 +188,8 @@ gfx_fill_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_blit
 kernel_gfx_blit:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         ; ARG1 = src (= GFX_BASE)
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -218,6 +229,7 @@ gfx_blit_wait:
         inx
         bne gfx_blit_wait
 gfx_blit_done:
+        plp
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -237,6 +249,8 @@ gfx_blit_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_line
 kernel_gfx_line:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -273,6 +287,7 @@ gfx_line_wait:
         inx
         bne gfx_line_wait
 gfx_line_done:
+        plp
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -293,6 +308,8 @@ gfx_line_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_text
 kernel_gfx_text:
+        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        sei
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -333,5 +350,6 @@ gfx_text_wait:
         inx
         bne gfx_text_wait
 gfx_text_done:
+        plp
         rts
 
