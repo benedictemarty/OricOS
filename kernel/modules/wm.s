@@ -1189,14 +1189,14 @@ wcmp_not_done:
         clc
         adc #$10                        ; +$100000 : base framebuffer XVGA (ADR-20)
         sta GFX_ARG2_HI
-        ; byte_w = w>>1, byte_h = h
+        ; byte_w = w>>1 (16-bit), byte_h = h (16-bit)  — v0.2 : stores 16-bit
         rep #$20
         lda WM_TABLE+WM_OFF_W,X
-        lsr a                           ; w>>1
+        lsr a                           ; byte_w = w>>1 (4bpp : pixels→octets)
+        sta GFX_ARG3_LO                 ; 16-bit store → $76 (LO) et $77 (MID)
+        lda WM_TABLE+WM_OFF_H,X         ; byte_h = h (déjà en octets ligne/ligne)
+        sta GFX_ARG4_LO                 ; 16-bit store → $6E (LO) et $6F (MID)
         sep #$20
-        sta GFX_ARG3_LO                 ; byte_w
-        lda WM_TABLE+WM_OFF_H,X         ; h (octet bas)
-        sta GFX_ARG3_MID                ; byte_h
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
 wcmp_next:
         lda WCMP_SLOT

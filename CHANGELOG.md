@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+blit-v0.2-16bit] - 2026-05-27
+
+### Fixed — GPU BLIT v0.2 : encodage 16-bit byte_w/byte_h (Bug A)
+- **`kernel_wm_compose` (wm.s) : byte_w/byte_h tronqués à 8 bits** — après `lsr a`
+  (16-bit), les stores étaient faits en `sep #$20` → seul l'octet bas était écrit.
+  Fenêtres de ≥ 256 px largeur ou hauteur : contenu non composité (BLIT silencieux).
+  Fix : stores 16-bit en `rep #$20` + `sta GFX_ARG3_LO` et `sta GFX_ARG4_LO`.
+- **`kernel_gfx_blit` (gfx.s)** : ajout des writes GPU_ARG4_LO/MID/HI (byte_h).
+- **`boot.s` : 3 appels BLIT ancienne convention** — byte_h migré vers GFX_ARG4_LO.
+
+### Added
+- ZP `GFX_ARG4_LO = $6E` et `GFX_ARG4_MID = $6F` (kernel.s, précédemment libres).
+
 ## [Unreleased+debug-gpu-toolbox-3bugs] - 2026-05-26
 
 ### Debug GPU toolbox kernel — 3 bugs supplémentaires

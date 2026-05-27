@@ -272,10 +272,10 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $68-$6A   3B       VRAM_DMA_DST_*_ZP  destination DMA SDRAM 24-bit
 ;  $6B-$6C   2B       VRAM_DMA_LEN_*_ZP  longueur DMA 16-bit
 ;  $6D       1B       VRAM_DMA_DIR_ZP    direction DMA
-;  $6E-$6F   2B       (libres)
+;  $6E-$6F   2B       GFX_ARG4_LO/MID    blit byte_h 16-bit (v0.2)
 ;  $70-$72   3B       GFX_BASE_*         base SDRAM 24-bit GPU (clear/fill/blit...)
 ;  $73-$75   3B       GFX_ARG2_*         arg2 GPU (size|x/y/unused)
-;  $76-$77   2B       GFX_ARG3_*         arg3 GPU (w/h)
+;  $76-$77   2B       GFX_ARG3_*         arg3 GPU (w/h | blit: byte_w 16-bit)
 ;  $78       1B       GFX_COLOR          couleur palette 4-bit (0..15)
 ;  $79-$7B   3B       GFX_FONT_*         font_addr 24-bit (GPU TEXT)
 ;  $7C-$7E   3B       GFX_STR_*          string_addr 24-bit (GPU TEXT)
@@ -840,8 +840,10 @@ GFX_BASE_HI      = $72
 GFX_ARG2_LO      = $73           ; clear: size_lo  | rect: x
 GFX_ARG2_MID     = $74           ; clear: size_mid | rect: y
 GFX_ARG2_HI      = $75           ; clear: size_hi  | rect: unused
-GFX_ARG3_LO      = $76           ; clear: unused   | rect: w
-GFX_ARG3_MID     = $77           ; clear: unused   | rect: h
+GFX_ARG3_LO      = $76           ; clear: unused   | rect: w  | blit: byte_w lo
+GFX_ARG3_MID     = $77           ; clear: unused   | rect: h  | blit: byte_w hi
+GFX_ARG4_LO      = $6E           ; blit: byte_h lo (v0.2 — $6E-$6F libres)
+GFX_ARG4_MID     = $6F           ; blit: byte_h hi
 GFX_COLOR        = $78           ; couleur 4-bit (0..15)
 ; ZP additionnels TEXT (en plus de BASE/ARG2_LO=x/ARG2_MID=y/COLOR)
 GFX_FONT_LO      = $79           ; font_addr 24-bit

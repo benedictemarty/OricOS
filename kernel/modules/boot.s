@@ -159,9 +159,13 @@ kernel_entry:
         lda #$00
         sta GFX_ARG2_HI                 ; dst = $008000
         lda #$0A
-        sta GFX_ARG3_LO                 ; byte_w = 10
+        sta GFX_ARG3_LO                 ; byte_w lo = 10
+        lda #$00
+        sta GFX_ARG3_MID                ; byte_w hi = 0
         lda #$08
-        sta GFX_ARG3_MID                ; byte_h = 8
+        sta GFX_ARG4_LO                 ; byte_h lo = 8  (v0.2)
+        lda #$00
+        sta GFX_ARG4_MID                ; byte_h hi = 0
         jsr kernel_gfx_blit
 
         ; Test GPU LINE : ligne verticale x=40, y=20..25, color=2 (green)
@@ -248,9 +252,13 @@ kernel_entry:
         lda #$01
         sta GFX_ARG2_HI                 ; dst = $016019
         lda #40
-        sta GFX_ARG3_LO                 ; byte_w = 40
+        sta GFX_ARG3_LO                 ; byte_w lo = 40
+        lda #$00
+        sta GFX_ARG3_MID                ; byte_w hi = 0
         lda #60
-        sta GFX_ARG3_MID                ; byte_h = 60
+        sta GFX_ARG4_LO                 ; byte_h lo = 60  (v0.2)
+        lda #$00
+        sta GFX_ARG4_MID                ; byte_h hi = 0
         jsr kernel_gfx_blit
 
         ; Repaint titlebar window 2 en green (color 2) pour distinction.
@@ -378,9 +386,13 @@ kernel_entry:
         lda #$03
         sta GFX_ARG2_HI                 ; dst = $031896
         lda #40
-        sta GFX_ARG3_LO
+        sta GFX_ARG3_LO                 ; byte_w lo = 40
+        lda #$00
+        sta GFX_ARG3_MID                ; byte_w hi = 0
         lda #60
-        sta GFX_ARG3_MID
+        sta GFX_ARG4_LO                 ; byte_h lo = 60  (v0.2)
+        lda #$00
+        sta GFX_ARG4_MID                ; byte_h hi = 0
         jsr kernel_gfx_blit
 
         ; CLEAR ancienne pos (50, 80, 80, 60) en color 0 (effacement).

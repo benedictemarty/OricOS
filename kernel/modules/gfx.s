@@ -132,12 +132,12 @@ gfx_fill_done:
 ; Args ZP (sémantique pour BLIT) :
 ;   GFX_BASE_LO/MID/HI ($70-$72) = src 24-bit (SDRAM source).
 ;   GFX_ARG2_LO/MID/HI ($73-$75) = dst 24-bit (SDRAM destination).
-;   GFX_ARG3_LO        ($76)     = byte_w (octets/ligne, 1..255).
-;   GFX_ARG3_MID       ($77)     = byte_h (lignes, 1..255).
+;   GFX_ARG3_LO/MID    ($76-$77) = byte_w 16-bit (octets/ligne, 1..65535). ; v0.2
+;   GFX_ARG4_LO/MID    ($6E-$6F) = byte_h 16-bit (lignes, 1..65535).       ; v0.2
 ; Effets : copie un bloc rectangulaire src → dst dans la SDRAM.
-;          v0.1 limites HW : src/dst byte-alignés, pas d'overlap, pas
+;          v0.2 limites HW : src/dst byte-alignés, pas d'overlap, pas
 ;          de transparency. BPL hardcodé GPU=512 (XVGA).
-;          v0.1 sync : poll busy timeout 256.
+;          v0.2 sync : poll busy timeout 256.
 ; Modifie : A, X. Préserve : Y.
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_blit
@@ -156,13 +156,19 @@ kernel_gfx_blit:
         sta GPU_ARG2_MID_IO
         lda GFX_ARG2_HI
         sta GPU_ARG2_HI_IO
-        ; ARG3.LO = byte_w, ARG3.MID = byte_h
+        ; ARG3[15:0] = byte_w, ARG4[15:0] = byte_h  (v0.2 : 16-bit)
         lda GFX_ARG3_LO
         sta GPU_ARG3_LO_IO
         lda GFX_ARG3_MID
         sta GPU_ARG3_MID_IO
         lda #$00
         sta GPU_ARG3_HI_IO
+        lda GFX_ARG4_LO
+        sta GPU_ARG4_LO_IO
+        lda GFX_ARG4_MID
+        sta GPU_ARG4_MID_IO
+        lda #$00
+        sta GPU_ARG4_HI_IO
         ; CMD_OP = BLIT, trigger
         lda #GPU_OP_BLIT
         sta GPU_CMD_OP_IO
