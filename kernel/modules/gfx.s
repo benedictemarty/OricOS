@@ -179,7 +179,7 @@ gfx_fill_done:
 ;   GFX_BASE_LO/MID/HI ($70-$72) = src 24-bit (SDRAM source).
 ;   GFX_ARG2_LO/MID/HI ($73-$75) = dst 24-bit (SDRAM destination).
 ;   GFX_ARG3_LO/MID    ($76-$77) = byte_w 16-bit (octets/ligne, 1..65535). ; v0.2
-;   GFX_ARG4_LO/MID    ($6E-$6F) = byte_h 16-bit (lignes, 1..65535).       ; v0.2
+;   GFX_ARG4_LO/MID    ($92-$93) = byte_h 16-bit (lignes, 1..65535).       ; v0.2
 ; Effets : copie un bloc rectangulaire src → dst dans la SDRAM.
 ;          v0.2 limites HW : src/dst byte-alignés, pas d'overlap, pas
 ;          de transparency. BPL hardcodé GPU=512 (XVGA).

@@ -185,6 +185,33 @@ ekpk_ok:
 .export kernel_event_push_mouse
 kernel_event_push_mouse:
         pha                      ; sauve type
+        ; ── Coalescing MOUSE_MOVED : si le dernier event en file est déjà un
+        ;    MOVED, on met à jour sa position EN PLACE au lieu d'en empiler un.
+        ;    Sinon un drag long inonde le ring (16) de moves → le button-UP
+        ;    suivant serait droppé → SCROLL_DRAG_ID resterait armé → le WM reste
+        ;    bloqué en mode drag et n'accepte plus aucun clic. ──
+        cmp #EV_MOUSE_MOVED
+        bne ekpm_enqueue
+        lda EVENT_RING_COUNT
+        beq ekpm_enqueue         ; file vide → rien à coalescer
+        lda EVENT_RING_TAIL      ; offset du dernier event = (TAIL-1)&15 ×10
+        dec a
+        and #(EVENT_ENTRIES - 1)
+        asl a                    ; ×2
+        sta EVT_TMP
+        asl a
+        asl a                    ; ×8
+        clc
+        adc EVT_TMP              ; ×10
+        tax
+        lda EVENT_RING + EVT_WHAT,x
+        cmp #EV_MOUSE_MOVED
+        bne ekpm_enqueue         ; dernier ≠ MOVED → enqueue normal
+        pla                      ; coalesce : jette le type (slot reste MOVED)
+        lda MOUSE_BTN
+        sta EVENT_RING + EVT_MODS,x
+        jmp _evt_fill_where_when ; maj WHERE/WHEN à X (puis rts)
+ekpm_enqueue:
         lda EVENT_RING_COUNT
         cmp #EVENT_ENTRIES
         bcc ekpm_ok

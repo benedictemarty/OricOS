@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased+scroll-hang-fix] - 2026-05-27
+
+### Fixed — GUI gelée après drag d'ascenseur au max
+- **`kernel_event_push_mouse` (event.s) : coalescing des `MOUSE_MOVED`** — un drag
+  de scrollbar long saturait le ring d'événements (16) de moves → le button-UP
+  suivant était droppé → `SCROLL_DRAG_ID` restait armé → le WM restait bloqué en
+  mode drag, avalant tout clic ultérieur → l'app ne répondait plus. Fix : si le
+  dernier event en file est déjà un `MOUSE_MOVED`, on met à jour sa position en
+  place au lieu d'en empiler un → la file ne sature plus, DOWN/UP toujours enfilés.
+- **Collision ZP $6E** : `GFX_ARG4_LO` (blit byte_h, ajouté en 1.22.87) chevauchait
+  `EVT_TMP` (scratch IRQ event-push). `GFX_ARG4` déplacé en `$92/$93`.
+
 ## [Unreleased+gpu-arg-race-fix] - 2026-05-27
 
 ### Fixed — OS-gpu-race : commandes GPU atomiques vs IRQ (option 2)

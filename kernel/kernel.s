@@ -272,7 +272,8 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $68-$6A   3B       VRAM_DMA_DST_*_ZP  destination DMA SDRAM 24-bit
 ;  $6B-$6C   2B       VRAM_DMA_LEN_*_ZP  longueur DMA 16-bit
 ;  $6D       1B       VRAM_DMA_DIR_ZP    direction DMA
-;  $6E-$6F   2B       GFX_ARG4_LO/MID    blit byte_h 16-bit (v0.2)
+;  $6E       1B       EVT_TMP            scratch IRQ-only (event push, ×10 offset)
+;  $6F       1B       (libre)
 ;  $70-$72   3B       GFX_BASE_*         base SDRAM 24-bit GPU (clear/fill/blit...)
 ;  $73-$75   3B       GFX_ARG2_*         arg2 GPU (size|x/y/unused)
 ;  $76-$77   2B       GFX_ARG3_*         arg3 GPU (w/h | blit: byte_w 16-bit)
@@ -282,7 +283,8 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $7F       1B       (libre)
 ;  $80-$8F   16B      WIN_X/…/TMP        args kernel_window_draw legacy (SP-3.c) + tmp scratch
 ;  $90-$91   2B       GFX_BPL_LO/HI      stride GPU configurable (ADR-27 opt.b, SET_BPL)
-;  $92-$FF   110B     (libres)
+;  $92-$93   2B       GFX_ARG4_LO/MID    blit byte_h 16-bit (v0.2)
+;  $94-$FF   108B     (libres)
 ; ════════════════════════════════════════════════════════════════════
 
 ; Zero page kernel (DP=0)
@@ -844,8 +846,8 @@ GFX_ARG2_MID     = $74           ; clear: size_mid | rect: y
 GFX_ARG2_HI      = $75           ; clear: size_hi  | rect: unused
 GFX_ARG3_LO      = $76           ; clear: unused   | rect: w  | blit: byte_w lo
 GFX_ARG3_MID     = $77           ; clear: unused   | rect: h  | blit: byte_w hi
-GFX_ARG4_LO      = $6E           ; blit: byte_h lo (v0.2 — $6E-$6F libres)
-GFX_ARG4_MID     = $6F           ; blit: byte_h hi
+GFX_ARG4_LO      = $92           ; blit: byte_h lo (v0.2) — PAS $6E (= EVT_TMP scratch IRQ)
+GFX_ARG4_MID     = $93           ; blit: byte_h hi
 GFX_COLOR        = $78           ; couleur 4-bit (0..15)
 ; ZP additionnels TEXT (en plus de BASE/ARG2_LO=x/ARG2_MID=y/COLOR)
 GFX_FONT_LO      = $79           ; font_addr 24-bit
