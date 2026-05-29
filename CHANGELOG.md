@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-30
 
+### Added — ADR-30 (DRAFT) ouverte : roadmap toolbox (alignement GeoWorks)
+- **ADR-30 (DRAFT) ouverte** : audit factuel WebFetch de la hiérarchie
+  `Gen*` PC/GEOS (40 classes, 22 % couverte par OricOS actuellement).
+  Roadmap incrémentale 5 étapes proposée (`GU_LIST`, `GU_MENU`+`GU_MENU_ITEM`,
+  `GU_RANGE`, `GU_SPIN`, `GU_FIELD`) avec cible ~85 % des widgets
+  d'interaction. Aucune modification code OricOS : c'est un dossier
+  d'instruction. Chaque étape sera ratifiée individuellement après
+  implémentation gated + validation interactive (leçon ADR-29). Dossier :
+  `docs/adr/0030-roadmap-toolbox-DRAFT.md`.
+
 ### Added — ADR-29 Étape 2 : granularité par widget (alignement GeoWorks complet)
 - **`WIDGET_HINTS = $016320`** (8 × 1B, hint par widget) + `UI_PENDING_HINT
   = $016328` (scratch parser GenUI) + tag `GU_HINT_IMMEDIATE_DRAG_NOTIFY = $0A`
