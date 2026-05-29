@@ -2293,6 +2293,7 @@ _cls_store:
 ; (SP-3.o S.2). value = clamp(position souris - début de la gouttière, 0, max).
 ; V : MOUSE_Y - abs_y ; H : MOUSE_X - abs_x. Stocke value (+14), redraw.
 ; Temps : WG_RELX/Y (abs), WG_RELW (offset 16-bit), WG_RELH (max). Clobbe A,X,Y.
+.export _wm_scroll_update          ; ADR-28 : exposé pour mesure (test scroll-cost)
 _wm_scroll_update:
         ; Section critique : WG_RELX/Y/W/H sont des scratch partagés avec l'IRQ
         ; (kernel_wm_mouse_step → redraw → _wm_draw_widget_body écrit WG_RELH).
@@ -2399,11 +2400,17 @@ _scu_store:
 ; Repeint UNIQUEMENT le contrôle puis redessine le curseur PAR-DESSUS (son fond
 ; sous-jacent a changé). Sous sei : le backing-store curseur (CURSOR_SAVE) est
 ; partagé avec l'IRQ souris (kernel_wm_cursor_blit) → section critique.
+.export _wm_redraw_ctl             ; ADR-28 : exposé pour mesure (test scroll-cost)
 _wm_redraw_ctl:
         php
         sei
         jsr kernel_wm_redraw_widget   ; A = index du widget
-        jsr kernel_wm_draw_cursor     ; invalide backing périmé + redessine curseur
+        ; ADR-29 (révèle bug §6.6) : cursor_blit (restore+save+draw) au lieu de
+        ; draw_cursor (invalidate+save+draw). En §6.6 l'IRQ skip cursor_blit
+        ; pendant drag widget → le curseur à l'ancienne position N'EST PAS effacé.
+        ; draw_cursor invalide le backing donc ne restaure rien → trace visible.
+        ; cursor_blit restaure le fond sous l'ancien curseur → trace effacée.
+        jsr kernel_wm_cursor_blit
         plp
         rts
 
@@ -2589,10 +2596,27 @@ wm_step_drag:
         ; Drag autorisé seulement si le clic initial a touché une fenêtre.
         lda WM_DRAG_ARMED
         bne wm_step_do_drag
-        ; bouton tenu hors fenêtre → curseur léger uniquement.
+        ; ADR-28 §6.6 : si un drag de widget est armé (ascenseur/view), le main
+        ; loop va redessiner le curseur via _wm_redraw_ctl → l'IRQ peut skipper
+        ; cursor_blit (gain ≈ 3320 cyc/event ≈ 16,6 % budget frame, cf. §1.2ter).
+        ; Latence curseur : ≤ 1 frame (main loop consomme 1 event/frame).
+        lda SCROLL_DRAG_ID
+        cmp #$FF
+        beq wm_step_drag_cursor  ; pas de drag widget → cursor_blit normal
+        rts                      ; drag widget actif → main loop dessine le curseur
+wm_step_drag_cursor:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_do_drag:
+        ; ADR-28 Étape 1 (D3) : skip si delta nul. Un MOVED sans déplacement réel
+        ; (DX=DY=0) ne change rien à l'écran → éviter le redraw_drag (≈ 53 % du
+        ; budget frame, cf. ADR-28 §1.2bis). Le curseur n'a pas bougé non plus →
+        ; rien à repeindre. Allège l'IRQ sans toucher l'architecture.
+        lda MOUSE_DX
+        ora MOUSE_DY
+        bne wm_drag_moved
+        rts                      ; delta nul → no-op
+wm_drag_moved:
         ; v0.7 : drag incrémental (pas de clear plein écran).
         ; 1. capture le rect actuel (avant déplacement) = dirty rect à effacer.
         jsr _wm_capture_focused_rect
@@ -2623,6 +2647,10 @@ wm_step_do_resize:
 _wm_do_resize:
         lda WM_FOCUS
         cmp #$FF
+        beq _dr_done
+        ; ADR-28 Étape 1 (D3) : skip si delta nul (cf. wm_step_do_drag).
+        lda MOUSE_DX
+        ora MOUSE_DY
         beq _dr_done
         ; Capture rect avant modif (dirty rect pour redraw incrémental)
         jsr _wm_capture_focused_rect
@@ -3214,19 +3242,46 @@ mlc_moved:                      ; SP-3.o S.2 : si drag d'ascenseur en cours → 
         bne mlc_moved_go
         jmp mlc_null            ; pas de drag → événement ignoré
 mlc_moved_go:
-        jsr _wm_scroll_update
+        jsr _wm_scroll_update       ; visuel : value + redraw widget (kernel-side, toujours)
+        ; ADR-29 Étape 2 : décide DELAYED vs IMMEDIATE par widget (aligné
+        ; GeoWorks `GenValueClass`). Override global `WM_DRAG_NOTIFY_HINT=$A5`
+        ; force tous les widgets en IMMEDIATE (kill-switch debug). Sinon
+        ; consulte `WIDGET_HINTS[id]` (0 = HINT_DRAG_DELAYED default,
+        ; 1 = HINT_DRAG_IMMEDIATE opt-in).
+        lda WM_DRAG_NOTIFY_HINT
+        cmp #$A5
+        beq mlc_moved_immediate     ; override global → IMMEDIATE
+        lda SCROLL_DRAG_ID          ; abs-long (ldx n'a pas ce mode en 65816)
+        tax
+        lda f:WIDGET_HINTS,x        ; abs-long (WIDGET_HINTS > $FFFF)
+        cmp #HINT_DRAG_IMMEDIATE
+        beq mlc_moved_immediate     ; widget opt-in IMMEDIATE
+        jmp mlc_null                ; DELAYED (default) → silent pendant le drag
+mlc_moved_immediate:
         lda SCROLL_DRAG_ID
         sta $DA
         lda #MSG_CONTROL
         rts
-mlc_up:                         ; fin de drag d'ascenseur
+mlc_up:                             ; fin de drag d'ascenseur
         lda SCROLL_DRAG_ID
         cmp #$FF
         beq mlc_up_none
+        tax                         ; X = id du widget drag
         lda #$FF
         sta SCROLL_DRAG_ID
+        ; ADR-29 Étape 2 : notification finale UNIQUEMENT en mode DELAYED
+        ; (en IMMEDIATE, app a déjà été notifiée par le dernier MOVED).
+        lda WM_DRAG_NOTIFY_HINT
+        cmp #$A5
+        beq mlc_up_none             ; override global IMMEDIATE → pas de notif finale
+        lda f:WIDGET_HINTS,x        ; abs-long (WIDGET_HINTS > $FFFF)
+        cmp #HINT_DRAG_IMMEDIATE
+        beq mlc_up_none             ; widget IMMEDIATE → pas de notif finale
+        stx $DA                     ; DELAYED : notification finale avec id
+        lda #MSG_CONTROL
+        rts
 mlc_up_none:
-        jmp mlc_null            ; relâché → pas de message supplémentaire
+        jmp mlc_null                ; relâché → pas de message supplémentaire
 mlc_mdown:
         ; G.3c : clic dans la barre de menu (y < MENU_BAR_H) → MSG_MENU.
         lda $D7                 ; where_y high byte
@@ -3382,10 +3437,19 @@ sud_n2f:
         jmp sud_radio
 sud_n2g:
         cmp #GU_TEXT
-        bne sud_n3
+        bne sud_n2h
         jmp sud_text
+sud_n2h:
+        cmp #GU_HINT_IMMEDIATE_DRAG_NOTIFY    ; ADR-29 Étape 2 : opt-in IMMEDIATE
+        bne sud_n3
+        jmp sud_hint_immediate
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
+sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
+        lda #HINT_DRAG_IMMEDIATE
+        sta UI_PENDING_HINT     ; sera copié sur le prochain widget par kernel_wm_add_widget
+        iny                     ; consomme le tag (pas de data)
+        jmp sud_loop
 sud_title:                      ; GU_TITLE + chaîne inline (AVANT GU_WINDOW)
         iny                     ; Y → 1er caractère du titre
         jsr _sud_copy_inline    ; copie la chaîne inline → UI_STR_BUF (Y avance après le null)

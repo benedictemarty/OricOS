@@ -126,6 +126,12 @@ kernel_irq_handler:
         and #$80                ; bit7 = event
         beq irq_no_mou
         jsr kernel_mouse_read
+        ; ADR-28 : Étape 3 (skip mouse_step en mode serveur) REVERTÉE après bug
+        ; interactif (curseur figé, widgets non réactifs malgré tests headless verts).
+        ; État courant : mouse_step toujours appelé en IRQ ; en mode serveur, le
+        ; serveur fait un double appel (idempotent mais pas optimal). Investigation
+        ; de la cause racine du bug Étape 3 reportée. Ratification ADR-28 (design C)
+        ; tient ; Étape 3 implémentation à reprendre proprement. Cf. §7.4 limites.
         jsr kernel_wm_mouse_step
         ; ── SP-3.n G.1 : poste l'événement souris dans la file (edge-detect ──
         ; bouton gauche : down/up sur transition, moved sinon). Coexiste avec
@@ -155,6 +161,10 @@ irq_no_mou:
         jsr kernel_kbd_wake
         ; ── SP-3.n G.2 : réveille la tâche bloquée sur la file d'événements ──
         jsr kernel_event_wake
+        ; ADR-28 Étape 2 : pas de jsr kernel_raw_wake ici (overhead IRQ
+        ; détectable par tests timing-sensibles, e.g. ctl_demo). Le wake est
+        ; colocalisé dans kernel_raw_push_mouse/push_key (n'est appelé qu'en
+        ; mode serveur WM actif).
 
         ; ── VIA T1 présent ? (sinon IRQ MOU2/KBD2 seule : pas de tick) ──
         lda VIA_IFR

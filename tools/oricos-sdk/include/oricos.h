@@ -77,6 +77,15 @@
 #define GU_RADIO            8   /* + relx16 rely16 relw16 relh16 value8 group8 (radio) */
 #define GU_TEXT             9   /* + relx16 rely16 relw16 relh16 maxlen8 (champ texte) */
 
+/* ADR-29 Étape 2 : hint déclaratif (alignement GeoWorks GenValueClass).
+ * Placé AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
+ * widget seul en mode IMMEDIATE (notification continue pendant le drag).
+ * Default sans hint = DELAYED (notification UNIQUE à la release). Tag seul,
+ * pas de payload. À utiliser avec parcimonie (par défaut DELAYED protège
+ * l'app contre la saturation par flux d'events). Aligné
+ * HINT_VALUE_IMMEDIATE_DRAG_NOTIFICATION de PC/GEOS gValueC.def. */
+#define GU_HINT_IMMEDIATE_DRAG_NOTIFY  10
+
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
 #define ALERT_OKCANCEL      1

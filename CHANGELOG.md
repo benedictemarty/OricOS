@@ -8,6 +8,224 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30
+
+### Added — ADR-29 Étape 2 : granularité par widget (alignement GeoWorks complet)
+- **`WIDGET_HINTS = $016320`** (8 × 1B, hint par widget) + `UI_PENDING_HINT
+  = $016328` (scratch parser GenUI) + tag `GU_HINT_IMMEDIATE_DRAG_NOTIFY = $0A`
+  + constantes `HINT_DRAG_DELAYED=$00` / `HINT_DRAG_IMMEDIATE=$01`.
+  `.assert UI_PENDING_HINT < $016400` (anti-overlap RAW_RING).
+- **Parser GenUI** (`wm.s sud_loop`) : cas `GU_HINT_IMMEDIATE_DRAG_NOTIFY`
+  ajouté entre `sud_n2g` et `sud_n3`. Tag seul qui pose `UI_PENDING_HINT`
+  pour le widget suivant.
+- **`kernel_wm_add_widget`** (`tk.s`) : copie `UI_PENDING_HINT → WIDGET_HINTS[id]`
+  via `sta f:WIDGET_HINTS,X` (abs-long), reset après. Tout widget sans tag
+  hérite du default `HINT_DRAG_DELAYED`.
+- **`mlc_moved_go` + `mlc_up`** (`wm.s`) : consultent `f:WIDGET_HINTS,X` au
+  lieu du flag global seul. Hiérarchie : override global > widget hint >
+  default. `ldx SCROLL_DRAG_ID` remplacé par `lda` + `tax` (ldx n'a pas de
+  mode abs-long en 65816 ISA, `SCROLL_DRAG_ID > $FFFF`).
+- **SDK `oricos.h`** : `GU_HINT_IMMEDIATE_DRAG_NOTIFY` exposé aux apps
+  userland C avec commentaire d'usage et référence à `gValueC.def`.
+- **`make tests` vert** (suite complète + scroll-cost passe avec value 1:1).
+  **Validation interactive utilisateur positive** (2026-05-30) : `--ctl-demo`
+  (sans tag → default DELAYED) reste fluide, aucune régression vs Étape 1.
+- **Alignement GeoWorks complet** : tag déclaratif par widget, default sûr,
+  override global comme kill-switch debug. Refinement post-ratification
+  non-bloquant tracé dans ADR-29 §7.2.
+
+### Ratified — ADR-29 : drag notification hint (GeoWorks-aligned, default DELAYED)
+- **ADR-29 ratifiée** suite à validation interactive utilisateur positive.
+  Implémentation Étape 1 livrée dans `kernel.s` + `wm.s` :
+  - **`WM_DRAG_NOTIFY_HINT = $01EE70`** : flag global, default $00 = mode
+    `HINT_VALUE_DELAYED_DRAG_NOTIFICATION` (aligné GeoWorks). $A5 = override
+    IMMEDIATE (comportement legacy strict).
+  - **`mlc_moved_go` (wm.s)** : en mode DELAYED, retourne `MSG_NULL` au lieu
+    de `MSG_CONTROL` (visuel widget toujours mis à jour par `_wm_scroll_update`).
+  - **`mlc_up` (wm.s)** : en mode DELAYED, notifie l'app **une fois** à la
+    release avec `MSG_CONTROL` + id du widget en $DA. En IMMEDIATE, comportement
+    legacy strict (pas de notif finale).
+- **Fix bug pré-existant `_wm_redraw_ctl`** : `kernel_wm_cursor_blit`
+  (restore+save+draw) au lieu de `kernel_wm_draw_cursor` (invalidate+save+
+  draw). Bug §6.6 latent (curseur à l'ancienne position jamais effacé)
+  révélé par le changement de timing d'ADR-29 et corrigé en même temps.
+- **`make tests` vert**. Validation interactive `--ctl-demo` positive :
+  scrollbar fluide, value 1:1, FORBID se libère, curseur propre.
+
+### Added — ADR-29 (DRAFT) ouverte : drag notification hint (GeoWorks-aligned)
+- **ADR-29 (DRAFT) ouverte** : dossier d'instruction sur la sémantique des
+  messages pendant un drag de scrollbar/view. Bug interactif « fin de course »
+  localisé par mtrace4 (PC `$01:11EE` dans `kernel_scroll_up`, FORBID=1
+  bloqué). Cause = bottleneck app + print + scroll texte (pré-existant à
+  ADR-28). Pattern résolu : hint GeoWorks `HINT_VALUE_DELAYED_DRAG_NOTIFICATION`
+  (source officielle pcgeos.git lue). Recommandation senior : option C (hint
+  déclaratif default DELAYED, opt-in IMMEDIATE), cohérente avec ADR-26.
+  Implémentation gated par flag pour validation interactive avant ratification.
+  Dossier : `docs/adr/0029-drag-notification-hint-DRAFT.md`.
+- **§6.7 d'ADR-28 explicitement rétractée** dans son fichier source : le
+  quota anti-drop button-UP « fixait » un drop qui n'a jamais lieu (UP
+  toujours posté, confirmé mtrace3). Code reste en place (non nocif) mais
+  sans valeur démontrable. Le vrai fix du bug est traité par ADR-29.
+
+## [Unreleased] - 2026-05-29
+
+### Ratified — ADR-28 (option C, threading WM) — 2026-05-29
+- **ADR-28 ratifiée** ce jour (option C hybride : politique fenêtre + rendu en
+  tâche serveur, curseur seul en IRQ). Conforme moratoire CLAUDE.md §10 (audit
+  §8 du dossier) : (1) dossier d'instruction chiffré (§1.2bis + §1.2ter) avec
+  3 alternatives et recommandation senior tracée ; (2) implémentation de
+  référence livrée et testée (Étapes 0/1/2/3 + §6.6 + §6.7, gated
+  `TC_WM_FLAG=$A5`, `make tests` vert) ; (3) cohérence vérifiée avec
+  ADR-03/24/25/26 et bénéfice net pour ADR-27 §0ter (point 5 simplifié).
+  Fichier renommé `docs/adr/0028-threading-window-manager.md`. CLAUDE.md
+  §2 (ratifiées) + §3 (ouvertes) + index ADR + ADR_SUMMARY mis à jour.
+  Refinements suivis (non-bloquants) : burst >1 event/frame, §6.6 en mode
+  serveur, §6.7 sur RAW, retrait `php/sei…plp` gfx.
+
+### Retracted — ADR-28 §1.2ter « famine réfutée » : invalide
+- Le harnais `test-oricos-scroll-cost` injecte ≤ 1 event/frame ; en interactif
+  SDL réel la cadence est bien plus dense et le bug `bbf067b` « GUI gelée fin
+  de course » **reste reproductible**. La conclusion §1.2ter « famine réfutée »
+  est rétractée ; les chiffres caractérisent un régime, pas une réfutation.
+  §6.6/§6.7 gardent leur valeur (gains headless mesurés) mais **n'éliminent
+  pas le bug d'origine**. Cause racine à instruire à nouveau (rafale 8+/frame).
+
+### Reverted — ADR-28 Étape 3 (skip mouse_step IRQ / appel en tâche) — bug interactif
+- **Revert** des deux modifications structurelles de l'Étape 3 suite à un bug
+  interactif révélé par test utilisateur SDL (`--wm-server` : curseur figé,
+  widgets non réactifs, alors que suite headless verte). `handlers.s` appelle
+  toujours `kernel_wm_mouse_step` ; `task_wm_entry` redevient passe-plat pur
+  (Étape 2 exact). Mode serveur (`TC_WM_FLAG=$A5`) reste fonctionnel et testé,
+  réduit à la chaîne IRQ→RAW→task_wm:passe-plat→EVENT_RING. **Ratification
+  ADR-28 (design option C) tient** — c'est l'**implémentation Étape 3** qui
+  est buguée. Cause racine présumée : état souris global lu par mouse_step en
+  tâche incohérent sous burst SDL, ou stack task_wm trop courte pour la
+  profondeur d'appel redraw. Plan d'investigation tracé en ADR-28 §7.4.
+  `make tests` vert (revert ramène à l'état Étape 2, déjà validé).
+
+### Changed — ADR-28 Étape 3 : politique WM en contexte tâche (seuil moratoire 50%)
+- **`handlers.s`** : si `TC_WM_FLAG=$A5`, l'IRQ skip `kernel_wm_mouse_step` et
+  appelle `kernel_wm_cursor_blit` directement (option C : curseur reste en IRQ
+  pour la latence). En mode legacy : ~7 cyc/event ajoutés (test routing),
+  indétectable.
+- **`task_wm_entry` (event.s)** : appelle `kernel_wm_mouse_step` après
+  `raw_pop` → la politique fenêtre (hit-test, focus, drag, resize, chrome,
+  callbacks, redraw/redraw_drag) tourne désormais **en contexte tâche**.
+  `kernel_wm_redraw*` n'est plus jamais appelé depuis l'IRQ en mode serveur.
+- **Test** : `test-oricos-wm-server` re-passe avec la chaîne IRQ→RAW→task_wm:
+  mouse_step→EVENT_RING. `make tests` complet vert.
+- **Étape 4 de facto incluse** : seul `cursor_blit` reste en IRQ (option C).
+- **Seuil moratoire 50 % atteint** (CLAUDE.md §10) — ratification ADR-28
+  désormais ouverte sous réserve de campagne GUI et de validation humaine.
+- **Limites assumées** (refinements non-bloquants) : (a) état souris lu par
+  mouse_step en tâche = courant (cohérent à 1 event/frame mesuré §1.2ter ;
+  burst dégradé v1) ; (b) §6.6 partiellement perdue en mode serveur (curseur
+  potentiellement dupliqué) ; (c) §6.7 à porter sur `raw_push_*` ; (d)
+  `php/sei…plp` défensifs gfx toujours en place.
+
+### Changed — ADR-28 §6.7 : quota EVENT_RING anti-drop button-UP
+- **`kernel_event_push_key` + branche MOVED de `kernel_event_push_mouse`
+  (event.s)** : limitées à `EVENT_ENTRIES-2=14`. Les transitions DOWN/UP
+  gardent la limite pleine 16. Garantit qu'un `EV_MOUSE_DOWN`/`UP` **n'est
+  jamais droppé** par saturation d'autres events — ferme le scénario "gel
+  scrollbar par saturation de ring" (§1.2ter). Test isolé
+  `test_event_quota_reserves_transition_slots` (ajouté à `test-oricos-raw-ring`) :
+  14 keys remplissent, 15e droppée, DOWN+UP passent (count 15→16), 3e transition
+  droppée quand ring vraiment plein. `make tests` vert. Portée actuelle :
+  chemin legacy ; `raw_push_*` à doter du même quota quand Étape 3 active.
+
+### Added — ADR-28 Étape 2 : tâche serveur WM passe-plat (gated TC_WM_FLAG)
+- **Primitives RAW** (event.s) : `kernel_raw_wait`/`kernel_raw_wake` (block/
+  wake clones de `event_*`), `kernel_event_push_verbatim` (re-push verbatim
+  `$D0..$D9` → `EVENT_RING`), `kernel_raw_push_mouse`/`_key` (clones fidèles
+  écrivant dans `RAW_RING`, coalescing MOVED inclus).
+- **Routing transparent** : `kernel_event_push_mouse`/`_key` testent
+  `TC_WM_FLAG` en tête et tail-callent les versions RAW si `$A5`. Aucun
+  caller IRQ/kbd à modifier. Mode legacy (flag off) : 6 cyc/push.
+- **Wake colocalisé** dans `raw_push_mouse/_key` (tail-call `kernel_raw_wake`)
+  — non placé dans `handlers.s` après un essai cassé par timing IRQ
+  (`test_oricos_clock`/`ctl_demo` sensibles à ~12 cyc supplémentaires).
+- **`task_wm_entry`** (event.s) : boucle `raw_wait → raw_pop → push_verbatim →
+  event_wake`. Comportement net **identique** pour l'app (passe-plat).
+- **`TC_WM_FLAG=$01EE60`** + gate `boot.s`. Défaut $00 → comportement actuel
+  intact, aucune régression (`make tests` vert). Test end-to-end :
+  `test-oricos-wm-server` (chaîne IRQ→RAW→serveur→EVENT_RING prouvée).
+  Préparation Étape 3 (bascule politique IRQ→serveur). Dossier : ADR-28 §7.3.
+
+### Changed — ADR-28 §6.6 : suppression du curseur dupliqué (drag widget)
+- **`wm_step_drag` (wm.s)** : quand `SCROLL_DRAG_ID` est armé (drag d'ascenseur
+  ou GenView), l'IRQ skip `kernel_wm_cursor_blit` — le main loop dessine déjà
+  le curseur via `_wm_redraw_ctl`. **Mesure** (`test-oricos-scroll-cost`) :
+  `cursor_blit` 13 → **1 appel** sur 13 events, `mouse_step` 20,8 % → **6,5 %**
+  budget/event. Total/event drag scrollbar **≈ 34 % → ≈ 16 %**, value toujours
+  1:1. **Gain net : ~16 % du budget frame par event**, sans refactor. Latence
+  curseur ≤ 1 frame (main loop consomme 1 event/frame). `make tests` vert.
+
+### Measured — ADR-28 §1.2ter : chemin main-loop du drag d'ascenseur
+- **Mesure on-target** (`test-oricos-scroll-cost`, active `task_scr`) : pendant
+  un drag d'ascenseur, la `value` suit les events **1:1** (7,10,…,40), coût total
+  ≈ 34 % du budget frame (`_wm_scroll_update` 17,3 % dont paint widget seulement
+  3,7 % + IRQ curseur 16,6 %). **Réfute** la famine-par-coût sur ce chemin :
+  à ≤ 1 event/frame, rien n'affame. Le « gel » interactif (bbf067b) est une
+  **saturation de ring** (button-UP droppé), pas un manque de cycles. Findings :
+  (a) curseur **rendu 2× par event** (IRQ + `_wm_redraw_ctl`) ≈ 33 % du budget,
+  gain ciblé indépendant (ADR-28 §6.6) ; (b) anti-drop button-UP (§6.7).
+  Symboles `_wm_scroll_update`/`_wm_redraw_ctl` exportés (mesure ; non-comportemental).
+  Conséquence : la famine n'est plus l'argument principal de l'Étape 3 ; les
+  justifications robustes (race GPU, sûreté callback, coût drag-fenêtre 53 %,
+  curseur dupliqué) demeurent. `make tests` vert.
+
+### Changed — ADR-28 Étape 1 : skip-si-delta-nul (D3) sur drag/resize
+- **`wm_step_do_drag` + `_wm_do_resize` (wm.s)** : garde `MOUSE_DX|MOUSE_DY==0
+  → no-op`. Un `MOUSE_MOVED` sans déplacement réel ne déclenche plus le
+  `redraw_drag` (≈ 53 % du budget frame). Coût d'un tel event : **≈ 13000 → 37
+  cycles** (prouvé par `test-oricos-wm-cost`). Sûr, non-structurel.
+  **Re-scope honnête** (cf. ADR-28 §7.2) : D3 bénéficie au **drag de fenêtre/
+  resize**, pas à la famine d'**ascenseur** — la mesure localise la politique
+  scrollbar dans la main loop (`_wm_scroll_update`), pas dans l'IRQ ; `mouse_step`
+  en drag d'ascenseur ne fait que `cursor_blit` (≈ 17 %). Le vrai fix scrollbar
+  relève de l'Étape 3. `make tests` vert, 0 régression.
+
+### Added — ADR-28 Étape 0 : RAW input ring (scaffolding non câblé)
+- **RAW input ring** (kernel.s + event.s) : `RAW_RING` ($016400, bank 1 haute
+  libre, 16×10) + pointeurs `RAW_RING_HEAD/TAIL/COUNT` + `RAW_WAITER` (réservé
+  Étape 2), `.assert` anti-recouvrement. `kernel_raw_init`/`kernel_raw_push`/
+  `kernel_raw_pop` : transport **verbatim** via le bloc ZP $D0..$D9 (convention
+  `kernel_event_pop`), drop-si-plein, wrap puissance-de-2. Destiné à la future
+  tâche serveur WM (ADR-28 §7) — **aucun producteur/consommateur branché**,
+  boot et chemin GUI **inchangés** (pur scaffolding réversible).
+  `kernel_raw_wait`/`wake` reportés à l'Étape 2 (testables avec la tâche).
+  Test : `test-oricos-raw-ring` (Phosphoric) — appels kernel **en isolation**
+  (init/FIFO/wrap/drop/pop-vide). `make tests` vert (kernel.bin régénéré, 0
+  régression). Dossier : `docs/adr/0028-…-DRAFT.md` §7.1.
+
+### Docs / Architecture
+- **ADR-28 (DRAFT) — Modèle de threading du Window Manager** ouverte (dossier
+  d'instruction). Revue d'architecture senior du WM/widgets : constat que la
+  politique WM **et le rendu** tournent dans l'IRQ souris (`kernel_irq_handler`
+  → `kernel_wm_mouse_step`, handlers.s:129), avec **double exécution** vs la
+  main loop (`EVENT_RING`). Thèse : cause racine commune de la famine main loop,
+  de la race GPU `bpl`/ARG (ADR-27 §0bis) et du danger callback-en-IRQ
+  (wm.s:1911). Options A (patches D1/D3) / B (serveur WM en tâche) / C (hybride
+  curseur-IRQ) chiffrées ; recommandation senior : viser C, A en palliatif.
+  Non tranchée (mesure `redraw`/event + arbitrage humain requis). Couplage
+  ADR-27 : ne pas exécuter le flip compact §0ter avant de trancher ADR-28.
+  Conforme moratoire §10 (dossier d'instruction, aucune ratification).
+  Fichier : `docs/adr/0028-threading-window-manager-DRAFT.md`. Index ADR +
+  CLAUDE.md §3 mis à jour. (Fausse alerte levée : pas de collision d'adresse
+  `WM_MODAL`/`WM_RESIZE_ARMED` — `$015AD5` vs `$015ACE`, distincts.)
+- **ADR-28 §1.2bis — mesure on-target livrée (tranche B/C en faveur de C)** :
+  coût inclusif des routines WM dans l'IRQ (harnais Phosphoric
+  `test-oricos-wm-cost`, détection retour par pile S, budget frame 19968 cyc) :
+  `kernel_wm_mouse_step` = **66,8 %** du budget frame **par event souris**
+  (famine quantifiée), dont `kernel_wm_redraw_drag` **53,6 %** (≈ `redraw`
+  plein 52,9 % → le « drag incrémental » n'économise rien, il redessine toutes
+  les fenêtres) ; politique seule ≈ 13 % ; curseur (gardé en IRQ par C)
+  9–17 %. Verdict : C fait chuter le coût IRQ/event de ≈ 67 % à ≈ 17 % sans
+  régression de latence curseur. Borne basse (GPU émulé synchrone) → pire sur
+  HDL, renforce le retrait du redraw hors IRQ. Build : `-Ln kernel.lbl` ajouté
+  au ld65 (fichier de labels, kernel.bin inchangé).
+
 ## [Unreleased+scroll-wgrelh+windraw-determ] - 2026-05-27
 
 ### Fixed

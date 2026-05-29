@@ -47,7 +47,7 @@ $(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) | $(BUILD)
 	$(AS) $(ASFLAGS) -l $(KERNEL_LST) -o $@ $<
 
 $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)
-	$(LD) -C $(KERNEL_CFG) -m $(KERNEL_MAP) -o $@ $<
+	$(LD) -C $(KERNEL_CFG) -m $(KERNEL_MAP) -Ln $(BUILD)/kernel.lbl -o $@ $<
 	@echo
 	@echo "  → $(KERNEL_BIN) ($(shell wc -c < $(KERNEL_BIN) 2>/dev/null) bytes)"
 

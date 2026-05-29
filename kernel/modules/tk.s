@@ -587,6 +587,15 @@ _waw_ok:
         sta WIDGET_TABLE+14,X    ; length = 0
         sta f:TEXT_BUFS,X        ; buffer[0] = 0 (chaîne vide)
 _waw_count:
+        ; ADR-29 Étape 2 : pose le hint en attente sur ce widget puis reset.
+        ; Si aucun GU_HINT_IMMEDIATE_DRAG_NOTIFY n'a précédé, UI_PENDING_HINT = 0
+        ; (= HINT_DRAG_DELAYED), default sûr aligné GeoWorks.
+        lda WIDGET_COUNT        ; id du widget nouvellement créé
+        tax                     ; X = id (1 byte)
+        lda UI_PENDING_HINT
+        sta f:WIDGET_HINTS,X    ; abs-long (WIDGET_HINTS > $FFFF)
+        lda #$00
+        sta UI_PENDING_HINT     ; reset pour le prochain widget
         lda WIDGET_COUNT
         inc a
         sta WIDGET_COUNT

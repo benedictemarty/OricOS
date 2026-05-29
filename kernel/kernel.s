@@ -507,6 +507,13 @@ GU_SCROLL_V       = $06         ; + relx16 rely16 relw16 relh16 + max8 (ascenseu
 GU_SCROLL_H       = $07         ; + relx16 rely16 relw16 relh16 + max8 (ascenseur horizontal)
 GU_RADIO          = $08         ; + relx16 rely16 relw16 relh16 + value8 + group8 (radio)
 GU_TEXT           = $09         ; + relx16 rely16 relw16 relh16 + maxlen8 (champ texte)
+
+; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
+; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
+; widget seul en mode IMMEDIATE. Default (aucun hint) = DELAYED.
+GU_HINT_IMMEDIATE_DRAG_NOTIFY = $0A   ; tag seul (pas de data)
+HINT_DRAG_DELAYED   = $00         ; default — aligné HINT_VALUE_DELAYED_DRAG_NOTIFICATION
+HINT_DRAG_IMMEDIATE = $01         ; opt-in — aligné HINT_VALUE_IMMEDIATE_DRAG_NOTIFICATION
 ; Buffer de staging bank 1 : les chaînes inline (dans le bank de l'app) sont
 ; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
@@ -546,6 +553,22 @@ DLG_CANCEL_ID     = $015927
 DLG_RESULT        = $015928
 .assert EVENT_RING + EVENT_ENTRIES * EVENT_SIZE <= EVENT_RING_HEAD, error, "EVENT_RING recouvre ses pointeurs"
 .assert DLG_RESULT < MOUSE_X, error, "état event/dlg recouvre MOUSE_X"
+
+; ── ADR-28 Étape 0 : RAW input ring (scaffolding, NON câblé) ─────────────
+; File d'entrée BRUTE destinée à terme à la tâche serveur WM (ADR-28 §7.0) :
+; l'IRQ y postera les events souris/clavier verbatim, le serveur les consommera
+; en contexte tâche. Pour l'instant AUCUN producteur/consommateur n'est branché
+; (mort-code testé en isolation, cf. test_oricos_raw_ring). Même géométrie que
+; EVENT_RING (16 × 10). Record verbatim copié via le bloc ZP $D0..$D9 (comme
+; kernel_event_pop). Logé en bank 1 haute libre ($016400+, au-dessus de
+; VERSION_BASE $016310).
+RAW_RING          = $016400      ; 160 octets = 16 entrées × 10
+RAW_RING_HEAD     = $0164A0      ; index lecture (pop), 0..15
+RAW_RING_TAIL     = $0164A1      ; index écriture (push), 0..15
+RAW_RING_COUNT    = $0164A2      ; nb records en file (0..16)
+RAW_WAITER        = $0164A3      ; tâche serveur WM bloquée (0=aucune) — Étape 2
+.assert RAW_RING + EVENT_ENTRIES * EVENT_SIZE <= RAW_RING_HEAD, error, "RAW_RING recouvre ses pointeurs"
+.assert RAW_WAITER < $01FFE0, error, "RAW_RING déborde sur les vecteurs natifs bank 1"
 
 ; ─── GPU Blitter HW I/O (ADR-21, Sprint GPU-3) ────────────────────
 ; Ports $0340-$034F en bank 0 (DBR=0).
@@ -797,6 +820,12 @@ TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test 
 TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test tags GenUI déclaratifs)
 TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C démo contrôles)
 TC_CLOCKAPP_FLAG = $01EE50        ; Sprint 4 : $A5 → spawn bundle_clock (app C clock)
+TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)
+WM_DRAG_NOTIFY_HINT = $01EE70     ; ADR-29 Étape 1 : 0 (default) = DELAYED_DRAG_NOTIFICATION
+                                  ;                  $A5 = override IMMEDIATE global (kill-switch debug)
+WIDGET_HINTS        = $016320     ; ADR-29 Étape 2 : 8 × 1B = hint par widget (0=DELAYED, 1=IMMEDIATE)
+UI_PENDING_HINT     = $016328     ; ADR-29 Étape 2 : 1B = hint en attente, posé sur le prochain widget créé
+.assert UI_PENDING_HINT < $016400, error, "WIDGET_HINTS déborde sur RAW_RING"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

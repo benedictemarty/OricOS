@@ -723,6 +723,18 @@ _skip_task_list:
         lda #$00
         jsr kernel_task_create
 _skip_task_genui:
+        ; ADR-28 Étape 2 : task_wm (gated TC_WM_FLAG) — serveur WM passe-plat.
+        ; Si activée, l'IRQ pousse les events souris/clavier dans RAW_RING au lieu
+        ; d'EVENT_RING ; task_wm les republie dans EVENT_RING (comportement net
+        ; identique pour l'app, sauf le détour task — valide block/wake).
+        lda TC_WM_FLAG
+        cmp #$A5
+        bne _skip_task_wm
+        ldx #<task_wm_entry
+        ldy #>task_wm_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_wm:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──
         jsr kernel_install_charset
