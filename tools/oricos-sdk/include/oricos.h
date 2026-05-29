@@ -77,6 +77,18 @@
 #define GU_RADIO            8   /* + relx16 rely16 relw16 relh16 value8 group8 (radio) */
 #define GU_TEXT             9   /* + relx16 rely16 relw16 relh16 maxlen8 (champ texte) */
 
+/* ADR-30 Étape 1 : liste sélectionnable déclarative (alignement GeoWorks
+ * GenListClass / Include/Objects/gListC.def). Items statiques fixes à la
+ * déclaration. Format inline :
+ *   GU_LIST, relx_lo, relx_hi, rely_lo, rely_hi, relw_lo, relw_hi,
+ *            relh_lo, relh_hi, count8,
+ *            item1 chars + 0, item2 chars + 0, ..., itemN chars + 0
+ * (count strings null-terminées concaténées). Items équivalents aux text
+ * monikers GeoWorks NULL_TERM_TEXT_FPTR. Total items ≤ ~128 octets blob.
+ * App lit la sélection via SYS_CTL_GET_VALUE (= index sélectionné, 0..count-1).
+ * Variant dynamique (GenDynamicListClass) non encore implémenté. */
+#define GU_LIST             11
+
 /* ADR-29 Étape 2 : hint déclaratif (alignement GeoWorks GenValueClass).
  * Placé AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
  * widget seul en mode IMMEDIATE (notification continue pendant le drag).

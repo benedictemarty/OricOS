@@ -3437,8 +3437,12 @@ sud_n2f:
         jmp sud_radio
 sud_n2g:
         cmp #GU_TEXT
-        bne sud_n2h
+        bne sud_n2gg
         jmp sud_text
+sud_n2gg:
+        cmp #GU_LIST            ; ADR-30 Étape 1 : liste déclarative (aligné GenList)
+        bne sud_n2h
+        jmp sud_list
 sud_n2h:
         cmp #GU_HINT_IMMEDIATE_DRAG_NOTIFY    ; ADR-29 Étape 2 : opt-in IMMEDIATE
         bne sud_n3
@@ -3707,6 +3711,45 @@ sud_scroll_common:
         jmp sud_loop
 
 ; ── sud_text : GU_TEXT relx16 rely16 relw16 relh16 + maxlen8 ─────────────────
+; ── ADR-30 Étape 1 : GU_LIST déclaratif (alignement GeoWorks GenList/gListC.def)
+; Format : GU_LIST relx16 rely16 relw16 relh16 count8 (count strings null-term).
+; Items copiés depuis [$D0],Y (bank app) → UI_LIST_BUF (bank 1, 128 octets).
+; Items équivalents aux text monikers de GeoWorks (NULL_TERM_TEXT_FPTR).
+sud_list:
+        jsr _sud_rect           ; Y → count8
+        lda [$D0],y             ; A = count
+        sta WG_CB+1             ; +15 = count
+        sta DP_TMP              ; scratch boucle
+        iny                     ; Y → premier byte du blob d'items
+        ldx #$00                ; X = offset dans UI_LIST_BUF
+        lda DP_TMP
+        beq _sul_done           ; count = 0 → rien à copier
+_sul_loop:
+        lda [$D0],y
+        sta f:UI_LIST_BUF,x
+        iny
+        inx
+        cpx #$80                ; 128 octets max → protection débordement buffer
+        bcs _sul_done
+        cmp #$00
+        bne _sul_loop           ; pas le null → continue dans même string
+        ; null copié = fin string. Décrémente count.
+        dec DP_TMP
+        bne _sul_loop           ; encore des strings → continue
+_sul_done:
+        lda #$00
+        sta WG_CB               ; +14 = selected = 0 par défaut
+        lda #<UI_LIST_BUF
+        sta DP_PCPTR            ; strptr → UI_LIST_BUF en bank 1
+        lda #>UI_LIST_BUF
+        sta DP_PCPTR+1
+        lda #$07                ; couleur lightgray (cohérent task_list_entry)
+        sta GFX_COLOR
+        lda #WG_TYPE_LIST
+        sta WG_TYPE
+        jsr _sud_attach
+        jmp sud_loop
+
 sud_text:
         jsr _sud_rect           ; Y → maxlen
         lda #$00

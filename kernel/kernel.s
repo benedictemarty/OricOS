@@ -507,6 +507,9 @@ GU_SCROLL_V       = $06         ; + relx16 rely16 relw16 relh16 + max8 (ascenseu
 GU_SCROLL_H       = $07         ; + relx16 rely16 relw16 relh16 + max8 (ascenseur horizontal)
 GU_RADIO          = $08         ; + relx16 rely16 relw16 relh16 + value8 + group8 (radio)
 GU_TEXT           = $09         ; + relx16 rely16 relw16 relh16 + maxlen8 (champ texte)
+GU_LIST           = $0B         ; ADR-30 Étape 1 : + relx16 rely16 relw16 relh16 + count8 +
+                                ; count chaînes null-term INLINE (alignement GeoWorks
+                                ; GenListClass / gListC.def — items statiques v1)
 
 ; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
 ; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
@@ -826,6 +829,8 @@ WM_DRAG_NOTIFY_HINT = $01EE70     ; ADR-29 Étape 1 : 0 (default) = DELAYED_DRAG
 WIDGET_HINTS        = $016320     ; ADR-29 Étape 2 : 8 × 1B = hint par widget (0=DELAYED, 1=IMMEDIATE)
 UI_PENDING_HINT     = $016328     ; ADR-29 Étape 2 : 1B = hint en attente, posé sur le prochain widget créé
 .assert UI_PENDING_HINT < $016400, error, "WIDGET_HINTS déborde sur RAW_RING"
+UI_LIST_BUF         = $016330     ; ADR-30 Étape 1 : 128B buffer items GU_LIST (~10 items × 12 chars)
+.assert UI_LIST_BUF + 128 <= $016400, error, "UI_LIST_BUF déborde sur RAW_RING"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

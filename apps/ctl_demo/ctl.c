@@ -12,14 +12,19 @@
 
 #include <oricos.h>
 
-/* Table GenUI : titre + fenêtre (200,200,170,130) + checkbox + ascenseur V +
- * champ texte. Chaînes inline ; valeurs 16-bit en (lo, hi). */
+/* Table GenUI : titre + fenêtre (élargie pour la liste) + checkbox + ascenseur V +
+ * champ texte + GU_LIST (3 items, ADR-30 Étape 1, alignement GeoWorks GenList).
+ * Chaînes inline ; valeurs 16-bit en (lo, hi). */
 static const unsigned char ui[] = {
     GU_TITLE, 'C','t','r','l', 0,
-    GU_WINDOW,   200 & 255, 200 >> 8,  200 & 255, 200 >> 8,  170, 0,  130, 0,
+    GU_WINDOW,   200 & 255, 200 >> 8,  200 & 255, 200 >> 8,  170, 0,  170, 0,
     GU_CHECK,     12, 0,  14, 0,  18, 0,  18, 0,   0,           /* value = 0 */
     GU_SCROLL_V, 140, 0,  14, 0,  12, 0, 100, 0,  40,           /* max = 40 */
     GU_TEXT,      12, 0,  44, 0, 120, 0,  18, 0,  10,           /* maxlen = 10 */
+    GU_LIST,      12, 0,  72, 0, 120, 0,  48, 0,   3,           /* count = 3 */
+                  'I','t','e','m',' ','A',  0,                  /* item 0 */
+                  'I','t','e','m',' ','B',  0,                  /* item 1 */
+                  'I','t','e','m',' ','C',  0,                  /* item 2 */
     GU_END
 };
 

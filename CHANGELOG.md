@@ -10,6 +10,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-30
 
+### Ratified — ADR-30 Étape 1 : GU_LIST (alignement GeoWorks GenList)
+- **`kernel.s`** : `GU_LIST = $0B` + `UI_LIST_BUF = $016330` (128 octets
+  buffer items en bank 1) + `.assert UI_LIST_BUF + 128 <= $016400`
+  (anti-overlap RAW_RING).
+- **`wm.s sud_loop`** : cas `GU_LIST` ajouté entre `sud_n2g` et `sud_n2h`.
+- **`wm.s sud_list`** : nouveau handler — `_sud_rect` + lit `count8` +
+  boucle copie inline strings null-term depuis app bank → `f:UI_LIST_BUF`
+  (bank 1) avec protection débordement à 128 octets. Configure
+  `WG_TYPE_LIST`, `DP_PCPTR → UI_LIST_BUF`, `WG_CB = 0` (selected init),
+  `WG_CB+1 = count`, puis `_sud_attach`.
+- **SDK `oricos.h`** : `#define GU_LIST 11` exposé aux apps userland C avec
+  doc d'usage (format inline, équivalence text monikers GeoWorks, mention
+  que `GenDynamicList` n'est pas v1).
+- **`apps/ctl_demo/ctl.c`** : démo modifiée (window h=170, GU_LIST avec
+  3 items `Item A/B/C`). Bundle ctl.oos recompilé (1621 octets).
+- **`make tests` vert**. **Validation interactive utilisateur positive**
+  (2026-05-30) : liste cliquable, app reçoit MSG_CONTROL avec bon index.
+- Conforme moratoire §10 (audit pré-implémentation des sources PC/GEOS).
+  ADR-30 §7.1 marqué FAIT. Étapes 2-5 (MENU, RANGE, SPIN, FIELD) restent à
+  instruire.
+
+### Added — ADR-31 (DRAFT) : clip widget hors rect parent
+- Bug observé interactivement par utilisateur : après resize-down d'une
+  fenêtre, ses widgets dont `rel.y + h > window.h` restent peints en
+  dehors du nouveau rect. Pré-existant, touche tous les widgets, plus
+  visible avec `GU_LIST`. Recommandation senior : option (A) skip widget
+  hors rect (~15 LOC), (C) clip-list architectural tracée long terme.
+  ADR-31 deviendra obsolète quand ADR-27 (backing store) sera ratifiée.
+  Dossier : `docs/adr/0031-clip-widget-rect-parent-DRAFT.md`.
+
 ### Added — ADR-30 (DRAFT) ouverte : roadmap toolbox (alignement GeoWorks)
 - **ADR-30 (DRAFT) ouverte** : audit factuel WebFetch de la hiérarchie
   `Gen*` PC/GEOS (40 classes, 22 % couverte par OricOS actuellement).
