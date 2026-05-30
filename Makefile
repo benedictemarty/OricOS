@@ -22,7 +22,7 @@ KERNEL_CFG  = kernel/kernel.cfg
 # testé silencieusement.
 KERNEL_DEPS = $(wildcard kernel/modules/*.s)
 
-APPS        = hello hello_c win_hello gui_demo view_demo ctl_demo clock score
+APPS        = hello hello_c win_hello gui_demo view_demo ctl_demo clock score file_select
 APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/hello_c/build/hello.oos \
               apps/win_hello/build/win.oos \
@@ -30,7 +30,8 @@ APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/view_demo/build/view.oos \
               apps/ctl_demo/build/ctl.oos \
               apps/clock/build/clock.oos \
-              apps/score/build/score.oos
+              apps/score/build/score.oos \
+              apps/file_select/build/fileselect.oos
 
 .PHONY: all clean info apps audit-smart $(APPS)
 

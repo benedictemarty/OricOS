@@ -282,3 +282,10 @@ bundle_clock:
 bundle_score:
         .incbin "../apps/score/build/score.oos"
 
+; File selector dialog (pattern GeoWorks GenFileSelectorClass) :
+; fenêtre modale avec GU_LIST + OK + Cancel. MVP : 5 fichiers
+; hardcodés (intégration vraie FAT32 SD différée).
+.export bundle_fileselect
+bundle_fileselect:
+        .incbin "../apps/file_select/build/fileselect.oos"
+

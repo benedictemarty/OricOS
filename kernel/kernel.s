@@ -863,6 +863,7 @@ TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test 
 TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C démo contrôles)
 TC_CLOCKAPP_FLAG = $01EE50        ; Sprint 4 : $A5 → spawn bundle_clock (app C clock)
 TC_CPCT_FLAG     = $01EEA0        ; ADR-27 B2.c v2 : $A5 → crée task_compact (flip + C-2 garde XVGA)
+TC_FILESELECT_FLAG = $01EEB0      ; $A5 → spawn bundle_fileselect (file selector dialog)
 TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
                                   ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)
@@ -950,6 +951,13 @@ WCMP_SLOT_ID      = $01690A     ; 1B : slot id courant pendant compose (B2.b)
 ; skip ce slot, laissant son chrome direct framebuffer intact.
 WM_NO_BACKING_FLAGS = $01690B   ; 8B : skip compose si $A5 (chrome direct FB)
 WM_NO_BACKING_MAGIC = $A5
+
+; ── Bug pré-existant : labels boutons partagés (révélé par file_select 2026-05-31) ──
+; UI_STR_BUF est un SEUL scratch SDRAM. Tous les boutons stockent leur
+; strptr → UI_STR_BUF → tous lisent le DERNIER label uploadé. Fix : buffer
+; per-widget pour les labels boutons. 8 widgets × 16 octets = 128 octets
+; (cohérent WIDGET_ENTSZ).
+BUTTON_LABELS    = $016A00      ; 8 × 16 = 128B bank 1, label par widget id
 .assert WM_COMPACT_FLAGS + 8 <= $01EE00, error, "WM_COMPACT_FLAGS chevauche TC flags"
 .assert WCMP_SLOT_ID < $01EE00, error, "WCMP_SLOT_ID chevauche TC flags"
 .assert WM_NO_BACKING_FLAGS + 8 <= $01EE00, error, "WM_NO_BACKING_FLAGS chevauche TC flags"

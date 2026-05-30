@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31c
+
+### Added — App file_select (pattern GeoWorks GenFileSelectorClass MVP)
+- **`apps/file_select/fileselect.c`** : app C ~60 LOC. Fenêtre modale
+  280×180 à (250, 150) avec GU_LIST (5 fichiers hardcoded, items ≤7c
+  cf. limitation GU_LIST stride) + GU_BUTTON OK (id 2) + GU_BUTTON
+  Cancel (id 3). MainLoop attend MSG_CONTROL ; OK → print "fileselect:
+  chose N <name>" + quit ; Cancel/MSG_CLOSE → "cancelled" + quit.
+- **`apps/file_select/Makefile`** : copie pattern score.
+- **`console.s`** : `.incbin` bundle_fileselect.
+- **`kernel.s`** : `TC_FILESELECT_FLAG = $01EEB0`.
+- **`boot.s`** : spawn bundle_fileselect si flag actif.
+- **`Makefile`** root : ajout `file_select` dans APPS + APP_BUNDLES.
+- **MVP** : intégration vraie FAT32 SD différée (Sprint suivant) ;
+  items hardcoded démontrent le pattern dialog file.
+
+### Finding — Labels boutons partagés (bug pré-existant exposé)
+- **`kernel.s`** : nouvelle var `BUTTON_LABELS = $016A00` (128B) =
+  infrastructure POSÉE mais INACTIVE (fix de référence reverté car
+  régression test_oricos_gui_demo MSG_CONTROL).
+- **Cause** : `UI_STR_BUF` (`$015580`) est un SEUL scratch SDRAM.
+  `kernel_wm_add_widget` stocke `strptr → UI_STR_BUF` pour TOUS les
+  widgets boutons. Tous lisent le DERNIER label uploadé au rendu.
+- **Conséquence** : score (3 boutons "+1/+10/Reset") rend "Reset"×3
+  visuellement. Tests fonctionnels passent (id-based, pas label).
+- **Tentative fix MVN reverté** (régression gui_demo MSG_CONTROL pas
+  reçu post-clic ; cause non isolée — probable interaction subtile
+  M/X width + MVN ou _wm_invoke_active_cb).
+- **À investiguer dans session dédiée**. Infrastructure (variable
+  BUTTON_LABELS + commentaire détaillé) conservée pour itération.
+
 ## [Unreleased] - 2026-05-31a
 
 ### Fixed — Dual font VGA8 chrome XVGA (bug bank byte symbole ld65)

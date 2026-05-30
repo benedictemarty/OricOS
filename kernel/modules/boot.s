@@ -1488,6 +1488,21 @@ _skip_clockapp:
         jsr kernel_app_spawn
 _skip_scoreapp:
 
+        ; ── File selector dialog (pattern GeoWorks GenFileSelectorClass) ──
+        ; TC_FILESELECT_FLAG=$A5 → spawn bundle_fileselect, dialog modal
+        ; avec liste 5 fichiers hardcodés + OK + Cancel.
+        lda TC_FILESELECT_FLAG
+        cmp #$A5
+        bne _skip_fileselect
+        lda #<bundle_fileselect
+        sta DP_PTR
+        lda #>bundle_fileselect
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn
+_skip_fileselect:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.
