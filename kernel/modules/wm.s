@@ -1314,7 +1314,72 @@ _wdo_setcol:
         ; Widgets de ce slot (Z-order : la fenêtre suivante couvrira les siens).
         lda WIN_SLOT
         jsr _wm_draw_widgets_for_slot
+        ; Pattern GEOS DoIcons : visualisation hot-zones SI flag debug posé.
+        ; Hors debug : hotzones invisibles par design.
+        lda HOTZONE_DEBUG_FLAG
+        cmp #$A5
+        bne _wdo_done
+        lda WIN_SLOT
+        jsr _wm_draw_hotzones_for_slot
 _wdo_done:
+        rts
+
+; ── _wm_draw_hotzones_for_slot : cadre 1px pour chaque hotzone active du
+; slot A. Appelé uniquement quand HOTZONE_DEBUG_FLAG = $A5.
+_wm_draw_hotzones_for_slot:
+        sta WIN_SLOT
+        ldx #$00
+hzd_loop:
+        lda f:HOTZONE_TABLE+0,x
+        cmp #HOTZONE_F_ACTIVE
+        beq hzd_check_slot
+        jmp hzd_next
+hzd_check_slot:
+        lda f:HOTZONE_TABLE+1,x
+        cmp WIN_SLOT
+        beq hzd_draw
+        jmp hzd_next
+hzd_draw:
+        phx
+        rep #$20
+        lda f:HOTZONE_TABLE+2,x
+        sta WG_RELX
+        lda f:HOTZONE_TABLE+4,x
+        sta WG_RELY
+        lda f:HOTZONE_TABLE+6,x
+        sta WG_RELW
+        lda f:HOTZONE_TABLE+8,x
+        sta WG_RELH
+        sep #$20
+        lda WIN_SLOT
+        jsr kernel_wm_offset
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,x
+        clc
+        adc WG_RELX
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,x
+        clc
+        adc WG_RELY
+        sta WM_ARG_Y
+        lda WG_RELW
+        sta WM_ARG_W
+        lda WG_RELH
+        sta WM_ARG_H
+        sep #$20
+        lda #$08                 ; darkgray
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        plx
+hzd_next:
+        txa
+        clc
+        adc #HOTZONE_ENTSZ
+        tax
+        cpx #(HOTZONE_N * HOTZONE_ENTSZ)
+        bcs hzd_done
+        jmp hzd_loop
+hzd_done:
         rts
 
 ; ── _wm_draw_title_and_close : dessine le titre + bouton × dans la titlebar ──

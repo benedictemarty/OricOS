@@ -909,6 +909,8 @@ HOTZONE_TABLE     = $016800
 HOTZONE_F_FREE    = $00
 HOTZONE_F_ACTIVE  = $01
 HOTZONE_ID_BASE   = $80         ; bit 7 = « c'est une hotzone, pas un widget »
+HOTZONE_DEBUG_FLAG = $01EE90    ; $A5 → draw cadre 1px autour des hotzones actives
+                                ; (off par défaut, affecte le framebuffer → tests rouges).
 .assert HOTZONE_TABLE + HOTZONE_N*HOTZONE_ENTSZ <= $01FFE0, error, "HOTZONE_TABLE déborde sur les vecteurs natifs"
 FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
 .assert FIELD_STR_OFF < $01FFE0, error, "FIELD_STR_BUF déborde sur vecteurs natifs"
