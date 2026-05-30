@@ -87,6 +87,40 @@ Cf. `/home/bmarty/oric2/docs/MEMORY_MAP.md` (spec ratifiée v1.0,
 - Indentation : 8 colonnes pour les instructions, mnémoniques en
   minuscules WDC (`lda`, `xce`, `jml`, …).
 
+### `.smart` ca65 — convention obligatoire (cf. bug taskbar 2026-05-30)
+
+**Tout label atteint UNIQUEMENT via `bcc`/`bcs`/`bra`/`brl`/`bne`/`beq` etc.
+depuis une région M=16 (post-`rep #$20`), sans fall-through M=16 depuis
+l'instruction textuelle précédente, DOIT ouvrir par `.a16` explicite.**
+
+Pourquoi : `.smart` propage l'état M en walk linéaire du source. Quand
+un label est précédé textuellement par un flow-break (`rts`/`jmp`/`bra`
+inconditionnel/`rti`), `.smart` perd l'état M=16 ouvert plus haut et
+re-bascule par défaut sur M=8 au label. Les opcodes à immédiat
+(`adc`/`cmp`/`lda`/`sbc`/`and`/`ora`/`eor`/`bit #imm`) sont alors
+encodés en 2 octets au lieu de 3. En runtime M=16, le décodeur consomme
+le byte d'opcode suivant comme high byte → corruption silencieuse.
+
+Bug type fixé : `wm.s _tbh_advance:` (commit `1747df5`). Cause : label
+suivant `bra _tbh_got_slot` (flow-break), atteint via `bcc/bcs` M=16,
+`adc #TB_BTN_STRIDE` encodé en 2 bytes (`69 7C`) au lieu de 3
+(`69 7C 00`) → `TB_BTN_X` corrompu (`$8D80` au lieu de `$0080`).
+
+Si ratifié : un audit kernel a vérifié (2026-05-30) qu'**aucun autre
+label suspect ne reste**. Un script CI `tools/audit-smart.py` détecte
+les nouveaux cas — `make audit-smart` doit passer à chaque commit.
+
+Recette d'écriture safe :
+```asm
+some_label:                          ; ⬅ pas de fall-through M=16
+        .a16                         ; ⬅ OBLIGATOIRE si atteint en M=16
+        lda some_16bit_var
+        adc #IMM_16BIT
+        sta some_16bit_var
+        sep #$20
+        .a8                          ; ⬅ refermer proprement (optionnel mais propre)
+```
+
 ### Workflow
 - Petits commits atomiques. Format : `[OS-vX.Y] description`.
 - Référencer une ADR en commentaire si la décision n'est pas évidente :

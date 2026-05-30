@@ -31,9 +31,15 @@ APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/ctl_demo/build/ctl.oos \
               apps/clock/build/clock.oos
 
-.PHONY: all clean info apps $(APPS)
+.PHONY: all clean info apps audit-smart $(APPS)
 
-all: apps $(KERNEL_BIN)
+all: apps audit-smart $(KERNEL_BIN)
+
+# Détecte les labels suspects type bug taskbar 2026-05-30 (cf. CLAUDE.md §5
+# « `.smart` ca65 — convention obligatoire »). Exit 1 sur suspect → bloque
+# le build. À lancer aussi en local avant commit.
+audit-smart:
+	@python3 tools/audit-smart.py kernel
 
 apps: $(APPS)
 

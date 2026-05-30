@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30e
+
+### Added — `tools/audit-smart.py` + convention `.a16` post-branche (CLAUDE.md §5)
+- Détecteur Python qui simule le walk linéaire `.smart` ca65 sur tous les
+  `.s` du kernel. Identifie les labels suivants un flow-break textuel
+  (`rts`/`jmp`/`bra`/`brl`/`rtl`/`rti`) MAIS atteints par branche
+  conditionnelle (`bcc`/`bcs`/...) depuis une région M=16, dont la
+  première instruction immédiat M-dépendante (`adc`/`cmp`/`lda`/...)
+  est encodée en 2 octets au lieu de 3 → exit code 1 (bloque le build).
+- **Intégré au `Makefile`** : `make audit-smart` cible explicite, et
+  hook dans `all:` (échoue avant `ld65`).
+- **Test de régression du détecteur** : avec le `.a16` retiré du fix
+  `_tbh_advance` (commit `1747df5`), le détecteur signale précisément
+  ce label avec les callers M=16 et l'opcode immédiat fautif. Avec
+  le fix appliqué, kernel propre.
+- **Convention écrite** dans `CLAUDE.md` §5 (« `.smart` ca65 —
+  convention obligatoire »).
+
 ## [Unreleased] - 2026-05-30d
 
 ### Fixed — Bug taskbar focus : onglet slot ≥ 1 non cliquable
