@@ -1043,6 +1043,24 @@ _tks_tens_done:
         lda #$01
         sta DP_PCPTR+2
         jsr kernel_tk_label
+        ; 5. séparateur horizontal au milieu (ligne 1 px darkgray) pour
+        ;    indiquer visuellement le split haut (+1) / bas (-1).
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_H
+        lsr a                   ; h/2 = demi-hauteur
+        clc
+        adc TK_Y                ; centre Y = TK_Y + h/2
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda #1
+        sta WM_ARG_H            ; ligne 1 px
+        sep #$20
+        lda #$08                ; darkgray
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
         rts
 
 ; ── kernel_ctl_spin_click (ADR-30 Étape 4) : A = widget id ──────────
