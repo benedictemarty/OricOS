@@ -36,6 +36,7 @@ kernel_tk_font_init:
 ;        GFX_COLOR (4-bit). ARG4 packé = color<<20 | y<<10 | x. Modifie A.
 .export kernel_gfx_text16
 kernel_gfx_text16:
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
         lda GFX_BASE_MID

@@ -106,6 +106,36 @@ kernel_gfx_set_bpl:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  _gfx_xvga_bpl_guard — ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
+; ════════════════════════════════════════════════════════════════════
+; Garde à appeler AVANT tout `kernel_gfx_fill_rect16/text16/line/fill_rect`
+; dans le kernel direct (chemins non-instrumentés par window_base).
+; Heuristique : si `GFX_BASE_HI >= $10` la cible est le framebuffer XVGA
+; (range $100000..$15FFFF, ADR-20) → stride 512 obligatoire. Si shadow ≠ 0
+; (= un syscall app a posé byte_w compact résiduel), restaure `bpl=0`.
+; Backing stores apps en bank $06..$0D (HI < $10) : laisse bpl actuel.
+; Coût : ~10 cyc + skip_if_shadow=0 (cas usuel).
+; Modifie : A. Préserve : X, Y.
+; ════════════════════════════════════════════════════════════════════
+.export _gfx_xvga_bpl_guard
+_gfx_xvga_bpl_guard:
+        php
+        sep #$20
+        lda GFX_BASE_HI
+        cmp #$10
+        bcc _gxbg_done                  ; HI < $10 : pas framebuffer XVGA
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq _gxbg_done                  ; shadow déjà 0 : OK
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+_gxbg_done:
+        plp
+        rts
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_gfx_finish — restaure bpl=0 si le slot du caller est compact
 ; ════════════════════════════════════════════════════════════════════
 ; ADR-27 Étape B2 point §0ter 2 : confine `byte_w` au syscall gfx.
@@ -214,6 +244,7 @@ gfx_clear_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_fill_rect
 kernel_gfx_fill_rect:
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
         sei
         ; ARG1 = base
@@ -335,6 +366,7 @@ gfx_blit_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_line
 kernel_gfx_line:
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
         sei
         ; ARG1 = base
@@ -394,6 +426,7 @@ gfx_line_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_text
 kernel_gfx_text:
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
         sei
         ; ARG1 = base

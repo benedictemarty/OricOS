@@ -1078,6 +1078,7 @@ kwmin_done:
 ; ARG2 = y<<12|x, ARG3 = h<<12|w. Modifie A. Préserve X, Y.
 .export kernel_gfx_fill_rect16
 kernel_gfx_fill_rect16:
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
         sei
         lda GFX_BASE_LO

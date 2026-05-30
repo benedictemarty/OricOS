@@ -62,6 +62,7 @@ TASK_RAD_ID1    = $01545F       ; SP-3.o S.4a : id du 2e radio créé par task_r
 TASK_TEXT_ID    = $015460       ; SP-3.o S.4b : id du champ texte créé par task_text (test)
 TASK_LIST_ID    = $015461       ; SP-3.o S.4c : id de la liste créée par task_list (test)
 TASK_GENUI_ID   = $015462       ; SP-3.o S.5 : id du 1er contrôle déclaré par task_genui (test)
+TASK_CPCT_HANDLE = $015463      ; ADR-27 B2.c : slot fenêtre créée par task_compact
 SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
 KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
@@ -854,6 +855,7 @@ TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test 
 TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test tags GenUI déclaratifs)
 TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C démo contrôles)
 TC_CLOCKAPP_FLAG = $01EE50        ; Sprint 4 : $A5 → spawn bundle_clock (app C clock)
+TC_CPCT_FLAG     = $01EEA0        ; ADR-27 B2.c v2 : $A5 → crée task_compact (flip + C-2 garde XVGA)
 TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
                                   ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)

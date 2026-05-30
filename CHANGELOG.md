@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30u
+
+### Added — ADR-27 §0quater C-2 : garde XVGA bpl + B2.c re-livré
+- **`gfx.s _gfx_xvga_bpl_guard`** : nouveau helper. Heuristique « si
+  `GFX_BASE_HI >= $10` (cible framebuffer XVGA $100000..$15FFFF) ET
+  shadow `bpl` ≠ 0, force `bpl=0` ». Coût ~25 cyc/appel (php/sep/
+  lda f:/ora/beq/plp), skip si shadow déjà 0 (cas usuel).
+- **Inséré en tête de** `kernel_gfx_fill_rect` (gfx.s),
+  `kernel_gfx_line` (gfx.s), `kernel_gfx_text` (gfx.s),
+  `kernel_gfx_fill_rect16` (wm.s), `kernel_gfx_text16` (tk.s).
+  **1 helper couvre les ~36 sites kernel direct** (chrome
+  `_wm_draw_one`, taskbar, icônes, widgets tk, démos boot).
+- **Re-livré** : `task_compact_entry` (alloc.s), spawn `boot.s`,
+  vars `TASK_CPCT_HANDLE`/`TC_CPCT_FLAG`. Cette fois la garde C-2
+  empêche le leak `bpl` vers les chemins kernel direct.
+- **Budgets de cyc bumpés** : `run_mainloop_chrome_test` et
+  `test_oricos_scrollbar` (140000 → 200000, 320000 → 480000) car
+  ~25 cyc/appel × 36 sites × N redraws s'accumule. Tests sémantiques
+  inchangés.
+- **Validation oricrobot** : script `/tmp/adr27_c2_validation.txt`
+  spawn task_compact, fait clic menu System, mouvements souris,
+  vérifie `peek $107A1E = $77` (lightgray composé OK), `peek
+  $106619 = $11` (bg bleu OK) **avant ET après interactions**.
+  PPM analysé via Python PIL : pixel (60,61) = (170,170,170) =
+  lightgray confirmé. Menu dropdown propre, pas de bandes noires.
+- **Test unitaire** `test_oricos_compact_backing_store` réactivé,
+  12/12 helloc verts, 24/24 globales.
+
 ## [Unreleased] - 2026-05-30t
 
 ### Removed — ADR-27 B2.c reverté (non-transparence interactive)
