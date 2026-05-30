@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30q
+
+### Added — ADR-27 Étape B2.c : activation effective + test de transparence
+- **`alloc.s task_compact_entry`** : task de test qui crée une fenêtre
+  64×64 à (50,50), écrit `$A5` à `WM_COMPACT_FLAGS[handle]`, dessine
+  bg bleu (FILL_RECT 0,0,64,64 couleur 1) puis rect rouge
+  (FILL_RECT 10,10,20,20 couleur 7) en backing-store compact (stride
+  byte_w=32, pas 512), compose en boucle. Validation bout-en-bout du
+  flip : compose lit avec stride 32, copie au framebuffer XVGA.
+- **`kernel.s`** : `TASK_CPCT_HANDLE = $015463` (sentinelle test),
+  `TC_CPCT_FLAG = $01EEA0` (gate spawn de la task).
+- **`boot.s`** : spawn `task_compact_entry` si `TC_CPCT_FLAG = $A5`.
+- **`tests/integration/test_oricos_helloc.c`** : `test_oricos_compact_backing_store`
+  active le flag de spawn, run bootstrap, lit `WM_COMPACT_FLAGS[handle]`
+  (doit valoir `$A5`), puis lit le pixel framebuffer XVGA à (61,61)
+  via `vram_peek` (doit valoir 7=rouge) et (52,52) (doit valoir 1=bleu).
+- **Bug fix** capturé : ABI `SYS_WIN_CREATE` exige 16-bit LO+HI séparés
+  pour x/y/w/h (`$D0-$D7`) ; la 1ère mouture posait `sta $D2 ; sta $D3`
+  → y_hi = 50 → y = 12850 hors écran. Fix : split LO/HI explicites.
+- **Effet** : 12/12 tests `helloc` verts, 24/24 suites globales. La
+  plomberie compact est validée fonctionnellement, pas juste dormante.
+
 ## [Unreleased] - 2026-05-30p
 
 ### Added — ADR-27 Étape B2 : plomberie compact slot (flag par défaut inactif)
