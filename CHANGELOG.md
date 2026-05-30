@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30c
+
+### Added — ADR-31 Étape 1 livrée (clip widget hors rect parent, option A)
+- **`kernel/modules/tk.s _wm_draw_widget_body`** : ajoute un test de
+  containement avant le dispatch du rendu. Si `WG_RELX + WG_RELW > win.w`
+  ou `WG_RELY + WG_RELH > win.h` (lus dans `WM_TABLE+WM_OFF_W/H,X` avec
+  `X = WIN_SLOT*10`), le widget est skippé (`_wdb_clip_skip` : `sep #$20`
+  + `rts`). Test en mode A 16-bit déjà actif, deux `cmp` avec gestion du
+  cas d'égalité (bord exact = OK).
+- **Objectif** : éliminer le bug visuel ADR-31 (widgets peints en dehors
+  du rect window après resize-down ; révélé interactivement le 2026-05-30
+  pendant validation d'ADR-30 Étape 1 / `GU_LIST`).
+- **Coût** : 15 lignes asm dans `tk.s`, 0 LOC ailleurs. Performance :
+  ~10-15 cyc/widget par redraw (négligeable).
+- **Validation** : 24/24 suites Phosphoric vertes (zéro régression).
+  Ratification ADR-31 en attente de validation interactive utilisateur
+  (drag bord bas de `ctl_demo` → widgets doivent disparaître proprement),
+  cf. leçon ADR-28 « aucune ratification touchant l'interaction sans
+  test préalable ».
+- **Tracé** : option C (clip-list / damage tracking architectural,
+  500-1000 LOC) reste long terme — ADR-31 deviendra obsolète à la
+  ratification d'ADR-27 (backing store par fenêtre).
+
 ## [Unreleased] - 2026-05-30b
 
 ### Ratified — ADR-30 Étape 3 : `GU_HINT_MIN_VALUE` (attribut min GenValue)

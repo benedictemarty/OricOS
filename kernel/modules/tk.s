@@ -701,6 +701,25 @@ _wm_draw_widget_body:
         sta WM_ARG_W
         lda WG_RELH
         sta WM_ARG_H
+        ; ADR-31 Étape 1 — clip widget si son rect dépasse celui de la fenêtre
+        ; parente (option A : skip si hors rect, ~15 LOC). Évite de peindre des
+        ; widgets dans la zone « ex-fenêtre » après resize-down (bug révélé par
+        ; ADR-30 Étape 1 / GU_LIST). X reste = WIN_SLOT*10 (kernel_wm_offset).
+        ; Mode A 16-bit ici (rep #$20 toujours actif depuis le calcul des abs).
+        lda WG_RELX
+        clc
+        adc WG_RELW
+        cmp WM_TABLE+WM_OFF_W,X
+        beq _wdb_clip_x_ok       ; rel.x+w == win.w → bord exact OK
+        bcs _wdb_clip_skip       ; rel.x+w > win.w  → hors rect
+_wdb_clip_x_ok:
+        lda WG_RELY
+        clc
+        adc WG_RELH
+        cmp WM_TABLE+WM_OFF_H,X
+        beq _wdb_clip_y_ok
+        bcs _wdb_clip_skip
+_wdb_clip_y_ok:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
@@ -742,6 +761,9 @@ _wdws_btn_normal:
         sta TK_BTN_PRESSED
 _wdws_btn_draw:
         jsr kernel_tk_button
+        rts
+_wdb_clip_skip:                  ; ADR-31 : widget hors rect parent, ne pas dessiner
+        sep #$20
         rts
 _wdws_next:
         lda WG_I
