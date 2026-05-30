@@ -994,8 +994,18 @@ kernel_menu_draw:
         lda #$00
         sta MENU_I
 _mdl_title:
+        ; ADR-30 Étape 2 : si MENU_DYN_ACTIVE = $A5, plafond = MENU_DYN_COUNT,
+        ; sinon MENU_N (statique). Permet aux apps de déclarer 0..N menus.
+        lda MENU_DYN_ACTIVE
+        cmp #$A5
+        beq _mdl_title_dyn
         lda MENU_I
         cmp #MENU_N
+        bra _mdl_title_cmp_done
+_mdl_title_dyn:
+        lda MENU_I
+        cmp MENU_DYN_COUNT
+_mdl_title_cmp_done:
         bcs _mdl_drop
         jsr _menu_setbase
         ldy #2
@@ -1138,8 +1148,17 @@ _mhc_inbar:
         lda #$00
         sta MENU_I
 _mhc_tl:
+        ; ADR-30 Étape 2 : plafond dynamique si MENU_DYN_ACTIVE.
+        lda MENU_DYN_ACTIVE
+        cmp #$A5
+        beq _mhc_tl_dyn
         lda MENU_I
         cmp #MENU_N
+        bra _mhc_tl_cmp_done
+_mhc_tl_dyn:
+        lda MENU_I
+        cmp MENU_DYN_COUNT
+_mhc_tl_cmp_done:
         bcc _mhc_tl_go
         lda #$01                 ; barre vide → consommé
         rts

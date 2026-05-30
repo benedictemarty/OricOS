@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30f
+
+### Added — ADR-30 Étape 2 livrée : `GU_MENU` + `GU_MENU_ITEM` déclaratifs
+- **`kernel.s`** : `GU_MENU = $0C`, `GU_MENU_ITEM = $0D`. Structures bank 1
+  `MENU_DYN_ACTIVE/COUNT/ITEM_CNT/STR_OFF` + `MENU_DYN_STR_BUF` (192 octets
+  à `$0164C0`). Assertion contre débordement vecteurs natifs.
+- **`wm.s`** : nouveaux dispatchers `sud_menu` + `sud_menu_item` dans
+  `sud_loop`. Au 1er `GU_MENU`, zéroise `menu_defs` et bascule
+  `MENU_DYN_ACTIVE = $A5`. Copie chaînes inline (bank app) vers
+  `MENU_DYN_STR_BUF` (bank 1) + remplit `menu_defs[slot]` au runtime.
+  `_sud_menu_copy_str` + `_sud_skip_inline` helpers.
+- **`tk.s`** : `kernel_menu_draw` et `kernel_menu_handle_click` consultent
+  `MENU_DYN_COUNT` au lieu de `MENU_N` quand le flag dyn est posé →
+  l'app peut déclarer 0..2 menus avec items propres.
+- **`apps/ctl_demo/ctl.c`** : déclare `GU_MENU "App" + GU_MENU_ITEM
+  "About" + GU_MENU_ITEM "Quit"`.
+- **SDK `oricos.h`** : `GU_MENU = 12`, `GU_MENU_ITEM = 13` exposés avec
+  documentation alignée GeoWorks `GenPrimary / eMenuC`.
+- **Verrouillage** : `test_oricos_ctl_demo` (Phosphoric) étendu avec
+  assertions `MENU_DYN_*` + contenu `MENU_DYN_STR_BUF` byte-à-byte
+  (`"App\\0About\\0Quit\\0"`). 24/24 suites vertes.
+- **Limitations MVP v1** : CB = 0 (clic consommé silencieusement,
+  pas encore de `MSG_MENU` à l'app — planifié Étape 2b). Cap 2 menus
+  × 2 items. Pas de raccourcis clavier ni sous-menus.
+
 ## [Unreleased] - 2026-05-30e
 
 ### Added — `tools/audit-smart.py` + convention `.a16` post-branche (CLAUDE.md §5)

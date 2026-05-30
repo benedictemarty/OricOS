@@ -3458,8 +3458,16 @@ sud_n2h:
         jmp sud_hint_immediate
 sud_n2i:
         cmp #GU_HINT_MIN_VALUE  ; ADR-30 Étape 3 : attribut min (GenValue MINIMUM)
-        bne sud_n3
+        bne sud_n2j
         jmp sud_hint_min_value
+sud_n2j:
+        cmp #GU_MENU            ; ADR-30 Étape 2 : ouvre un menu
+        bne sud_n2k
+        jmp sud_menu
+sud_n2k:
+        cmp #GU_MENU_ITEM       ; ADR-30 Étape 2 : ajoute un item au dernier menu
+        bne sud_n3
+        jmp sud_menu_item
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
@@ -3785,6 +3793,163 @@ sud_text:
         sta WG_TYPE
         jsr _sud_attach
         jmp sud_loop
+
+; ── ADR-30 Étape 2 : parsers GU_MENU + GU_MENU_ITEM ─────────────────────
+; sud_menu : tag GU_MENU + chaîne titre inline null-term. Ouvre un nouveau
+; menu dans `menu_defs` (override le statique au premier appel). Y pointe
+; sur le tag GU_MENU à l'entrée. CB = 0 v1 (clic consommé silencieusement).
+sud_menu:
+        ; Premier GU_MENU rencontré ? Init structures + zéroise menu_defs.
+        lda MENU_DYN_ACTIVE
+        cmp #$A5
+        beq sud_m_ready
+        lda #$A5
+        sta MENU_DYN_ACTIVE
+        lda #$00
+        sta MENU_DYN_COUNT
+        sta MENU_DYN_ITEM_CNT
+        sta MENU_DYN_STR_OFF
+        ; Zéroise les 32 octets de menu_defs (2 entrées × 16).
+        ldx #$00
+sud_m_zero:
+        lda #$00
+        sta f:menu_defs,x
+        inx
+        cpx #(MENU_N * MENU_ENTSZ)
+        bcc sud_m_zero
+sud_m_ready:
+        ; Cap : MENU_DYN_COUNT >= MENU_N → drop silencieux (consomme la chaîne).
+        lda MENU_DYN_COUNT
+        cmp #MENU_N
+        bcs sud_m_skip
+        ; Copie la chaîne inline → MENU_DYN_STR_BUF[STR_OFF], avance STR_OFF.
+        iny                     ; passe le tag GU_MENU
+        jsr _sud_menu_copy_str  ; entrée str_ptr (low/high) en WG_RELX, Y avance
+        ; Compute slot_offset = MENU_DYN_COUNT * MENU_ENTSZ
+        lda MENU_DYN_COUNT
+        asl a
+        asl a
+        asl a
+        asl a                   ; *16
+        tax
+        ; Écrit title_ptr (16-bit, dans bank 1) à menu_defs[slot+0/+1]
+        lda WG_RELX             ; lo
+        sta f:menu_defs+0,x
+        lda WG_RELX+1           ; hi
+        sta f:menu_defs+1,x
+        ; bar_x : menu 0 = 4, menu 1 = 76 (cohérent avec le statique original)
+        lda MENU_DYN_COUNT
+        bne sud_m_bx_1
+        lda #4
+        bra sud_m_bx_set
+sud_m_bx_1:
+        lda #76
+sud_m_bx_set:
+        sta f:menu_defs+2,x     ; bar_x à offset +2
+        ; Reset item count, bump menu count
+        lda #$00
+        sta MENU_DYN_ITEM_CNT
+        lda MENU_DYN_COUNT
+        inc a
+        sta MENU_DYN_COUNT
+        jmp sud_loop
+sud_m_skip:
+        ; Drop : consomme tag + chaîne sans l'enregistrer
+        iny
+        jsr _sud_skip_inline
+        jmp sud_loop
+
+; sud_menu_item : tag GU_MENU_ITEM + label inline null-term. Ajoute un item
+; au dernier menu déclaré. Cap MENU_DYN_ITEM_CNT < 2 (slots item0/item1 fixes).
+sud_menu_item:
+        lda MENU_DYN_COUNT
+        beq sud_mi_skip         ; pas de menu ouvert → drop
+        lda MENU_DYN_ITEM_CNT
+        cmp #2
+        bcs sud_mi_skip
+        iny                     ; passe le tag
+        jsr _sud_menu_copy_str  ; → WG_RELX = ptr, Y avancé
+        ; slot_offset = (MENU_DYN_COUNT - 1) * MENU_ENTSZ
+        lda MENU_DYN_COUNT
+        sec
+        sbc #1
+        asl a
+        asl a
+        asl a
+        asl a                   ; *16
+        sta WG_RELY             ; sauve slot offset menu (8-bit)
+        ; item offset dans le slot : +4 si item0, +8 si item1
+        lda MENU_DYN_ITEM_CNT
+        bne sud_mi_it1
+        ; item0 : str à +4, cb à +6
+        lda WG_RELY
+        clc
+        adc #4
+        tax
+        bra sud_mi_write
+sud_mi_it1:
+        lda WG_RELY
+        clc
+        adc #8                  ; item1 : str à +8, cb à +10
+        tax
+sud_mi_write:
+        lda WG_RELX             ; str_ptr lo
+        sta f:menu_defs+0,x
+        lda WG_RELX+1
+        sta f:menu_defs+1,x
+        lda #$00                ; cb = 0 (silencieux v1)
+        sta f:menu_defs+2,x
+        sta f:menu_defs+3,x
+        ; Bump item count
+        lda MENU_DYN_ITEM_CNT
+        inc a
+        sta MENU_DYN_ITEM_CNT
+        jmp sud_loop
+sud_mi_skip:
+        iny
+        jsr _sud_skip_inline
+        jmp sud_loop
+
+; _sud_menu_copy_str : copie [$D0],y (bank app) → MENU_DYN_STR_BUF[STR_OFF].
+; Retour : WG_RELX = pointeur 16-bit absolu vers la chaîne (bank 1). STR_OFF
+; avancé après le null. Y avance après le null. Trunque à 31 chars + null.
+_sud_menu_copy_str:
+        ; Capture le ptr du début (MENU_DYN_STR_BUF + STR_OFF).
+        lda #<MENU_DYN_STR_BUF
+        clc
+        adc MENU_DYN_STR_OFF
+        sta WG_RELX
+        lda #>MENU_DYN_STR_BUF
+        adc #$00                ; propage carry
+        sta WG_RELX+1
+        ; Copie : X = index dans le buffer global = STR_OFF
+        lda MENU_DYN_STR_OFF
+        tax
+_sumcs_loop:
+        lda [$D0],y
+        sta f:MENU_DYN_STR_BUF,x
+        iny
+        inx
+        cmp #$00
+        beq _sumcs_done
+        cpx #191
+        bcc _sumcs_loop
+        lda #$00
+        sta f:MENU_DYN_STR_BUF,x
+        inx
+_sumcs_done:
+        txa
+        sta MENU_DYN_STR_OFF
+        rts
+
+; _sud_skip_inline : avance Y jusqu'APRÈS le null (pour les tags droppés).
+_sud_skip_inline:
+_susi_loop:
+        lda [$D0],y
+        iny
+        cmp #$00
+        bne _susi_loop
+        rts
 
 ; ── _sud_copy_inline : copie la chaîne inline [$D0],y (bank app) → UI_STR_BUF ──
 ; (bank 1, null-terminée, max 31 + null). Y avance jusqu'APRÈS le null. Clobbe A,X.

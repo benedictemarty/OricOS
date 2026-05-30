@@ -510,6 +510,12 @@ GU_TEXT           = $09         ; + relx16 rely16 relw16 relh16 + maxlen8 (champ
 GU_LIST           = $0B         ; ADR-30 Étape 1 : + relx16 rely16 relw16 relh16 + count8 +
                                 ; count chaînes null-term INLINE (alignement GeoWorks
                                 ; GenListClass / gListC.def — items statiques v1)
+GU_MENU           = $0C         ; ADR-30 Étape 2 : + nom INLINE null-term. Ouvre un menu
+                                ; (à la place du `menu_defs` hardcodé). Suivi par 0..2
+                                ; `GU_MENU_ITEM` jusqu'au prochain `GU_MENU` ou `GU_END`.
+GU_MENU_ITEM      = $0D         ; ADR-30 Étape 2 : + label INLINE null-term. Item dans
+                                ; le dernier menu déclaré. v1 : callback = 0 (clic
+                                ; consommé silencieusement, post MSG_MENU à venir).
 
 ; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
 ; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
@@ -840,6 +846,14 @@ UI_LIST_BUF         = $016330     ; ADR-30 Étape 1 : 128B buffer items GU_LIST 
 WIDGET_MIN_VALUES   = $0163B0     ; 8 × 1B (un par widget, idx = id widget)
 UI_PENDING_MIN_VALUE = $0163B8    ; 1B = min en attente, posé sur prochain widget créé
 .assert UI_PENDING_MIN_VALUE < $016400, error, "WIDGET_MIN_VALUES déborde sur RAW_RING"
+; ── ADR-30 Étape 2 : structures du parser GU_MENU / GU_MENU_ITEM ──────
+; Bank 1, zone libre post-RAW_RING ($0164A4+).
+MENU_DYN_ACTIVE   = $0164B0     ; 1B : $A5 = menus dyn parsés (override menu_defs)
+MENU_DYN_COUNT    = $0164B1     ; 1B : nb menus déjà parsés (0..MENU_N)
+MENU_DYN_ITEM_CNT = $0164B2     ; 1B : nb items posés dans le menu courant (0..2)
+MENU_DYN_STR_OFF  = $0164B3     ; 1B : offset courant dans MENU_DYN_STR_BUF
+MENU_DYN_STR_BUF  = $0164C0     ; 192B : titres + labels (offset référencé par menu_defs)
+.assert MENU_DYN_STR_BUF + 192 <= $01FFE0, error, "MENU_DYN_STR_BUF déborde sur les vecteurs natifs"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

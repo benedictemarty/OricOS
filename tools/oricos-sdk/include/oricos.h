@@ -107,6 +107,21 @@
  * MAXIMUM couvrait déjà le besoin. OricOS suit ce design final. */
 #define GU_HINT_MIN_VALUE   14
 
+/* ADR-30 Étape 2 : menu déclaratif aligné GeoWorks GenPrimary / eMenuC.
+ * Format :
+ *   GU_MENU,     <title chars + 0>,         // titre du menu (barre)
+ *   GU_MENU_ITEM,<label chars + 0>,         // 0..2 items (v1, hardcoded
+ *   GU_MENU_ITEM,<label chars + 0>,         //  par MENU_N=2 entrées × 2 items)
+ *   GU_MENU,     <title chars + 0>,         // menu suivant
+ *   ...
+ *   GU_END
+ * Au premier `GU_MENU` rencontré dans la table, le kernel zéroise les
+ * menus statiques `System/View` et bascule en mode dynamique. Callback v1
+ * = 0 (clic consommé silencieusement ; post `MSG_MENU` à venir Étape 2b).
+ * Permet à toute app de remplacer la barre de menu host par la sienne. */
+#define GU_MENU             12
+#define GU_MENU_ITEM        13
+
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
 #define ALERT_OKCANCEL      1

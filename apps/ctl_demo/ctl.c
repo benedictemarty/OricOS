@@ -26,6 +26,9 @@ static const unsigned char ui[] = {
                   'I','t','e','m',' ','A',  0,                  /* item 0 */
                   'I','t','e','m',' ','B',  0,                  /* item 1 */
                   'I','t','e','m',' ','C',  0,                  /* item 2 */
+    GU_MENU,      'A','p','p', 0,                               /* ADR-30 Étape 2 */
+    GU_MENU_ITEM, 'A','b','o','u','t', 0,
+    GU_MENU_ITEM, 'Q','u','i','t', 0,
     GU_END
 };
 
