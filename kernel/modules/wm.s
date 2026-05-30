@@ -1776,11 +1776,20 @@ _tbh_check:
         lda TB_I                 ; hit → slot trouvé
         bra _tbh_got_slot
 _tbh_advance:
+        ; FIX bug taskbar (2026-05-30) : ca65 .smart perd l'état M=16 à ce
+        ; label (atteint via bcc/bcs depuis le bounds check M=16), ce qui
+        ; faisait encoder `adc #TB_BTN_STRIDE` en immédiat 8-bit. En M=16
+        ; runtime, le décodeur consommait alors le `8D` du `sta` suivant
+        ; comme high byte → TB_BTN_X devenait $8D80 au lieu de $0080.
+        ; Résultat : tous les slots > 0 considérés hors-bounds → bouton
+        ; non-cliquable. .a16 force l'encodage 16-bit explicite.
+        .a16
         lda TB_BTN_X
         clc
         adc #TB_BTN_STRIDE
         sta TB_BTN_X
         sep #$20
+        .a8
 _tbh_next_slot:
         lda TB_I
         inc a

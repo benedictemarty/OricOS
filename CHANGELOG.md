@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30d
+
+### Fixed — Bug taskbar focus : onglet slot ≥ 1 non cliquable
+- **`kernel/modules/wm.s _tbh_advance:`** : ajoute `.a16` au début du label
+  pour forcer l'encodage 16-bit de `adc #TB_BTN_STRIDE`. Cause racine :
+  ca65 `.smart` perdait l'état M=16 à ce label (atteint via bcc/bcs depuis
+  le bounds check M=16, pas via fall-through). Résultat : `adc #$7C`
+  encodé en 2 octets (immédiat 8-bit) au lieu de 3 (immédiat 16-bit). En
+  M=16 runtime, le décodeur consommait le `8D` du `sta TB_BTN_X` suivant
+  comme high byte → TB_BTN_X devenait `$8D80` au lieu de `$0080` après
+  l'advance. Tous les slots > 0 considérés hors-bounds, leurs onglets
+  taskbar non-cliquables.
+- **Symptôme observé** : interactivement, clic sur l'onglet « Editor »
+  (slot 1) ou tout slot ≥ 1 ne donnait pas le focus. Slot 0 (premier
+  itéré, ne traverse pas `_tbh_advance` au moment où ça matte pour lui)
+  marchait, ce qui rendait le bug doublement piégeux.
+- **Validation** : reproduction headless via `oricrobot` (clic à
+  (190, 760) → WM_FOCUS=2 attendu → observé 2 avant fix, → 1 après fix).
+  Test `test_oricos_taskbar_focus_3_windows` verrouille le fix. 24/24
+  suites Phosphoric vertes.
+- **Leçon** : `.smart` ca65 ne propage pas l'état M aux labels atteints
+  uniquement par branche. Auditer les autres labels post-bcc/bcs/bra en
+  mode M=16 (TODO scan large).
+
 ## [Unreleased] - 2026-05-30c
 
 ### Added — ADR-31 Étape 1 livrée (clip widget hors rect parent, option A)
