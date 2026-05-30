@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30o
+
+### Added — ADR-27 Étape B1 : garde IRQ `bpl` (transparence, fast-path)
+- **`wm.s kernel_wm_mouse_step`** : refactor en wrapper IRQ +
+  `_wm_mouse_step_body` (l'ancien corps). Le wrapper lit le shadow ;
+  si == 0 (cas par défaut), `jmp` direct au body (~10 cyc surcoût).
+  Sinon, pousse shadow LO/HI, force `bpl=0` (stride par défaut 512),
+  exécute body (curseur + redraws framebuffer XVGA), restaure shadow.
+- **Effet runtime** : nul tant qu'aucun appelant ne touche `set_bpl`
+  (shadow reste 0). 24/24 suites vertes — la garde est dormante.
+- **Statut** : pose la sécurité IRQ avant Étape B2 (flip compact
+  slot 0). Sans cette garde, un mouse IRQ pendant un syscall gfx
+  compact dessinerait le framebuffer avec la mauvaise stride.
+
 ## [Unreleased] - 2026-05-30n
 
 ### Added — ADR-27 Étape A : shadow kernel `bpl` (plomberie passive)

@@ -1920,11 +1920,44 @@ _tbh_miss:
         lda #$00
         rts
 
-; ── kernel_wm_mouse_step : 1 itération event loop (clic → focus,
-;    bouton tenu + mouvement → drag fenêtre focus). Lit MOUSE_*. ─────
-; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
+; ── kernel_wm_mouse_step : wrapper IRQ (ADR-27 Étape B1) ─────────────
+; Garde transparente du registre GPU `bpl` : si le syscall interrompu a
+; posé `bpl ≠ 512` (compact backing-store), force `bpl = 512` le temps
+; du dessin IRQ (curseur + redraws framebuffer XVGA), puis restaure.
+; Fast-path : shadow == 0 (cas par défaut, aucun appelant ne touche
+; encore `bpl`) → saute direct au body, surcoût ~10 cycles.
 .export kernel_wm_mouse_step
 kernel_wm_mouse_step:
+        ; Lit le shadow kernel (mode arbitraire → sortie M=8).
+        jsr kernel_gfx_get_bpl_shadow
+        lda GFX_BPL_LO
+        ora GFX_BPL_HI
+        bne _wms_save_and_force          ; shadow ≠ 0 → save+force+restore
+        jmp _wm_mouse_step_body          ; fast-path (cas par défaut)
+_wms_save_and_force:
+        ; Pousse le shadow courant (LO puis HI ; pop ordre inverse).
+        lda GFX_BPL_LO
+        pha
+        lda GFX_BPL_HI
+        pha
+        ; Force bpl = 0 (stride par défaut 512 — framebuffer XVGA).
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+        jsr _wm_mouse_step_body
+        ; Restore le shadow d'avant l'IRQ.
+        pla
+        sta GFX_BPL_HI
+        pla
+        sta GFX_BPL_LO
+        jsr kernel_gfx_set_bpl
+        rts
+
+; ── _wm_mouse_step_body : 1 itération event loop (clic → focus,
+;    bouton tenu + mouvement → drag fenêtre focus). Lit MOUSE_*. ─────
+; Pré-cond : kernel_mouse_read appelé juste avant (MOUSE_X/Y/BTN à jour).
+_wm_mouse_step_body:
         ; Bouton gauche pressé ?
         lda MOUSE_BTN
         and #MOU2_BTN_LEFT
