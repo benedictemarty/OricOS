@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30t
+
+### Removed — ADR-27 B2.c reverté (non-transparence interactive)
+- Validation interactive `--compact` (2026-05-30s) a montré que la
+  plomberie compact leak `bpl` vers des chemins de dessin kernel
+  non-instrumentés (`kernel_menu_draw`, `_wm_draw_one` chrome, etc.)
+  → rendu corrompu en interaction réelle (carrés noirs, menu étalé).
+- Revertés : `alloc.s task_compact_entry`, spawn dans `boot.s`,
+  constantes `TASK_CPCT_HANDLE`/`TC_CPCT_FLAG`. Côté Phosphoric :
+  flag CLI `--compact` + test `test_oricos_compact_backing_store`
+  désactivé (`#if 0`).
+- **Plomberie A/B1/B2 + hardening M=8 conservée comme dormante** :
+  shadow `GFX_BPL_SHADOW`, garde IRQ `kernel_wm_mouse_step`, table
+  `WM_COMPACT_FLAGS`, helpers `kernel_gfx_set_bpl`/`get_bpl_shadow`/
+  `finish`, et modifs `kernel_gfx_window_base`/`kernel_wm_compose`/
+  `kernel_wm_redraw`. Comme `WM_COMPACT_FLAGS` reste à 0, comportement
+  runtime identique au pré-ADR-27.
+- ADR-27 retour DRAFT (cf. workspace CHANGELOG 2026-05-30t).
+- 24/24 suites Phosphoric vertes.
+
 ## [Unreleased] - 2026-05-30s
 
 ### Hardening — Gardes shadow bpl en M=8 forcé (validation interactive ADR-27)

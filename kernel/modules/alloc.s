@@ -743,64 +743,6 @@ task_wdraw_loop:
         cop #$AA
         bra task_wdraw_loop
 
-; ─── task_compact_entry : test ADR-27 B2.c (flip compact slot) ───────
-; Crée une fenêtre 64×64 à (50,50), active WM_COMPACT_FLAGS[handle]=$A5,
-; dessine bg bleu + rect rouge (10,10)-(30,30) en backing-store compact,
-; compose. Pixel framebuffer XVGA à (61,61) devrait être 7 (rouge).
-.export task_compact_entry
-task_compact_entry:
-        ; SYS_WIN_CREATE(x=50, y=50, w=64, h=64) — args via $D0-$D7 16-bit
-        lda #50
-        sta $D0                 ; x_lo = 50
-        lda #$00
-        sta $D1                 ; x_hi = 0
-        lda #50
-        sta $D2                 ; y_lo = 50
-        lda #$00
-        sta $D3                 ; y_hi = 0
-        lda #64
-        sta $D4                 ; w_lo = 64
-        lda #$00
-        sta $D5                 ; w_hi = 0
-        lda #64
-        sta $D6                 ; h_lo = 64
-        lda #$00
-        sta $D7                 ; h_hi = 0
-        lda #$13                ; SYS_WIN_CREATE
-        cop #$AA
-        sta TASK_CPCT_HANDLE    ; handle = slot id
-        ; Active le mode compact pour ce slot : WM_COMPACT_FLAGS[handle] = $A5
-        tax                     ; X = slot
-        lda #WM_COMPACT_MAGIC
-        sta f:WM_COMPACT_FLAGS,X
-        ; FILL_RECT (0,0, 64,64) couleur 1 (bleu = bg) en backing-store compact
-        lda #$00
-        sta GFX_ARG2_LO
-        sta GFX_ARG2_MID
-        lda #64
-        sta GFX_ARG3_LO
-        sta GFX_ARG3_MID
-        lda #$01
-        sta GFX_COLOR
-        lda #$0E                ; SYS_GFX_FILL_RECT
-        cop #$AA
-        ; FILL_RECT (10,10, 20,20) couleur 7 (rouge)
-        lda #10
-        sta GFX_ARG2_LO
-        sta GFX_ARG2_MID
-        lda #20
-        sta GFX_ARG3_LO
-        sta GFX_ARG3_MID
-        lda #$07
-        sta GFX_COLOR
-        lda #$0E
-        cop #$AA
-task_compact_loop:
-        jsr kernel_wm_compose
-        lda #$05                ; SYS_YIELD
-        cop #$AA
-        bra task_compact_loop
-
 ; ─── idle_entry : tâche idle (OS-2.g v2.b) ────────────────────────────
 ; Toujours READY, plus basse priorité (find_next ne la choisit qu'en fallback,
 ; quand aucune autre tâche n'est READY). Dort sur WAI jusqu'à l'IRQ suivante.

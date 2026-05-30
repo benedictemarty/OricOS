@@ -723,15 +723,6 @@ _skip_task_list:
         lda #$00
         jsr kernel_task_create
 _skip_task_genui:
-        ; ADR-27 B2.c : task_compact (gated TC_CPCT_FLAG) — flip compact slot.
-        lda TC_CPCT_FLAG
-        cmp #$A5
-        bne _skip_task_compact
-        ldx #<task_compact_entry
-        ldy #>task_compact_entry
-        lda #$00
-        jsr kernel_task_create
-_skip_task_compact:
         ; ADR-28 Étape 2 : task_wm (gated TC_WM_FLAG) — serveur WM passe-plat.
         ; Si activée, l'IRQ pousse les events souris/clavier dans RAW_RING au lieu
         ; d'EVENT_RING ; task_wm les republie dans EVENT_RING (comportement net
