@@ -3222,14 +3222,38 @@ sml_ret:
 _ml_classify:
         lda $D0                 ; what
         cmp #EV_KEY_DOWN
-        beq mlc_key
+        bne _mlc_n_key
+        jmp mlc_key
+_mlc_n_key:
         cmp #EV_MOUSE_DOWN
-        beq mlc_mdown
+        bne _mlc_n_md
+        jmp mlc_mdown
+_mlc_n_md:
         cmp #EV_MOUSE_MOVED
-        beq mlc_moved
+        bne _mlc_n_mv
+        jmp mlc_moved
+_mlc_n_mv:
         cmp #EV_MOUSE_UP
-        beq mlc_up
+        bne _mlc_n_mu
+        jmp mlc_up
+_mlc_n_mu:
+        cmp #EV_MENU_CLICK      ; ADR-30 Étape 2b
+        bne _mlc_null
+        jmp mlc_menu
+_mlc_null:
         lda #MSG_NULL
+        rts
+mlc_menu:
+        ; Payload : $D1 = item_id (0..1), $D2 = menu_id (0..1). Packé en $DA
+        ; pour l'app : $DA = (menu_id << 4) | item_id (lit via oricos_msg_id).
+        lda $D2
+        asl a
+        asl a
+        asl a
+        asl a
+        ora $D1
+        sta $DA
+        lda #MSG_MENU
         rts
 mlc_key:
         ; SP-3.o S.4b : si un champ texte a le focus, la touche édite son buffer

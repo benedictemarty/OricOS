@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30h
+
+### Added — ADR-30 Étape 2b livrée : `MSG_MENU` à l'app sur clic item
+- **`kernel.s`** : `EV_MENU_CLICK = 5`.
+- **`event.s`** : `kernel_event_push_menu` (entrée A = packed
+  `menu_id << 4 | item_id`). Posté dans `EVENT_RING`.
+- **`tk.s _mhc_invoke`** : si `WG_CB_VEC = 0` ET `MENU_DYN_ACTIVE = $A5`,
+  appelle `kernel_event_push_menu` au lieu du silent-consume v1.
+- **`wm.s _ml_classify mlc_menu`** : `EV_MENU_CLICK → MSG_MENU`, repack
+  `$DA = (menu_id << 4) | item_id`.
+- **`apps/ctl_demo/ctl.c`** : handler `if (msg == MSG_MENU)` décode
+  `oricos_msg_id()` et imprime `"ctl: menu m=X i=Y\r\n"`. `App > Quit`
+  → break.
+- **Verrouillage** : `test_oricos_ctl_demo` étendu (clic « App » dans
+  barre + clic « About » dans dropdown → `text_buf_contains("ctl: menu
+  m=0 i=0")`). 24/24 suites vertes. Cycle budget bumpé (220k init au
+  lieu de 140k) car UI plus large à parser.
+- **Coût** : ~50 LOC asm + 14 LOC C + 8 LOC test.
+- **Note** : bar-click pré-existant génère aussi `MSG_MENU` avec `$DA`
+  stale (`mlc_md_notmenu` path). À corriger si gênant.
+
 ## [Unreleased] - 2026-05-30g
 
 ### Fixed — ADR-30 Étape 2 : forcer bank 1 dans `sta menu_defs,X`

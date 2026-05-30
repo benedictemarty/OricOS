@@ -484,6 +484,7 @@ EV_KEY_DOWN       = 1
 EV_MOUSE_DOWN     = 2
 EV_MOUSE_UP       = 3
 EV_MOUSE_MOVED    = 4
+EV_MENU_CLICK     = 5            ; ADR-30 Étape 2b : payload menu_id + item_id
 ; Messages sémantiques du MainLoop (SP-3.n G.3, SYS_MAIN_LOOP $17). Le MainLoop
 ; consomme les événements bruts et rend ces messages à l'app (modèle GeoWorks).
 ; Détails dans le bloc ZP $D0-$DF : MSG_KEY → keycode en $D1 ; MSG_CONTENT →

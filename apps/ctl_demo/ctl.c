@@ -45,6 +45,17 @@ int main(void) {
             oricos_print_char('0' + (v / 10) % 10);
             oricos_print_char('0' + v % 10);
             oricos_print_string("\r\n");
+        } else if (msg == MSG_MENU) {
+            /* ADR-30 Étape 2b : id packé = (menu_id << 4) | item_id. */
+            unsigned char packed = oricos_msg_id();
+            unsigned char menu = packed >> 4;
+            unsigned char item = packed & 0x0F;
+            oricos_print_string("ctl: menu m=");
+            oricos_print_char('0' + menu);
+            oricos_print_string(" i=");
+            oricos_print_char('0' + item);
+            oricos_print_string("\r\n");
+            if (menu == 0 && item == 1) break;   /* App > Quit */
         } else if (msg == MSG_CLOSE) {
             break;
         }

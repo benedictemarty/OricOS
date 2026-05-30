@@ -1200,24 +1200,34 @@ _mhc_isopen:
         sta WG_RELX              ; bar_x du menu ouvert
         lda MOUSE_X
         cmp WG_RELX
-        bcc _mhc_close
+        bcs _mhc_isopen_x_ok
+        jmp _mhc_close
+_mhc_isopen_x_ok:
         lda WG_RELX
         clc
         adc #64
         sta WG_RELW
         lda MOUSE_X
         cmp WG_RELW
-        bcs _mhc_close
+        bcc _mhc_isopen_x2_ok
+        jmp _mhc_close
+_mhc_isopen_x2_ok:
         lda MOUSE_Y
         cmp #MENU_BAR_H
-        bcc _mhc_close
+        bcs _mhc_isopen_y_ok
+        jmp _mhc_close
+_mhc_isopen_y_ok:
         cmp #38
-        bcs _mhc_close
+        bcc _mhc_isopen_y2_ok
+        jmp _mhc_close
+_mhc_isopen_y2_ok:
         ; item0 (y<26) ou item1
         lda MOUSE_Y
         cmp #26
         sep #$20
         bcs _mhc_it1
+        lda #$00                 ; ADR-30 Étape 2b : item_id = 0 (sur la pile)
+        pha
         ldy #6                   ; item0 callback
         lda [DP_PCPTR],Y
         sta WG_CB_VEC
@@ -1226,6 +1236,8 @@ _mhc_isopen:
         sta WG_CB_VEC+1
         bra _mhc_invoke
 _mhc_it1:
+        lda #$01                 ; ADR-30 Étape 2b : item_id = 1
+        pha
         ldy #10                  ; item1 callback
         lda [DP_PCPTR],Y
         sta WG_CB_VEC
@@ -1237,9 +1249,30 @@ _mhc_invoke:
         sta MENU_OPEN            ; ferme
         lda WG_CB_VEC
         ora WG_CB_VEC+1
-        beq _mhc_consumed
+        beq _mhc_no_cb
+        ; Callback statique présent : on l'invoque (silent v0). Pile : item_id encore.
         ldx #$00
         jsr (.loword(WG_CB_VEC),X)
+        pla                      ; cleanup item_id (callback path)
+        bra _mhc_consumed
+_mhc_no_cb:
+        ; ADR-30 Étape 2b : si MENU_DYN_ACTIVE = $A5, post EV_MENU_CLICK à
+        ; la place du silent-consume v1. Payload : menu_id << 4 | item_id.
+        lda MENU_DYN_ACTIVE
+        cmp #$A5
+        bne _mhc_drop_id
+        pla                      ; A = item_id (0 ou 1)
+        sta WG_CB_VEC            ; scratch (cb_vec écrasé sans risque)
+        lda MENU_I               ; menu_id (0..MENU_DYN_COUNT-1)
+        asl a
+        asl a
+        asl a
+        asl a                    ; menu_id << 4
+        ora WG_CB_VEC            ; | item_id
+        jsr kernel_event_push_menu
+        bra _mhc_consumed
+_mhc_drop_id:
+        pla                      ; discard item_id, ancien comportement
 _mhc_consumed:
         lda #$01
         rts

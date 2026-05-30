@@ -263,6 +263,39 @@ ekpm_ok:
         jmp _evt_advance_tail
 
 ; ════════════════════════════════════════════════════════════════════
+;  ADR-30 Étape 2b : kernel_event_push_menu — poste EV_MENU_CLICK
+; ════════════════════════════════════════════════════════════════════
+; Entrée : A = menu_id (4 bits high) | item_id (4 bits low). Drop si plein.
+; Payload : MSG_LO = item_id, MSG_HI = menu_id. mods = MOUSE_BTN, where=souris.
+; Clobbe A, X. Préserve Y.
+.export kernel_event_push_menu
+kernel_event_push_menu:
+        pha                      ; sauve packed id
+        lda EVENT_RING_COUNT
+        cmp #EVENT_ENTRIES
+        bcc kepmen_ok
+        pla                      ; plein → drop
+        rts
+kepmen_ok:
+        jsr _evt_tail_offset     ; X = offset slot
+        lda #EV_MENU_CLICK
+        sta EVENT_RING + EVT_WHAT,x
+        pla                      ; packed id
+        pha
+        and #$0F                 ; item_id low nibble
+        sta EVENT_RING + EVT_MSG_LO,x
+        pla                      ; packed id
+        lsr a
+        lsr a
+        lsr a
+        lsr a                    ; menu_id high nibble → low
+        sta EVENT_RING + EVT_MSG_HI,x
+        lda MOUSE_BTN
+        sta EVENT_RING + EVT_MODS,x
+        jsr _evt_fill_where_when
+        jmp _evt_advance_tail
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_event_pop — extrait le prochain record dans EVT_OUT (ZP), ou EV_NULL
 ; ════════════════════════════════════════════════════════════════════
 ; Sortie : copie le record en tête vers le bloc de 10 octets pointé par
