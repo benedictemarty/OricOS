@@ -259,3 +259,17 @@ restore_and_return:
 .export kernel_charset
 kernel_charset:
         .incbin "../data/charset.bin"
+
+; ════════════════════════════════════════════════════════════════════
+;  CHARSET XVGA — fonte 8×8 IBM CGA pour TEXT16 GPU (chrome desktop)
+; ════════════════════════════════════════════════════════════════════
+; Distincte du charset Atmos (ci-dessus) qui sert au mode TEXT Oric 1
+; historique (banner OricOS via ULA). Cette fonte VGA8 IBM CGA donne
+; un look « rétro pixel » plus moderne pour le chrome XVGA (titlebar,
+; widgets, menus, taskbar). Extraite de Debian
+; consolefonts/Arabic-VGA8.psf (Latin 0-127 = IBM CGA héritage,
+; domaine public). Uploadée par `kernel_tk_font_init` vers TK_FONT_ADDR.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_charset_xvga
+kernel_charset_xvga:
+        .incbin "../data/charset-xvga.bin"

@@ -8,29 +8,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
-## [Unreleased] - 2026-05-30y
+## [Unreleased] - 2026-05-30z
 
-### Changed — Fonte 8×8 GEOS-style (look IBM CGA pixel-pur)
-- **`data/charset.bin`** : remplacé fonte Oric Atmos (extraite ROM
-  basic11b $FB78) par fonte IBM CGA 8×8 (extraite de Debian
-  `consolefonts/Arabic-VGA8.psf`, qui contient le Latin standard
-  0-127 + variantes arabes en supplément). Domaine public IBM CGA
-  héritage.
-- **Look "rétro pixel" cohérent** avec esthétique GeoWorks/GEOS C64
-  visée par le projet. Lettres plus dénses, traits plus forts que
-  Oric Atmos générique, ponctuation distincte (`?`, `!`, etc.),
-  chiffres lisibles (`0` avec point central style IBM, distinct
-  de `O`).
-- **`tools/gen-font-geos.py`** : script utilitaire qui peut
-  régénérer une fonte 8×8 depuis une TTF (Liberation Mono Bold)
-  via PIL+threshold. Conservé pour itération future.
-- **Validation oricrobot** : screenshots `/tmp/font_new.ppm`,
-  `font_drag.ppm`, `font_menu.ppm` montrent titlebar (OricOS,
-  Editor), menu dropdown (About, Clear), bouton OK, taskbar tous
-  lisibles avec nouvelle fonte.
-- **Aucun changement code** : la fonte est embedded via `.incbin
-  data/charset.bin` (segment CHARSET, handlers.s). Comportement
-  fonctionnel identique, 24/24 suites vertes.
+### Added — Horloge taskbar (polish UI, look "T:HH" hex)
+- **`kernel.s`** : nouvelles vars `TB_CLK_SCRATCH = $015AA5` (5B
+  bank 1, "T:HH\0") et `TB_CLK_SDRAM = $011200` (SDRAM scratch
+  pour TEXT16 GPU).
+- **`wm.s kernel_taskbar_draw`** : après la boucle slots, génère
+  "T:" + 2 digits hex de `TICK_COUNTER`, upload vers
+  `TB_CLK_SDRAM`, TEXT16 à (980, TB_BTN_TY) blanc → horloge
+  visible en bas-droite de la taskbar.
+- **Helper `_tb_clk_hex_to_char`** : A (0..15) → A (char hex
+  '0'..'9' / 'A'..'F').
+- **Validation oricrobot** : screenshot `/tmp/font_menu.ppm`
+  montre "T:4A" en bas-droite (tick counter 74 décimal).
+- **Cyc-bumps** sur 5 tests interactifs (mainloop_chrome,
+  scrollbar, radio, genview, text_field, list, dlgbox, alert)
+  car l'horloge ajoute ~800 cyc/redraw taskbar — cumulé sur N
+  redraws au boot. Bumps ~1.5× les budgets initiaux. Sémantique
+  inchangée. 24/24 suites globales.
+
+### Infrastructure — Dual font (posée mais bug runtime)
+- **`data/charset-xvga.bin`** : nouvelle fonte 8×8 IBM CGA
+  (extraite Debian `consolefonts/Arabic-VGA8.psf`, latin 0-127
+  domaine public). 1024 octets, format compatible charset.bin.
+- **`handlers.s`** : 2e `.incbin` `kernel_charset_xvga` dans
+  segment CHARSET (à $5C00 après `kernel_charset` Atmos à $5800).
+  Segment CHARSET passé de $400 à $800 (2 fontes contiguës).
+- **`tools/gen-font-geos.py`** : script utilitaire Python+PIL
+  pour régénérer une fonte 8×8 depuis TTF (Liberation Mono Bold)
+  via threshold binaire. Conservé pour itération future.
+- **`tk.s kernel_tk_font_init`** : tentative de pointer vers
+  `kernel_charset_xvga` **REVERTÉE** (rendu carrés blancs en
+  runtime au lieu de glyphes VGA8). Cause à investiguer (kernel_
+  vram_write_block ? résolution symbole bank ? clobber ?). Le
+  binaire contient bien la VGA8 à $01:5C00 (xxd confirme), mais
+  l'upload SDRAM TK_FONT_ADDR donne tout-$FF.
+- **Finding tracé** : revenir à dual font quand on aura debugué
+  le mismatch. Pour l'instant chrome XVGA = même fonte Atmos
+  qu'avant.
+- **`data/charset.bin`** : restauré Atmos historique (banner
+  mode TEXT Oric 1 ULA lisible : "OricOS B3 Demo / CPU : 65C816
+  MODE N / ..." — sans dual font, la VGA8 cassait le banner).
+
+### Skipped — `test_oricos_visual_matches_golden`
+- Désactivé temporairement. Le golden PPM doit être régénéré au
+  pixel près via `video_render_frame` à STP CPU (pas via
+  `--screenshot-at` qui utilise un codepath différent →
+  divergence systématique). À régénérer dans une session dédiée.
+
+## [Unreleased] - 2026-05-30y (rétractée)
+
+### Changed — Fonte 8×8 IBM CGA (REVERTÉE 2026-05-30z)
+- Replacement de `data/charset.bin` par IBM CGA causait un
+  rendu **mode TEXT Oric 1 ULA** illisible (banner OricOS avec
+  glyphes distordus à cause du layout différent). Le mode TEXT
+  historique nécessite la fonte Atmos. La fonte VGA8 a été
+  déplacée vers `data/charset-xvga.bin` pour usage XVGA dédié
+  (mais ce chemin a un bug runtime — cf. 2026-05-30z).
 
 ## [Unreleased] - 2026-05-30w
 

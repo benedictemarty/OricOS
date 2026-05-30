@@ -772,6 +772,7 @@ WG_RELH          = $015A9A       ; 2B
 TB_I             = $015A9C       ; 1B : index boucle taskbar
 TB_BTN_X         = $015A9E       ; 2B : btn_x courant (4 + i*124)
 TB_WIN_SCRATCH   = $015AA0       ; 5B : "WinN\0" en bank 1 RAM (source pour upload)
+TB_CLK_SCRATCH   = $015AA5       ; 5B : "TNNN\0" bank 1 (horloge taskbar)
 ; ── SP-3.h : états maximize/minimize + rects sauvegardés ──────────────
 WM_STATE_NORMAL      = $00       ; état fenêtre : normal
 WM_STATE_MAXED       = $01       ; état fenêtre : maximisée
@@ -819,6 +820,7 @@ WM_MIN_STR       = $0110A0       ; "_\0" uploadé au boot
 BTN_MAX_OFFSET   = 22            ; □ : 12px à gauche du ×
 BTN_MIN_OFFSET   = 34            ; _ : 24px à gauche du ×
 TB_WIN_SDRAM     = $011100       ; adresse SDRAM du scratch "WinN\0" (5 bytes)
+TB_CLK_SDRAM     = $011200       ; adresse SDRAM du scratch horloge (5 bytes)
 
 ; Taskbar layout (ADR-20 XVGA 1024×768)
 TB_Y_SEP         = 755           ; y du séparateur blanc (1 px)

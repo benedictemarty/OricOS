@@ -1886,6 +1886,84 @@ _tb_skip_slot:
         sta TB_I
         jmp _tb_draw_loop
 _tb_draw_done:
+        ; ── Horloge taskbar (Sprint 3 polish) : "T:NN" hex tick counter ──
+        ; Format "T:HH\0" (4 chars + null) en bank 1 TB_CLK_SCRATCH, upload
+        ; SDRAM TB_CLK_SDRAM, TEXT16 à (~980, TB_BTN_TY) blanc.
+        lda #'T'
+        sta TB_CLK_SCRATCH+0
+        lda #':'
+        sta TB_CLK_SCRATCH+1
+        ; High nibble de TICK_COUNTER → char hex
+        lda TICK_COUNTER
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        jsr _tb_clk_hex_to_char
+        sta TB_CLK_SCRATCH+2
+        ; Low nibble
+        lda TICK_COUNTER
+        and #$0F
+        jsr _tb_clk_hex_to_char
+        sta TB_CLK_SCRATCH+3
+        lda #$00
+        sta TB_CLK_SCRATCH+4
+        ; Upload bank 1 → SDRAM TB_CLK_SDRAM
+        lda #<TB_CLK_SCRATCH
+        sta DP_PCPTR
+        lda #>TB_CLK_SCRATCH
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        lda #<TB_CLK_SDRAM
+        sta VRAM_OP_ADDR_LO
+        lda #>TB_CLK_SDRAM
+        sta VRAM_OP_ADDR_MID
+        lda #$00
+        sta VRAM_OP_ADDR_HI
+        lda #$05
+        sta VRAM_OP_LEN_LO
+        lda #$00
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+        ; TEXT16 à (980, TB_BTN_TY) blanc
+        lda #<TB_CLK_SDRAM
+        sta GFX_STR_LO
+        lda #>TB_CLK_SDRAM
+        sta GFX_STR_MID
+        lda #$00
+        sta GFX_STR_HI
+        rep #$20
+        lda #980
+        sta WM_ARG_X
+        lda #TB_BTN_TY
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #$01
+        sta GFX_FONT_HI
+        lda #$0F                 ; blanc
+        sta GFX_COLOR
+        jsr kernel_gfx_text16
+        rts
+
+; ── _tb_clk_hex_to_char : A (0..15) → A (char hex '0'..'9' / 'A'..'F') ──
+_tb_clk_hex_to_char:
+        cmp #10
+        bcc _tbhc_digit
+        clc
+        adc #('A' - 10 - '0')    ; bump pour A..F
+_tbhc_digit:
+        clc
+        adc #'0'
         rts
 
 ; ── kernel_taskbar_hit : teste clic dans la taskbar. ─────────────────

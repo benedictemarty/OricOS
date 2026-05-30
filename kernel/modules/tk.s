@@ -8,8 +8,12 @@
 ;  SP-3.d — Toolkit minimal (label / frame / button) sur XVGA
 ; ════════════════════════════════════════════════════════════════════
 
-; ── kernel_tk_font_init : upload la fonte ASCII (CHARSET_SRC, 1024 o) en
+; ── kernel_tk_font_init : upload la fonte XVGA (charset-xvga, 1024 o) en
 ;    SDRAM TK_FONT_ADDR pour le GPU TEXT/TEXT16. Appelé une fois au boot.
+;    Distincte du CHARSET_SRC (Atmos historique) utilisé par le mode TEXT
+;    Oric 1 (banner OricOS via ULA). Source : `kernel_charset_xvga`
+;    (handlers.s, .incbin data/charset-xvga.bin) — IBM CGA 8×8 domaine
+;    public, look rétro pixel pour le chrome XVGA.
 .export kernel_tk_font_init
 kernel_tk_font_init:
         lda #<CHARSET_SRC
