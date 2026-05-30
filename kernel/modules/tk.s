@@ -16,11 +16,11 @@
 ;    public, look rétro pixel pour le chrome XVGA.
 .export kernel_tk_font_init
 kernel_tk_font_init:
-        lda #<CHARSET_SRC
+        lda #<CHARSET_XVGA_SRC
         sta DP_PCPTR
-        lda #>CHARSET_SRC
+        lda #>CHARSET_XVGA_SRC
         sta DP_PCPTR+1
-        lda #^CHARSET_SRC
+        lda #^CHARSET_XVGA_SRC
         sta DP_PCPTR+2
         lda #<TK_FONT_ADDR
         sta VRAM_OP_ADDR_LO

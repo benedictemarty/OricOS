@@ -322,8 +322,13 @@ KW_TMP          = $3C            ; SP-3.m G.3 : scratch pid pour kernel_kbd_wait
 ; au boot ; OricOS doit faire pareil puisqu'il boote sans la ROM.
 ; La fonte (1024 octets) est embedded dans le kernel.bin en bank 1
 ; à $5800 via .incbin (segment CHARSET).
-CHARSET_SRC     = $015800        ; source (bank 1)
+CHARSET_SRC     = $015800        ; source Atmos (bank 1, mode TEXT Oric 1)
 CHARSET_DST     = $00B400        ; dest (bank 0, Oric 1 mode TEXT)
+CHARSET_XVGA_SRC = $015C00       ; source IBM CGA VGA8 (bank 1, après Atmos)
+                                 ; — Doit être constante 24-bit pour que #^
+                                 ; retourne la bank ($01). Le symbole de
+                                 ; segment kernel_charset_xvga est 16-bit
+                                 ; (linker ld65) → #^ = 0 → upload garbage.
 CHARSET_SIZE    = $0400          ; 1024 octets (128 chars × 8 lignes)
 
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top

@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31a
+
+### Fixed — Dual font VGA8 chrome XVGA (bug bank byte symbole ld65)
+- **`kernel.s`** : ajout constante 24-bit `CHARSET_XVGA_SRC = $015C00`
+  (avec bank explicite).
+- **`tk.s kernel_tk_font_init`** : utilise `CHARSET_XVGA_SRC` au lieu
+  du symbole de segment `kernel_charset_xvga`. Cause du bug isolée :
+  ld65 résout les symboles de segment en 16-bit (sans bank info) →
+  `#^kernel_charset_xvga` = `$00` au lieu de `$01` → upload `kernel_
+  vram_write_block` lisait bank 0 $5C00 (garbage RAM) au lieu de bank 1
+  $5C00 (VGA8). Le binaire contenait bien la VGA8 à $01:5C00 (xxd
+  confirme), mais l'adresse runtime était mal calculée.
+- **Pattern** : `kernel_install_charset` (console.s) utilise déjà
+  `CHARSET_SRC = $015800` (constante 24-bit) pour la même raison.
+  Maintenant cohérent.
+- **Validation oricrobot** : screenshot `/tmp/font_menu.ppm` montre
+  chrome XVGA en VGA8 (titres OricOS/Editor, menu About/Clear, OK,
+  taskbar avec horloge T:4A) — tout lisible, look IBM CGA pixel-pur.
+- **Banner mode TEXT** reste sur Atmos (charset.bin), lisible.
+- **24/24 suites Phosphoric vertes**.
+
 ## [Unreleased] - 2026-05-30z
 
 ### Added — Horloge taskbar (polish UI, look "T:HH" hex)
