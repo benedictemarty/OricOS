@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30y
+
+### Changed — Fonte 8×8 GEOS-style (look IBM CGA pixel-pur)
+- **`data/charset.bin`** : remplacé fonte Oric Atmos (extraite ROM
+  basic11b $FB78) par fonte IBM CGA 8×8 (extraite de Debian
+  `consolefonts/Arabic-VGA8.psf`, qui contient le Latin standard
+  0-127 + variantes arabes en supplément). Domaine public IBM CGA
+  héritage.
+- **Look "rétro pixel" cohérent** avec esthétique GeoWorks/GEOS C64
+  visée par le projet. Lettres plus dénses, traits plus forts que
+  Oric Atmos générique, ponctuation distincte (`?`, `!`, etc.),
+  chiffres lisibles (`0` avec point central style IBM, distinct
+  de `O`).
+- **`tools/gen-font-geos.py`** : script utilitaire qui peut
+  régénérer une fonte 8×8 depuis une TTF (Liberation Mono Bold)
+  via PIL+threshold. Conservé pour itération future.
+- **Validation oricrobot** : screenshots `/tmp/font_new.ppm`,
+  `font_drag.ppm`, `font_menu.ppm` montrent titlebar (OricOS,
+  Editor), menu dropdown (About, Clear), bouton OK, taskbar tous
+  lisibles avec nouvelle fonte.
+- **Aucun changement code** : la fonte est embedded via `.incbin
+  data/charset.bin` (segment CHARSET, handlers.s). Comportement
+  fonctionnel identique, 24/24 suites vertes.
+
 ## [Unreleased] - 2026-05-30w
 
 ### Fixed — Finding chrome-direct-FB : fenêtres système rendues noires en --compact
