@@ -3375,6 +3375,18 @@ mlc_md_hit:
         lda WIDGET_ACTIVE
         cmp #$FF
         bne mlc_control
+        ; Pattern GEOS DoIcons : avant de retomber sur MSG_CONTENT, teste
+        ; les hot-zones de la fenêtre cliquée. Si hit → MSG_CONTROL + $DA
+        ; = $80 | hotzone_id (l'app distingue hotzones de widgets par
+        ; le bit 7 de l'id).
+        lda WIN_SLOT
+        jsr _wm_hotzone_hit
+        cmp #$FF
+        beq mlc_md_no_hotzone
+        sta $DA
+        lda #MSG_CONTROL
+        rts
+mlc_md_no_hotzone:
         lda #MSG_CONTENT        ; rien de spécial → contenu (max/min = shell)
         rts
 mlc_control:
@@ -4583,6 +4595,190 @@ stc_ok:
         lda #TIMER_F_FREE
         sta f:TIMER_TABLE+0,x
         lda #$00
+        rts
+
+; ── Pattern GEOS DoIcons (post-clôture ADR-30) ─────────────────────────
+;
+; $20 — SYS_HOTZONE_SET : installe une hot-zone rect pour la fenêtre focus.
+; Args : X (via DP_SYS_ARG_X) = hotzone_id (0..7).
+;        Bloc ZP : $D0 x_lo, $D1 x_hi, $D2 y_lo, $D3 y_hi, $D4 w_lo,
+;                  $D5 w_hi, $D6 h_lo, $D7 h_hi (coords absolues XVGA).
+; A = $00 succès, $FF id invalide.
+sys_hotzone_set:
+        lda DP_SYS_ARG_X
+        cmp #HOTZONE_N
+        bcc shz_ok
+        lda #$FF
+        rts
+shz_ok:
+        ; entry_offset = id * 10 (5×2). Calcule via shift+add.
+        sta SPIN_TMP            ; id
+        asl a                   ; *2
+        sta SPIN_ID             ; *2 sauvé
+        asl a
+        asl a                   ; *8
+        clc
+        adc SPIN_ID             ; *8 + *2 = *10
+        tax                     ; X = entry offset
+        ; flag = active, win_slot = WM_FOCUS
+        lda #HOTZONE_F_ACTIVE
+        sta f:HOTZONE_TABLE+0,x
+        lda WM_FOCUS
+        sta f:HOTZONE_TABLE+1,x
+        ; x16 (relatif au coin haut-gauche de la fenêtre focus)
+        lda $D0
+        sta f:HOTZONE_TABLE+2,x
+        lda $D1
+        sta f:HOTZONE_TABLE+3,x
+        lda $D2
+        sta f:HOTZONE_TABLE+4,x
+        lda $D3
+        sta f:HOTZONE_TABLE+5,x
+        lda $D4
+        sta f:HOTZONE_TABLE+6,x
+        lda $D5
+        sta f:HOTZONE_TABLE+7,x
+        lda $D6
+        sta f:HOTZONE_TABLE+8,x
+        lda $D7
+        sta f:HOTZONE_TABLE+9,x
+        lda #$00
+        rts
+
+; $21 — SYS_HOTZONE_CLEAR : libère hot-zone X. A = $00 ou $FF.
+sys_hotzone_clear:
+        lda DP_SYS_ARG_X
+        cmp #HOTZONE_N
+        bcc shc_ok
+        lda #$FF
+        rts
+shc_ok:
+        sta SPIN_TMP
+        asl a
+        sta SPIN_ID
+        asl a
+        asl a
+        clc
+        adc SPIN_ID
+        tax
+        lda #HOTZONE_F_FREE
+        sta f:HOTZONE_TABLE+0,x
+        lda #$00
+        rts
+
+; ── kernel_hotzone_init : zéroise les flags au boot. ──────────────────
+.export kernel_hotzone_init
+kernel_hotzone_init:
+        ldx #$00
+khi_loop:
+        lda #HOTZONE_F_FREE
+        sta f:HOTZONE_TABLE+0,x
+        ; avance X de 10 octets
+        txa
+        clc
+        adc #HOTZONE_ENTSZ
+        tax
+        cpx #(HOTZONE_N * HOTZONE_ENTSZ)
+        bcc khi_loop
+        rts
+
+; ── _wm_hotzone_hit : cherche une hot-zone sous (MOUSE_X, MOUSE_Y) pour la
+; fenêtre A (slot id). Retour : A = hotzone_id (0..N-1) | $80, ou $FF si miss.
+; Modifie A, X, Y, WG_*.
+.export _wm_hotzone_hit
+_wm_hotzone_hit:
+        sta WIN_SLOT             ; slot fenêtre dont on cherche les hotzones
+        ldx #$00
+hzh_loop:
+        lda f:HOTZONE_TABLE+0,x
+        cmp #HOTZONE_F_ACTIVE
+        beq hzh_check_slot
+        jmp hzh_next
+hzh_check_slot:
+        lda f:HOTZONE_TABLE+1,x
+        cmp WIN_SLOT
+        beq hzh_check_bounds
+        jmp hzh_next
+hzh_check_bounds:
+        ; Compute abs_x = win.x + rel_x, abs_y = win.y + rel_y.
+        ; Lit rect rel hotzone.
+        rep #$20
+        lda f:HOTZONE_TABLE+2,x
+        sta WG_RELX
+        lda f:HOTZONE_TABLE+4,x
+        sta WG_RELY
+        lda f:HOTZONE_TABLE+6,x
+        sta WG_RELW
+        lda f:HOTZONE_TABLE+8,x
+        sta WG_RELH
+        sep #$20
+        ; X save (besoin pour calcul de l'id)
+        phx
+        ; abs via parent window
+        lda WIN_SLOT
+        jsr kernel_wm_offset    ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,x
+        clc
+        adc WG_RELX
+        sta WG_RELX             ; abs_x
+        lda WM_TABLE+WM_OFF_Y,x
+        clc
+        adc WG_RELY
+        sta WG_RELY             ; abs_y
+        ; hit test
+        lda MOUSE_X
+        cmp WG_RELX
+        bcc hzh_miss16
+        lda WG_RELX
+        clc
+        adc WG_RELW
+        sta WG_RELW             ; abs_x2
+        lda MOUSE_X
+        cmp WG_RELW
+        bcs hzh_miss16
+        lda MOUSE_Y
+        cmp WG_RELY
+        bcc hzh_miss16
+        lda WG_RELY
+        clc
+        adc WG_RELH
+        sta WG_RELH             ; abs_y2
+        lda MOUSE_Y
+        cmp WG_RELH
+        bcs hzh_miss16
+        ; HIT
+        sep #$20
+        plx                      ; X = entry_offset
+        ; id = entry_offset / 10 ; on a stocké id*10 dans X. Pour récupérer
+        ; l'id, on cherche : entry_offset / 10. v1 : itérer / soustraire 10.
+        txa
+        ldy #$00
+hzh_to_id:
+        cmp #HOTZONE_ENTSZ
+        bcc hzh_id_done
+        sec
+        sbc #HOTZONE_ENTSZ
+        iny
+        bra hzh_to_id
+hzh_id_done:
+        tya
+        ora #HOTZONE_ID_BASE     ; |= $80
+        rts
+hzh_miss16:
+        sep #$20
+        plx
+hzh_next:
+        ; X += HOTZONE_ENTSZ
+        txa
+        clc
+        adc #HOTZONE_ENTSZ
+        tax
+        cpx #(HOTZONE_N * HOTZONE_ENTSZ)
+        bcs hzh_done
+        jmp hzh_loop
+hzh_done:
+        lda #$FF                 ; miss global
         rts
 
 ; ── kernel_timer_init : zéroise les flags TIMER_TABLE au boot. ────────

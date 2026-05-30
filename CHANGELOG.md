@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30m
+
+### Added — Hot-zones cliquables (pattern GEOS `DoIcons`, post-clôture ADR-30)
+- **`kernel.s`** : `HOTZONE_N=8`, `HOTZONE_TABLE=$016800` (8×10 octets :
+  flag, win_slot, x_rel16, y_rel16, w16, h16). `HOTZONE_ID_BASE=$80`
+  (distingue hotzones des widgets via bit 7 du `$DA` MSG_CONTROL).
+- **`wm.s sys_hotzone_set/clear`** : syscalls $20/$21. Args via DP_SYS_ARG_X
+  (id) + bloc ZP $D0-$D7 (x16, y16, w16, h16 relatives à la fenêtre focus).
+- **`wm.s kernel_hotzone_init`** : zéroise les flags au boot.
+- **`wm.s _wm_hotzone_hit`** : itère HOTZONE_TABLE, hit-test (rel + win.x/y).
+  Retourne id | $80 ou $FF.
+- **`wm.s _ml_classify mlc_md_notmenu`** : hook après `_wm_widget_hit`
+  miss → `_wm_hotzone_hit`. Si hit, poste MSG_CONTROL + $DA = id | $80.
+  Sinon retombe sur MSG_CONTENT.
+- **`boot.s`** : `jsr kernel_hotzone_init`.
+- **SDK** : `HOTZONE_ID_BASE = 0x80`, helpers `oricos_hotzone_set/clear`.
+- **Démo app `score`** : hotzone 0 = zone vide sous les boutons → clic
+  reset le score (action « tap to reset » sans widget chrome).
+  Validation oricrobot : score 7 → 1 après clic hotzone (= 0 reset + 1
+  tick timer entre temps).
+- **Verrouillage** : 24/24 suites vertes. test_syscall_table_size mis à
+  jour ($20/$21 = SYS_HOTZONE_SET/CLEAR), cyc bootstrap bumpés dans
+  taskbar_focus + view_demo tests (patterns GEOS étendent le kernel).
+- **Coût** : ~160 LOC kernel + 30 LOC SDK + 5 LOC démo.
+
+Source pattern : `mist64/geos kernal/icon/icon1.s:37-67` (rapport agent
+2026-05-30). Cf. mémoire [[geos-sources]].
+
+Notes :
+- MVP n'unifie PAS les 3 hit-testers existants (`_wm_widget_hit`,
+  `_icon_hit`, `_wm_close_btn_hit`) ; ajoute une 4e couche orthogonale.
+  L'unification complète serait un refactor structurel séparé.
+- Hot-zone hit-test placé APRÈS widgets pour ne pas casser les apps
+  existantes — les widgets restent prioritaires en cas de chevauchement.
+
 ## [Unreleased] - 2026-05-30l
 
 ### Added — Timers d'app coopératifs (pattern GEOS `InitProcesses`, post-clôture ADR-30)

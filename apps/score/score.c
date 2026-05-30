@@ -55,11 +55,25 @@ int main(void) {
     /* Pattern GEOS InitProcesses (post-clôture ADR-30) : timer id 0 tick
      * tous les 30 frames → auto-incrémente le score (démo timer d'app). */
     oricos_timer_set(0, 30);
+    /* Pattern GEOS DoIcons : hotzone id 0 = la moitié basse de la fenêtre
+     * sous les buttons (rel y=80..120, soit abs y=280..320 dans la fenêtre
+     * à (400,200)). Clic → MSG_CONTROL avec id = HOTZONE_ID_BASE | 0 = $80.
+     * Coords RELATIVES au coin haut-gauche de la fenêtre (comme les
+     * widgets). */
+    oricos_hotzone_set(0, 10, 80, 180, 40);
 
     for (;;) {
         unsigned char msg = oricos_main_loop();
         if (msg == MSG_CONTROL) {
             unsigned char id = oricos_msg_id();
+            /* Hotzone (pattern GEOS DoIcons) : bit 7 = $80 indique hotzone.
+             * Hotzone 0 = zone libre bas-fenêtre → reset (autre action que
+             * les boutons +1/+10/Reset, démontre l'unification du hit-test). */
+            if (id == HOTZONE_ID_BASE) {
+                score = 0;
+                oricos_ctl_set_value(FIELD_ID, score);
+                continue;
+            }
             if (id == BTN_PLUS1) {
                 if (score < MAX_SCORE) score++;
             } else if (id == BTN_PLUS10) {

@@ -839,6 +839,7 @@ _skip_task_wm:
         jsr kernel_mouse_init
         jsr kernel_event_init    ; SP-3.n G.1 : file d'événements vide
         jsr kernel_timer_init    ; pattern GEOS InitProcesses post-clôture ADR-30
+        jsr kernel_hotzone_init  ; pattern GEOS DoIcons post-clôture ADR-30
         jsr kernel_wm_init
         ; fenêtre 0 @ (100,100, 80×60) — titre "OricOS" (SP-3.f)
         rep #$20

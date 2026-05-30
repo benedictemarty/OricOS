@@ -897,6 +897,19 @@ TIMER_F_ACTIVE    = $01
 TIMER_F_BLOCKED   = $02
 EV_TIMER          = 6
 MSG_TIMER         = 6
+; ── Pattern GEOS DoIcons (post-clôture ADR-30, 2026-05-30) ──
+; Table de N hot-zones globales — rectangles cliquables sans widget chrome.
+; 8 entrées × 10 octets : flag (1B), win_slot (1B), x_rel16 (2B), y_rel16 (2B),
+; w16 (2B), h16 (2B). id implicite = index dans la table.
+; Posté en MSG_CONTROL avec $DA = 128 | hotzone_id (high bit distingue
+; hotzones des widgets, id 0..15).
+HOTZONE_N         = 8
+HOTZONE_ENTSZ     = 10
+HOTZONE_TABLE     = $016800
+HOTZONE_F_FREE    = $00
+HOTZONE_F_ACTIVE  = $01
+HOTZONE_ID_BASE   = $80         ; bit 7 = « c'est une hotzone, pas un widget »
+.assert HOTZONE_TABLE + HOTZONE_N*HOTZONE_ENTSZ <= $01FFE0, error, "HOTZONE_TABLE déborde sur les vecteurs natifs"
 FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
 .assert FIELD_STR_OFF < $01FFE0, error, "FIELD_STR_BUF déborde sur vecteurs natifs"
 

@@ -58,6 +58,9 @@
 #define SYS_GET_TICKS       0x1D
 #define SYS_TIMER_SET       0x1E
 #define SYS_TIMER_CLEAR     0x1F
+#define SYS_HOTZONE_SET     0x20
+#define SYS_HOTZONE_CLEAR   0x21
+#define HOTZONE_ID_BASE     0x80    /* bit 7 distingue hotzones (MSG_CONTROL) des widgets */
 #define SYS_GET_TICKS       0x1D
 
 /* ── Messages du MainLoop (SP-3.n) ───────────────────────────────── */
@@ -447,6 +450,44 @@ void oricos_timer_set(uint8_t id, uint8_t ticks) {
         :
         : [id] "r" (id), [t] "r" (ticks)
         : "a", "x", "y"
+    );
+}
+
+/* SYS_HOTZONE_SET : enregistre un rectangle cliquable « hot-zone » dans la
+ * fenêtre focus, sans widget chrome (pattern GEOS DoIcons). X = hotzone_id
+ * (0..7), rect (relatif au coin haut-gauche de la fenêtre) en ZP bloc :
+ * $D0/$D1 = x, $D2/$D3 = y, $D4/$D5 = w, $D6/$D7 = h. Tout clic dans la
+ * zone post MSG_CONTROL + $DA = HOTZONE_ID_BASE | id. */
+static __attribute__((always_inline)) inline
+void oricos_hotzone_set(uint8_t id, uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
+    *(volatile uint8_t*)0xD0 = (uint8_t)(x & 0xFF);
+    *(volatile uint8_t*)0xD1 = (uint8_t)(x >> 8);
+    *(volatile uint8_t*)0xD2 = (uint8_t)(y & 0xFF);
+    *(volatile uint8_t*)0xD3 = (uint8_t)(y >> 8);
+    *(volatile uint8_t*)0xD4 = (uint8_t)(w & 0xFF);
+    *(volatile uint8_t*)0xD5 = (uint8_t)(w >> 8);
+    *(volatile uint8_t*)0xD6 = (uint8_t)(h & 0xFF);
+    *(volatile uint8_t*)0xD7 = (uint8_t)(h >> 8);
+    __asm__ volatile (
+        "ldx %[id]\n"
+        _ORICOS_LDA_SYS(SYS_HOTZONE_SET)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [id] "r" (id)
+        : "a", "x"
+    );
+}
+
+/* SYS_HOTZONE_CLEAR : libère hot-zone id. */
+static __attribute__((always_inline)) inline
+void oricos_hotzone_clear(uint8_t id) {
+    __asm__ volatile (
+        "ldx %[id]\n"
+        _ORICOS_LDA_SYS(SYS_HOTZONE_CLEAR)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [id] "r" (id)
+        : "a", "x"
     );
 }
 

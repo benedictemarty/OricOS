@@ -93,8 +93,10 @@ syscall_table:
         .word sys_get_ticks     ; $1D SYS_GET_TICKS (Sprint 4 clock)
         .word sys_timer_set     ; $1E SYS_TIMER_SET (post-clôture ADR-30, pattern GEOS InitProcesses)
         .word sys_timer_clear   ; $1F SYS_TIMER_CLEAR
-        .repeat 32
-        .word sys_invalid       ; $20-$3F réservés
+        .word sys_hotzone_set   ; $20 SYS_HOTZONE_SET (post-clôture ADR-30, pattern GEOS DoIcons)
+        .word sys_hotzone_clear ; $21 SYS_HOTZONE_CLEAR
+        .repeat 30
+        .word sys_invalid       ; $22-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════
