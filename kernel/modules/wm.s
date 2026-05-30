@@ -3330,6 +3330,11 @@ mlc_mdown:
         lda $D6                 ; where_y low
         cmp #MENU_BAR_H
         bcs mlc_md_notmenu
+        ; ADR-30 Étape 2b polish : sentinelle $FF = bar-click (titre, pas un
+        ; item). L'app doit ignorer ce MSG_MENU. L'item-click pose un payload
+        ; valide via mlc_menu (path EV_MENU_CLICK, $DA = menu << 4 | item).
+        lda #$FF
+        sta $DA
         lda #MSG_MENU
         rts
 mlc_md_notmenu:

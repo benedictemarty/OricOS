@@ -46,8 +46,10 @@ int main(void) {
             oricos_print_char('0' + v % 10);
             oricos_print_string("\r\n");
         } else if (msg == MSG_MENU) {
-            /* ADR-30 Étape 2b : id packé = (menu_id << 4) | item_id. */
+            /* ADR-30 Étape 2b : id packé = (menu_id << 4) | item_id.
+             * Sentinelle $FF = bar-click (titre, pas un item) → ignorer. */
             unsigned char packed = oricos_msg_id();
+            if (packed == 0xFF) continue;
             unsigned char menu = packed >> 4;
             unsigned char item = packed & 0x0F;
             oricos_print_string("ctl: menu m=");
