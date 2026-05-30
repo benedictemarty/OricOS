@@ -56,6 +56,9 @@
 #define SYS_CTL_GET_VALUE   0x1B
 #define SYS_CTL_SET_VALUE   0x1C
 #define SYS_GET_TICKS       0x1D
+#define SYS_TIMER_SET       0x1E
+#define SYS_TIMER_CLEAR     0x1F
+#define SYS_GET_TICKS       0x1D
 
 /* ── Messages du MainLoop (SP-3.n) ───────────────────────────────── */
 #define MSG_NULL            0
@@ -64,6 +67,7 @@
 #define MSG_CLOSE           3
 #define MSG_MENU            4
 #define MSG_CONTROL         5
+#define MSG_TIMER           6           /* post-clôture ADR-30 (pattern GEOS InitProcesses) */
 
 /* ── Tags table GenUI (SYS_UI_DEFINE) ────────────────────────────── */
 #define GU_END              0
@@ -426,6 +430,37 @@ uint8_t oricos_ctl_get_value(uint8_t id) {
         : "a", "x"
     );
     return v;
+}
+
+/* SYS_TIMER_SET : installe un timer périodique pour la tâche courante.
+ * X = timer_id (0..7), Y = period (ticks, 1..255, 0 = clear).
+ * À chaque expiration, le kernel poste MSG_TIMER + $DA = timer_id à
+ * l'app via son MainLoop. Pattern GEOS InitProcesses (mist64/geos
+ * kernal/process/process1.s). */
+static __attribute__((always_inline)) inline
+void oricos_timer_set(uint8_t id, uint8_t ticks) {
+    __asm__ volatile (
+        "ldx %[id]\n"
+        "ldy %[t]\n"
+        _ORICOS_LDA_SYS(SYS_TIMER_SET)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [id] "r" (id), [t] "r" (ticks)
+        : "a", "x", "y"
+    );
+}
+
+/* SYS_TIMER_CLEAR : libère un timer. X = timer_id. */
+static __attribute__((always_inline)) inline
+void oricos_timer_clear(uint8_t id) {
+    __asm__ volatile (
+        "ldx %[id]\n"
+        _ORICOS_LDA_SYS(SYS_TIMER_CLEAR)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [id] "r" (id)
+        : "a", "x"
+    );
 }
 
 /* SYS_CTL_SET_VALUE : pose la value d'un contrôle (X = id, Y = value). */

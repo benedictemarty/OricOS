@@ -3246,10 +3246,20 @@ _mlc_n_mv:
         jmp mlc_up
 _mlc_n_mu:
         cmp #EV_MENU_CLICK      ; ADR-30 Étape 2b
-        bne _mlc_null
+        bne _mlc_n_mc
         jmp mlc_menu
+_mlc_n_mc:
+        cmp #EV_TIMER           ; post-clôture ADR-30 (pattern GEOS InitProcesses)
+        bne _mlc_null
+        jmp mlc_timer
 _mlc_null:
         lda #MSG_NULL
+        rts
+mlc_timer:
+        ; $D1 = MSG_LO = timer_id. Expose en $DA pour l'app.
+        lda $D1
+        sta $DA
+        lda #MSG_TIMER
         rts
 mlc_menu:
         ; Payload : $D1 = item_id (0..1), $D2 = menu_id (0..1). Packé en $DA
@@ -4522,6 +4532,106 @@ scsv_done:
 ; mesurent un délai via la soustraction non signée wrap-safe : (now - last) >= K.
 sys_get_ticks:
         lda TICK_COUNTER
+        rts
+
+; ── Pattern GEOS InitProcesses (post-clôture ADR-30) ───────────────────
+;
+; $1E — SYS_TIMER_SET : X = timer_id (0..TIMER_N-1), Y = period8 (ticks).
+; Installe un timer pour la tâche courante. À chaque expiration (counter → 0),
+; le kernel reload counter = period + poste EV_TIMER → MSG_TIMER + $DA = id.
+; A = $00 sur succès, $FF si id invalide. Y=0 = équivalent à SYS_TIMER_CLEAR.
+sys_timer_set:
+        ; Arg1 (id) lu depuis DP_SYS_ARG_X (X register écrasé par le dispatcher
+        ; COP, cf. handlers.s : « stx DP_SYS_ARG_X » avant l'index dispatch).
+        lda DP_SYS_ARG_X
+        cmp #TIMER_N
+        bcc sts_ok
+        lda #$FF                ; id invalide
+        rts
+sts_ok:
+        ; entry_offset = id * 4
+        asl a
+        asl a
+        tax                     ; X = entry_offset
+        tya                     ; A = period (arg2, Y est intact)
+        beq sts_clear           ; period = 0 → libère
+        sta f:TIMER_TABLE+2,x   ; period
+        sta f:TIMER_TABLE+3,x   ; counter init = period
+        lda TASK_CUR
+        sta f:TIMER_TABLE+1,x   ; owner_pid
+        lda #TIMER_F_ACTIVE
+        sta f:TIMER_TABLE+0,x   ; flag
+        lda #$00
+        rts
+sts_clear:
+        lda #TIMER_F_FREE
+        sta f:TIMER_TABLE+0,x
+        lda #$00
+        rts
+
+; $1F — SYS_TIMER_CLEAR : X (DP_SYS_ARG_X) = timer_id. Libère l'entry. A=$00.
+sys_timer_clear:
+        lda DP_SYS_ARG_X
+        cmp #TIMER_N
+        bcc stc_ok
+        lda #$FF
+        rts
+stc_ok:
+        asl a
+        asl a
+        tax
+        lda #TIMER_F_FREE
+        sta f:TIMER_TABLE+0,x
+        lda #$00
+        rts
+
+; ── kernel_timer_init : zéroise les flags TIMER_TABLE au boot. ────────
+.export kernel_timer_init
+kernel_timer_init:
+        ldx #$00
+kti_loop:
+        lda #TIMER_F_FREE
+        sta f:TIMER_TABLE+0,x
+        inx
+        inx
+        inx
+        inx
+        cpx #(TIMER_N * TIMER_ENTSZ)
+        bcc kti_loop
+        rts
+
+; ── kernel_timer_tick : appelé par IRQ T1 à chaque tick. ─────────────
+; Pour chaque entry active : décrémente counter ; si 0 → poste EV_TIMER
+; (owner_pid, id) + reload counter = period. Clobbers A, X, Y.
+.export kernel_timer_tick
+kernel_timer_tick:
+        ldx #$00                ; entry_offset
+ktt_loop:
+        lda f:TIMER_TABLE+0,x
+        cmp #TIMER_F_ACTIVE
+        bne ktt_next
+        lda f:TIMER_TABLE+3,x
+        beq ktt_fire            ; counter déjà 0 (init weird) → fire
+        dec a
+        sta f:TIMER_TABLE+3,x
+        bne ktt_next            ; pas encore 0
+ktt_fire:
+        ; Reload counter = period
+        lda f:TIMER_TABLE+2,x
+        sta f:TIMER_TABLE+3,x
+        ; Poste EV_TIMER. Calcule id = offset/4 = X >> 2.
+        txa
+        lsr a
+        lsr a
+        jsr kernel_event_push_timer
+ktt_next:
+        ; X += TIMER_ENTSZ. inx 4 fois (X 8-bit).
+        inx
+        inx
+        inx
+        inx
+        cpx #(TIMER_N * TIMER_ENTSZ)
+        bcc ktt_loop
         rts
 
 ; $05 — SYS_YIELD : cède le CPU coopérativement (OS-2.g v2.a g.7) ──────

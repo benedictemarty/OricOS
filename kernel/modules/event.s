@@ -268,6 +268,31 @@ ekpm_ok:
 ; Entrée : A = menu_id (4 bits high) | item_id (4 bits low). Drop si plein.
 ; Payload : MSG_LO = item_id, MSG_HI = menu_id. mods = MOUSE_BTN, where=souris.
 ; Clobbe A, X. Préserve Y.
+; ════════════════════════════════════════════════════════════════════
+;  Pattern GEOS InitProcesses : kernel_event_push_timer — poste EV_TIMER
+; ════════════════════════════════════════════════════════════════════
+; Entrée : A = timer_id. Drop si plein. Payload MSG_LO = timer_id.
+; Clobbe A, X. Préserve Y.
+.export kernel_event_push_timer
+kernel_event_push_timer:
+        pha
+        lda EVENT_RING_COUNT
+        cmp #EVENT_ENTRIES
+        bcc keptm_ok
+        pla
+        rts
+keptm_ok:
+        jsr _evt_tail_offset
+        lda #EV_TIMER
+        sta EVENT_RING + EVT_WHAT,x
+        pla
+        sta EVENT_RING + EVT_MSG_LO,x
+        lda #$00
+        sta EVENT_RING + EVT_MSG_HI,x
+        sta EVENT_RING + EVT_MODS,x
+        jsr _evt_fill_where_when
+        jmp _evt_advance_tail
+
 .export kernel_event_push_menu
 kernel_event_push_menu:
         pha                      ; sauve packed id

@@ -52,6 +52,9 @@ int main(void) {
     oricos_ui_define(score_def);
     unsigned char score = 0;
     oricos_ctl_set_value(FIELD_ID, score);
+    /* Pattern GEOS InitProcesses (post-clôture ADR-30) : timer id 0 tick
+     * tous les 30 frames → auto-incrémente le score (démo timer d'app). */
+    oricos_timer_set(0, 30);
 
     for (;;) {
         unsigned char msg = oricos_main_loop();
@@ -65,6 +68,10 @@ int main(void) {
                 score = 0;
             }
             oricos_ctl_set_value(FIELD_ID, score);
+        } else if (msg == MSG_TIMER) {
+            /* Timer 0 expiré → +1 auto (cap MAX_SCORE). */
+            if (score < MAX_SCORE) score++;
+            oricos_ctl_set_value(FIELD_ID, score);
         } else if (msg == MSG_MENU) {
             unsigned char packed = oricos_msg_id();
             if (packed == 0xFF) continue;     /* bar-click, ignorer */
@@ -74,6 +81,7 @@ int main(void) {
             break;
         }
     }
+    oricos_timer_clear(0);
     oricos_print_string("score: bye\r\n");
     return 0;
 }

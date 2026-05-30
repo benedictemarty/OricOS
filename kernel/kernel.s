@@ -883,6 +883,20 @@ SPIN_TMP          = $016581     ; 1B : scratch (min value, etc.)
 ; ── ADR-30 Étape 5 : buffer pour labels des champs GU_FIELD ──
 ; 128 octets (jusqu'à 8 champs × ~16 chars en moyenne).
 FIELD_STR_BUF     = $016600
+; ── Pattern GEOS InitProcesses (post-clôture ADR-30, 2026-05-30) ──
+; Table de N timers globaux. 8 entrées × 4 octets = 32 octets.
+; Entrée : +0 flag (0=libre, 1=actif, 2=bloqué) ; +1 owner_pid ;
+;          +2 period8 ; +3 counter8 (décrémenté par VIA T1 IRQ).
+; Quand counter atteint 0 : post EV_TIMER au owner + reload counter=period.
+TIMER_N           = 8
+TIMER_ENTSZ       = 4
+TIMER_TABLE       = $016700
+.assert TIMER_TABLE + TIMER_N*TIMER_ENTSZ <= $01FFE0, error, "TIMER_TABLE déborde sur les vecteurs natifs"
+TIMER_F_FREE      = $00
+TIMER_F_ACTIVE    = $01
+TIMER_F_BLOCKED   = $02
+EV_TIMER          = 6
+MSG_TIMER         = 6
 FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
 .assert FIELD_STR_OFF < $01FFE0, error, "FIELD_STR_BUF déborde sur vecteurs natifs"
 

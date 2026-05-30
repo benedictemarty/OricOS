@@ -91,8 +91,10 @@ syscall_table:
         .word sys_ctl_get_value ; $1B SYS_CTL_GET_VALUE (SP-3.o S.1)
         .word sys_ctl_set_value ; $1C SYS_CTL_SET_VALUE (SP-3.o S.1)
         .word sys_get_ticks     ; $1D SYS_GET_TICKS (Sprint 4 clock)
-        .repeat 34
-        .word sys_invalid       ; $1E-$3F réservés
+        .word sys_timer_set     ; $1E SYS_TIMER_SET (post-clôture ADR-30, pattern GEOS InitProcesses)
+        .word sys_timer_clear   ; $1F SYS_TIMER_CLEAR
+        .repeat 32
+        .word sys_invalid       ; $20-$3F réservés
         .endrep
 
 ; ════════════════════════════════════════════════════════════════════
@@ -185,6 +187,8 @@ irq_t1:
         sta TICK_COUNTER
         ; OS-2.g v2.b : décrémente les sommeils (SYS_SLEEP_MS), réveille à 0.
         jsr kernel_sleep_tick
+        ; Pattern GEOS InitProcesses : tick les timers d'app (post-clôture ADR-30).
+        jsr kernel_timer_tick
         lda TICK_COUNTER        ; recharge (sleep_tick a clobbé A)
         cmp #TICK_GOAL
         bcc do_switch

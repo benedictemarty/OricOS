@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30l
+
+### Added — Timers d'app coopératifs (pattern GEOS `InitProcesses`, post-clôture ADR-30)
+- **`kernel.s`** : `TIMER_N=8`, `TIMER_TABLE=$016700` (8 × 4 octets : flag,
+  owner_pid, period8, counter8). `EV_TIMER = 6`, `MSG_TIMER = 6`.
+- **`wm.s sys_timer_set/clear`** : nouveaux syscalls $1E/$1F. Lit l'id depuis
+  `DP_SYS_ARG_X` (X register écrasé par le dispatcher COP — leçon réutilisable).
+- **`wm.s kernel_timer_init`** : zéroise les flags TIMER_TABLE au boot.
+- **`wm.s kernel_timer_tick`** : appelé depuis l'IRQ VIA T1 ; pour chaque entry
+  active, décrémente counter ; à 0 → reload + `kernel_event_push_timer`.
+- **`event.s kernel_event_push_timer`** : pose `EV_TIMER` + `MSG_LO = id`
+  dans EVENT_RING.
+- **`wm.s _ml_classify mlc_timer`** : translation `EV_TIMER → MSG_TIMER`,
+  `$DA = timer_id`.
+- **`handlers.s`** : ajoute `jsr kernel_timer_tick` après `kernel_sleep_tick`.
+  Syscall table étendue ($1E/$1F, 32 entrées réservées restantes).
+- **`boot.s`** : `jsr kernel_timer_init` au boot.
+- **SDK** : `MSG_TIMER = 6`, `SYS_TIMER_SET = 0x1E`, `SYS_TIMER_CLEAR = 0x1F`,
+  helpers `oricos_timer_set(id, ticks)` et `oricos_timer_clear(id)`.
+- **Démo app `score`** : timer 0 à 30 ticks auto-incrémente la value du
+  GU_FIELD (le score monte tout seul). Validation oricrobot : score 1
+  → 7 → 14 en ~2M cycles.
+- **Verrouillage** : 24/24 suites Phosphoric vertes. `test_syscall_table_size`
+  mis à jour ($1E/$1F maintenant non-invalid, $20+ réservés).
+- **Coût** : ~110 LOC kernel + 30 LOC SDK + 6 LOC démo score.
+
+Source pattern : `mist64/geos kernal/process/process1.s:34-99`. Cf. mémoire
+[[geos-sources]].
+
 ## [Unreleased] - 2026-05-30k
 
 ### Added — Sous-menus cascading (pattern GEOS `DoMenu`, post-clôture ADR-30)
