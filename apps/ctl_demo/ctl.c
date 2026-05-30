@@ -26,6 +26,7 @@ static const unsigned char ui[] = {
                   'I','t','e','m',' ','A',  0,                  /* item 0 */
                   'I','t','e','m',' ','B',  0,                  /* item 1 */
                   'I','t','e','m',' ','C',  0,                  /* item 2 */
+    GU_SPIN,     140, 0, 124, 0,  24, 0,  18, 0,  20,           /* ADR-30 Étape 4 (rel y=124 hors SCROLL_V) */
     GU_MENU,      'A','p','p', 0,                               /* ADR-30 Étape 2 */
     GU_MENU_ITEM, 'A','b','o','u','t', 0,
     GU_MENU_ITEM, 'Q','u','i','t', 0,

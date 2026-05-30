@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30i
+
+### Added — ADR-30 Étape 4 livrée : `GU_SPIN` (incrémenteur GenValue)
+- **`kernel.s`** : `GU_SPIN = $0F`, `WG_TYPE_SPIN = $09`, `SPIN_ID` +
+  `SPIN_TMP` scratch ($016580/81).
+- **`wm.s sud_spin`** : parser format `relx16 rely16 relw16 relh16 max8`.
+- **`tk.s kernel_tk_spin`** : draw face lightgray + cadre + value
+  décimal 2 chars (via TB_WIN_SCRATCH bank 1).
+- **`tk.s kernel_ctl_spin_click`** : MOUSE_Y < centre → +1, sinon -1.
+  Clamp `[WIDGET_MIN_VALUES[id]..max]`. Redraw ciblé via
+  `kernel_wm_redraw_widget`.
+- **`wm.s _ml_classify mlc_ctl_spin`** : dispatch widget SPIN → handler.
+- **`_wm_widget_hit`** + **`_wm_draw_widget_body`** : SPIN ajouté.
+- **SDK `oricos.h`** : `GU_SPIN = 15`.
+- **Démo ctl_demo** : `GU_SPIN 140,124,24,18 max=20` (sous LIST, hors
+  overlap avec SCROLL_V).
+- **Validation** : repro headless oricrobot (3 top → val=3, 1 bottom →
+  val=2). 24/24 suites vertes. Bootstrap kernel plus lourd (dispatchers
+  ADR-30 Étapes 2/2b/4 étendus) → cyc init bumpés à 220k dans
+  `test_oricos_gui_demo` (cohérent avec ctl_demo).
+- **Coût** : ~180 LOC asm + 1 LOC démo.
+
+### Fixed — `_ml_classify mlc_md_notmenu` branch range
+- `beq mlc_md_null_plp` devenu hors-portée à cause de l'extension de
+  `mlc_md_hit`/`mlc_control`. Remplacé par `bne mlc_md_hit; jmp
+  mlc_md_null_plp` pour rester en branche courte.
+
 ## [Unreleased] - 2026-05-30h
 
 ### Added — ADR-30 Étape 2b livrée : `MSG_MENU` à l'app sur clic item

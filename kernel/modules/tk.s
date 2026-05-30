@@ -723,6 +723,8 @@ _wdb_clip_y_ok:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_SPIN        ; 9 = spin (ADR-30 Étape 4)
+        beq _wdws_spin
         cmp #WG_TYPE_LIST        ; 8 = liste (GenList)
         beq _wdws_list
         cmp #WG_TYPE_TEXT        ; 7 = champ texte éditable
@@ -734,6 +736,9 @@ _wdb_clip_y_ok:
         cmp #WG_TYPE_SCROLL_V    ; 3/4 → ascenseur (SCROLL_V/H)
         bcs _wdws_scroll
         bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
+_wdws_spin:
+        jsr kernel_tk_spin       ; ADR-30 Étape 4 : boîte + value + barre split haut/bas
+        rts
 _wdws_label:
         jsr kernel_tk_label
         rts
@@ -946,6 +951,170 @@ kernel_tk_view:
         lda #WG_COL_THUMB
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+        rts
+
+; ── kernel_tk_spin (ADR-30 Étape 4) : dessine un incrémenteur ────────
+; Args : WG_RELX/Y/W/H (abs, dans WM_ARG_X/Y/W/H), value lue depuis
+; WIDGET_TABLE[WG_I*16 + 14]. Visuel : face lightgray + cadre darkgray
+; + value au format "XX" (2 chars décimaux) à (x+4, y+2). Click haut
+; moitié = +1, bas moitié = -1 (handler kernel_ctl_spin_click).
+.export kernel_tk_spin
+kernel_tk_spin:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. face lightgray ($07)
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$07
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. cadre darkgray ($08)
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$08
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; 3. lit value (WIDGET_TABLE + WG_I*16 + 14), formate "XX\0" dans
+        ;    TB_WIN_SCRATCH (3 octets : tens, ones, 0).
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a                    ; WG_I * 16
+        clc
+        adc #14
+        tax
+        lda WIDGET_TABLE,X       ; A = value (0..99 attendu)
+        ; tens = A / 10, ones = A mod 10. Boucle de soustraction (val ≤ 99).
+        ldy #'0'
+_tks_tens:
+        cmp #10
+        bcc _tks_tens_done
+        sec
+        sbc #10
+        iny
+        bra _tks_tens
+_tks_tens_done:
+        pha                      ; sauve ones
+        tya
+        sta f:TB_WIN_SCRATCH+0
+        pla
+        clc
+        adc #'0'
+        sta f:TB_WIN_SCRATCH+1
+        lda #$00
+        sta f:TB_WIN_SCRATCH+2
+        ; 4. texte (DP_PCPTR = TB_WIN_SCRATCH, bank 1) à (x+4, y+2)
+        rep #$20
+        lda TK_X
+        clc
+        adc #4
+        sta WM_ARG_X
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        lda #<TB_WIN_SCRATCH
+        sta DP_PCPTR
+        lda #>TB_WIN_SCRATCH
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        rts
+
+; ── kernel_ctl_spin_click (ADR-30 Étape 4) : A = widget id ──────────
+; Click sur un spin : MOUSE_Y < centre du widget → +1 (haut), sinon → -1 (bas).
+; Clamp : value ≥ WIDGET_MIN_VALUES[id], value ≤ WIDGET_TABLE+15 (max).
+; Redraw ciblé du widget. Clobbe A, X, Y, WG_*.
+.export kernel_ctl_spin_click
+kernel_ctl_spin_click:
+        sta SPIN_ID             ; sauve l'id (scratch séparé de la pile)
+        ; X = id*16 pour accès WIDGET_TABLE.
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+1,X
+        sta WG_PARENT
+        rep #$20
+        lda WIDGET_TABLE+6,X    ; rel_y
+        sta WG_RELY
+        lda WIDGET_TABLE+10,X   ; rel_h
+        lsr a                   ; h/2
+        sta WG_RELH             ; demi-hauteur
+        sep #$20
+        ; centre = parent.y + rel_y + h/2
+        lda WG_PARENT
+        jsr kernel_wm_offset    ; X = parent*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WG_RELY
+        clc
+        adc WG_RELH             ; A = centre Y
+        sta WG_RELW             ; scratch
+        lda MOUSE_Y
+        cmp WG_RELW
+        sep #$20
+        bcc _kcs_inc            ; mouse_y < centre → +1
+        ; mouse_y >= centre → -1
+        lda SPIN_ID
+        tax                     ; X = id (8-bit)
+        lda f:WIDGET_MIN_VALUES,x  ; min (hint) — 0 si absent
+        sta SPIN_TMP
+        lda SPIN_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                     ; X = id*16
+        lda WIDGET_TABLE+14,X   ; A = value
+        cmp SPIN_TMP             ; value vs min
+        beq _kcs_redraw_only    ; déjà au min → redraw quand même (visuel cohérent)
+        bcc _kcs_redraw_only
+        dec a
+        sta WIDGET_TABLE+14,X
+        bra _kcs_redraw_only
+_kcs_inc:
+        lda SPIN_ID
+        asl a
+        asl a
+        asl a
+        asl a
+        tax                     ; X = id*16
+        lda WIDGET_TABLE+14,X   ; A = value
+        cmp WIDGET_TABLE+15,X   ; value vs max
+        bcs _kcs_redraw_only    ; déjà ≥ max → no-op
+        inc a
+        sta WIDGET_TABLE+14,X
+_kcs_redraw_only:
+        lda SPIN_ID
+        sta WG_I                ; pour le draw
+        jsr kernel_wm_redraw_widget
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -1373,6 +1542,8 @@ _wh_used:
         cmp #WG_TYPE_TEXT        ; SP-3.o S.4b : champ texte cliquable (prend le focus)
         beq _wh_isbtn
         cmp #WG_TYPE_LIST        ; SP-3.o S.4c : liste cliquable (sélection d'item)
+        beq _wh_isbtn
+        cmp #WG_TYPE_SPIN        ; ADR-30 Étape 4 : spin cliquable (haut/bas)
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:

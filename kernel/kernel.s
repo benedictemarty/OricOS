@@ -517,6 +517,9 @@ GU_MENU           = $0C         ; ADR-30 Étape 2 : + nom INLINE null-term. Ouvr
 GU_MENU_ITEM      = $0D         ; ADR-30 Étape 2 : + label INLINE null-term. Item dans
                                 ; le dernier menu déclaré. v1 : callback = 0 (clic
                                 ; consommé silencieusement, post MSG_MENU à venir).
+GU_SPIN           = $0F         ; ADR-30 Étape 4 : + relx16 rely16 relw16 relh16 + max8.
+                                ; Incrémenteur (GeoWorks SpinClass). Value (+14) clampée
+                                ; à [min..max] où min = GU_HINT_MIN_VALUE si présent.
 
 ; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
 ; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
@@ -723,6 +726,9 @@ WG_TYPE_RADIO    = $06           ; SP-3.o S.4a : radio (GenItemGroup) ; selected
 WG_TYPE_TEXT     = $07           ; SP-3.o S.4b : champ texte éditable (GenText/LineEdit) ;
                                  ; strptr(+12/13)=buffer TEXT_BUFS+id*16, length(+14)/maxlen(+15)
 WG_TYPE_LIST     = $08           ; SP-3.o S.4c : liste (GenList) ; strptr(+12/13)=blob d'items
+WG_TYPE_SPIN     = $09           ; ADR-30 Étape 4 : incrémenteur (GenValue, alignement
+                                 ; GeoWorks SpinClass). value(+14) ; max(+15). Click haut
+                                 ; moitié = +1, click bas moitié = -1, clamp [min..max].
                                  ; (count slots de LIST_ITEM_STRIDE o), selected(+14)/count(+15)
 LIST_ITEM_STRIDE = 8             ; octets par item (7 caractères + null)
 LIST_ITEM_H      = 16            ; hauteur d'une ligne d'item (px) — puissance de 2 (>>4)
@@ -855,6 +861,9 @@ MENU_DYN_ITEM_CNT = $0164B2     ; 1B : nb items posés dans le menu courant (0..
 MENU_DYN_STR_OFF  = $0164B3     ; 1B : offset courant dans MENU_DYN_STR_BUF
 MENU_DYN_STR_BUF  = $0164C0     ; 192B : titres + labels (offset référencé par menu_defs)
 .assert MENU_DYN_STR_BUF + 192 <= $01FFE0, error, "MENU_DYN_STR_BUF déborde sur les vecteurs natifs"
+; ── ADR-30 Étape 4 : scratch pour kernel_ctl_spin_click ──
+SPIN_ID           = $016580     ; 1B : id widget en cours de spin click
+SPIN_TMP          = $016581     ; 1B : scratch (min value, etc.)
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

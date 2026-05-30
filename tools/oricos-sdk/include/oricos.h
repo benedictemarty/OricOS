@@ -121,6 +121,14 @@
  * Permet à toute app de remplacer la barre de menu host par la sienne. */
 #define GU_MENU             12
 #define GU_MENU_ITEM        13
+/* ADR-30 Étape 4 : incrémenteur aligné GeoWorks SpinClass.
+ * Format : GU_SPIN, relx_lo, relx_hi, rely_lo, rely_hi, relw_lo, relw_hi,
+ *          relh_lo, relh_hi, max8
+ * Clic dans la moitié haute = +1, moitié basse = -1. Clamp [min..max] où
+ * min = `GU_HINT_MIN_VALUE` si présent (default 0). MSG_CONTROL est posté
+ * sur clic, l'app lit la nouvelle value via `oricos_ctl_get_value(id)`
+ * (qui ajoute déjà le min — voir Étape 3). */
+#define GU_SPIN             15
 
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0

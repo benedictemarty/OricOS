@@ -3351,7 +3351,9 @@ mlc_md_notmenu:
         sep #$20
         jsr kernel_wm_hit_test  ; A = id fenêtre topmost ou $FF
         cmp #$FF
-        beq mlc_md_null_plp
+        bne mlc_md_hit
+        jmp mlc_md_null_plp
+mlc_md_hit:
         sta $DA                 ; id fenêtre cliquée
         sta WIN_SLOT            ; pour _wm_chrome_hit
         jsr _wm_chrome_hit      ; A : 0=non, 1=close, 2=max, 3=min (MOUSE_X/Y)
@@ -3389,6 +3391,8 @@ mlc_control:
         beq mlc_ctl_text
         cmp #WG_TYPE_LIST       ; SP-3.o S.4c : liste → sélection d'item au clic
         beq mlc_ctl_list
+        cmp #WG_TYPE_SPIN       ; ADR-30 Étape 4 : spin → +1/-1 selon haut/bas
+        beq mlc_ctl_spin
         bra mlc_ctl_ret         ; bouton : rien de plus
 mlc_ctl_check:
         pla                     ; id
@@ -3416,6 +3420,11 @@ mlc_ctl_scroll:                 ; S.2 : arme le drag + positionne la value au cl
         pha
         sta SCROLL_DRAG_ID
         jsr _wm_scroll_update
+        bra mlc_ctl_ret
+mlc_ctl_spin:                   ; ADR-30 Étape 4 : +1/-1 selon haut/bas
+        pla                     ; id
+        pha
+        jsr kernel_ctl_spin_click
 mlc_ctl_ret:
         pla                     ; jette l'id sauvé
         lda #MSG_CONTROL
@@ -3503,8 +3512,12 @@ sud_n2j:
         jmp sud_menu
 sud_n2k:
         cmp #GU_MENU_ITEM       ; ADR-30 Étape 2 : ajoute un item au dernier menu
-        bne sud_n3
+        bne sud_n2l
         jmp sud_menu_item
+sud_n2l:
+        cmp #GU_SPIN            ; ADR-30 Étape 4 : incrémenteur (GenValue/SpinClass)
+        bne sud_n3
+        jmp sud_spin
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
@@ -3749,6 +3762,26 @@ sud_rd_col:
         lda #$00
         sta DP_PCPTR
         sta DP_PCPTR+1
+        jsr _sud_attach
+        jmp sud_loop
+
+; ── ADR-30 Étape 4 : sud_spin — incrémenteur (GenValue/SpinClass).
+; Format : GU_SPIN relx16 rely16 relw16 relh16 max8. Value (+14) init 0,
+; max (+15). Click haut moitié = +1, bas moitié = -1, clamp [min..max].
+sud_spin:
+        jsr _sud_rect           ; Y → max8
+        lda #$00
+        sta WG_CB               ; value = 0 (+14)
+        lda [$D0],y
+        sta WG_CB+1             ; max (+15)
+        iny
+        lda #$07                ; lightgray (cohérent text/list)
+        sta GFX_COLOR
+        lda #$00
+        sta DP_PCPTR
+        sta DP_PCPTR+1
+        lda #WG_TYPE_SPIN
+        sta WG_TYPE
         jsr _sud_attach
         jmp sud_loop
 
