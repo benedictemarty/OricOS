@@ -19,7 +19,8 @@ static const unsigned char ui[] = {
     GU_TITLE, 'C','t','r','l', 0,
     GU_WINDOW,   200 & 255, 200 >> 8,  200 & 255, 200 >> 8,  170, 0,  170, 0,
     GU_CHECK,     12, 0,  14, 0,  18, 0,  18, 0,   0,           /* value = 0 */
-    GU_SCROLL_V, 140, 0,  14, 0,  12, 0, 100, 0,  40,           /* max = 40 */
+    GU_HINT_MIN_VALUE, 20,                                       /* ADR-30 Étape 3 */
+    GU_SCROLL_V, 140, 0,  14, 0,  12, 0, 100, 0,  40,           /* range = 20..60 */
     GU_TEXT,      12, 0,  44, 0, 120, 0,  18, 0,  10,           /* maxlen = 10 */
     GU_LIST,      12, 0,  72, 0, 120, 0,  48, 0,   3,           /* count = 3 */
                   'I','t','e','m',' ','A',  0,                  /* item 0 */

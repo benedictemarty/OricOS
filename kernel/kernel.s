@@ -517,6 +517,11 @@ GU_LIST           = $0B         ; ADR-30 Étape 1 : + relx16 rely16 relw16 relh1
 GU_HINT_IMMEDIATE_DRAG_NOTIFY = $0A   ; tag seul (pas de data)
 HINT_DRAG_DELAYED   = $00         ; default — aligné HINT_VALUE_DELAYED_DRAG_NOTIFICATION
 HINT_DRAG_IMMEDIATE = $01         ; opt-in — aligné HINT_VALUE_IMMEDIATE_DRAG_NOTIFICATION
+; ── ADR-30 Étape 3 : hint ATTR_GEN_VALUE_MINIMUM (alignement GeoWorks GenValue)
+; Placé AVANT un widget GU_SCROLL_V/H. SYS_CTL_GET_VALUE retourne value+min.
+; Default (aucun hint) = min 0 (compat). GenRangeClass nuked 7/1992 par GeoWorks
+; → l'attribut min sur GenValue couvre seul le besoin (cf. ADR-30 §Étape 3).
+GU_HINT_MIN_VALUE   = $0E         ; + min8 (offset ajouté à la value retournée)
 ; Buffer de staging bank 1 : les chaînes inline (dans le bank de l'app) sont
 ; copiées ici pour que le rendu titre/label (qui lit en bank 1) les trouve.
 ; Gap libre après NMI_HANDLER ($5500, 1 octet rti). v1 : 1 seule chaîne label
@@ -831,6 +836,10 @@ UI_PENDING_HINT     = $016328     ; ADR-29 Étape 2 : 1B = hint en attente, pos�
 .assert UI_PENDING_HINT < $016400, error, "WIDGET_HINTS déborde sur RAW_RING"
 UI_LIST_BUF         = $016330     ; ADR-30 Étape 1 : 128B buffer items GU_LIST (~10 items × 12 chars)
 .assert UI_LIST_BUF + 128 <= $016400, error, "UI_LIST_BUF déborde sur RAW_RING"
+; ── ADR-30 Étape 3 : attribut min par widget (offset ajouté par SYS_CTL_GET_VALUE)
+WIDGET_MIN_VALUES   = $0163B0     ; 8 × 1B (un par widget, idx = id widget)
+UI_PENDING_MIN_VALUE = $0163B8    ; 1B = min en attente, posé sur prochain widget créé
+.assert UI_PENDING_MIN_VALUE < $016400, error, "WIDGET_MIN_VALUES déborde sur RAW_RING"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

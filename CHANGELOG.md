@@ -8,6 +8,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30b
+
+### Ratified — ADR-30 Étape 3 : `GU_HINT_MIN_VALUE` (attribut min GenValue)
+- **`kernel.s`** : `GU_HINT_MIN_VALUE = $0E` + `WIDGET_MIN_VALUES = $0163B0`
+  (8 × 1B, un par widget) + `UI_PENDING_MIN_VALUE = $0163B8` (1B, posé par
+  parser sur le prochain widget créé) + `.assert UI_PENDING_MIN_VALUE <
+  $016400` (anti-overlap RAW_RING).
+- **`wm.s sud_loop`** : nouveau cas `GU_HINT_MIN_VALUE` ajouté entre
+  `GU_HINT_IMMEDIATE_DRAG_NOTIFY` et le default sécurité (`sud_n2h → sud_n2i
+  → sud_n3`).
+- **`wm.s sud_hint_min_value`** : tag + 1 byte payload → `UI_PENDING_MIN_VALUE`.
+- **`tk.s _waw_count`** : copie `UI_PENDING_MIN_VALUE → f:WIDGET_MIN_VALUES,X`
+  puis reset à 0 (symétrique au pattern `UI_PENDING_HINT` d'ADR-29 Étape 2).
+- **`wm.s sys_ctl_get_value`** : retourne `WIDGET_VALUE + WIDGET_MIN_VALUES[id]`
+  via `adc f:WIDGET_MIN_VALUES,X` (mode abs-long indexé). Default min=0
+  préserve la compat des apps existantes.
+- **SDK `oricos.h`** : `#define GU_HINT_MIN_VALUE 14` documenté (note
+  historique sur `GenRangeClass` nuked 7/1992).
+- **Démo `ctl_demo`** : `GU_HINT_MIN_VALUE, 20` avant `GU_SCROLL_V` → range
+  effectif `20..60` (au lieu de `0..40`).
+
+**Pivot d'instruction** (cf. ADR-30 §7.3) : audit factuel WebFetch a révélé
+que `gRangeC.def` est marqué « *Nuked. 7/7/92 cbh* » — GeoWorks a supprimé
+`GenRangeClass` car `GenValueClass` a déjà `ATTR_GEN_VALUE_MINIMUM`. Pas de
+nouveau widget `WG_TYPE_RANGE` créé. Coût réel ~25 LOC asm (vs ~150 LOC
+estimés). Validation interactive utilisateur positive 2026-05-30.
+
 ## [Unreleased] - 2026-05-30
 
 ### Ratified — ADR-30 Étape 1 : GU_LIST (alignement GeoWorks GenList)

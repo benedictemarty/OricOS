@@ -3445,14 +3445,24 @@ sud_n2gg:
         jmp sud_list
 sud_n2h:
         cmp #GU_HINT_IMMEDIATE_DRAG_NOTIFY    ; ADR-29 Étape 2 : opt-in IMMEDIATE
-        bne sud_n3
+        bne sud_n2i
         jmp sud_hint_immediate
+sud_n2i:
+        cmp #GU_HINT_MIN_VALUE  ; ADR-30 Étape 3 : attribut min (GenValue MINIMUM)
+        bne sud_n3
+        jmp sud_hint_min_value
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
         lda #HINT_DRAG_IMMEDIATE
         sta UI_PENDING_HINT     ; sera copié sur le prochain widget par kernel_wm_add_widget
         iny                     ; consomme le tag (pas de data)
+        jmp sud_loop
+sud_hint_min_value:                ; ADR-30 Étape 3 : tag + 1 byte (min)
+        iny                     ; passe tag
+        lda [$D0],y             ; A = min
+        sta UI_PENDING_MIN_VALUE
+        iny                     ; consomme byte payload
         jmp sud_loop
 sud_title:                      ; GU_TITLE + chaîne inline (AVANT GU_WINDOW)
         iny                     ; Y → 1er caractère du titre
@@ -4036,12 +4046,16 @@ sys_ctl_get_value:
         lda DP_SYS_ARG_X
         cmp WIDGET_COUNT
         bcs scgv_bad
+        pha                             ; save id pour WIDGET_MIN_VALUES (ADR-30 Étape 3)
         asl a
         asl a
         asl a
         asl a
         tax
-        lda WIDGET_TABLE+WG_OFF_VALUE,x
+        lda WIDGET_TABLE+WG_OFF_VALUE,x ; A = value brute (thumb_pos)
+        plx                             ; X = id original (1 byte)
+        clc
+        adc f:WIDGET_MIN_VALUES,x       ; A = value + min (ADR-30 Étape 3)
         rts
 scgv_bad:
         lda #$FF

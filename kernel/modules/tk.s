@@ -596,6 +596,11 @@ _waw_count:
         sta f:WIDGET_HINTS,X    ; abs-long (WIDGET_HINTS > $FFFF)
         lda #$00
         sta UI_PENDING_HINT     ; reset pour le prochain widget
+        ; ADR-30 Étape 3 : pose UI_PENDING_MIN_VALUE sur ce widget puis reset.
+        lda UI_PENDING_MIN_VALUE
+        sta f:WIDGET_MIN_VALUES,X
+        lda #$00
+        sta UI_PENDING_MIN_VALUE
         lda WIDGET_COUNT
         inc a
         sta WIDGET_COUNT

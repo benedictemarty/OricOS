@@ -98,6 +98,15 @@
  * HINT_VALUE_IMMEDIATE_DRAG_NOTIFICATION de PC/GEOS gValueC.def. */
 #define GU_HINT_IMMEDIATE_DRAG_NOTIFY  10
 
+/* ADR-30 Étape 3 : hint ATTR_GEN_VALUE_MINIMUM (alignement GeoWorks GenValue).
+ * Placé AVANT un widget GU_SCROLL_V/H. Format : GU_HINT_MIN_VALUE, min8.
+ * SYS_CTL_GET_VALUE retourne (thumb_pos + min). Default sans hint = min 0.
+ *
+ * Note historique : GeoWorks avait une GenRangeClass séparée, supprimée en
+ * juillet 1992 ("Nuked. 7/7/92 cbh") car GenValue avec ATTR_GEN_VALUE_MINIMUM/
+ * MAXIMUM couvrait déjà le besoin. OricOS suit ce design final. */
+#define GU_HINT_MIN_VALUE   14
+
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
 #define ALERT_OKCANCEL      1
