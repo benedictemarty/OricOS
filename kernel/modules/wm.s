@@ -3813,7 +3813,7 @@ sud_menu:
         ldx #$00
 sud_m_zero:
         lda #$00
-        sta f:menu_defs,x
+        sta f:menu_defs+$10000,x
         inx
         cpx #(MENU_N * MENU_ENTSZ)
         bcc sud_m_zero
@@ -3834,9 +3834,9 @@ sud_m_ready:
         tax
         ; Écrit title_ptr (16-bit, dans bank 1) à menu_defs[slot+0/+1]
         lda WG_RELX             ; lo
-        sta f:menu_defs+0,x
+        sta f:menu_defs+$10000+0,x
         lda WG_RELX+1           ; hi
-        sta f:menu_defs+1,x
+        sta f:menu_defs+$10000+1,x
         ; bar_x : menu 0 = 4, menu 1 = 76 (cohérent avec le statique original)
         lda MENU_DYN_COUNT
         bne sud_m_bx_1
@@ -3845,7 +3845,7 @@ sud_m_ready:
 sud_m_bx_1:
         lda #76
 sud_m_bx_set:
-        sta f:menu_defs+2,x     ; bar_x à offset +2
+        sta f:menu_defs+$10000+2,x     ; bar_x à offset +2
         ; Reset item count, bump menu count
         lda #$00
         sta MENU_DYN_ITEM_CNT
@@ -3894,12 +3894,12 @@ sud_mi_it1:
         tax
 sud_mi_write:
         lda WG_RELX             ; str_ptr lo
-        sta f:menu_defs+0,x
+        sta f:menu_defs+$10000+0,x
         lda WG_RELX+1
-        sta f:menu_defs+1,x
+        sta f:menu_defs+$10000+1,x
         lda #$00                ; cb = 0 (silencieux v1)
-        sta f:menu_defs+2,x
-        sta f:menu_defs+3,x
+        sta f:menu_defs+$10000+2,x
+        sta f:menu_defs+$10000+3,x
         ; Bump item count
         lda MENU_DYN_ITEM_CNT
         inc a
