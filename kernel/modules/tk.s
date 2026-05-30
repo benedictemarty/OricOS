@@ -575,16 +575,15 @@ _waw_ok:
         sta WIDGET_TABLE+14,X
         lda WG_CB+1
         sta WIDGET_TABLE+15,X
-        ; Finding 2026-05-31 (révélé par file_select + score) : labels boutons
-        ; partagés. UI_STR_BUF est un SEUL scratch SDRAM → tous les boutons
-        ; stockent strptr → UI_STR_BUF → tous lisent le DERNIER label uploadé.
-        ; Tentative de fix via MVN copie vers BUTTON_LABELS[id] revertée
-        ; (régression test_oricos_gui_demo : MSG_CONTROL pas reçu). À
-        ; investiguer dans session dédiée — probablement clobber subtil
-        ; M/X-width après MVN ou interaction avec _wm_invoke_active_cb.
-        ; Workaround : labels boutons identiques (cf. score "+1 +1 +1") ou
-        ; un seul bouton par fenêtre. BUTTON_LABELS infrastructure ($016A00,
-        ; 128B) conservée pour itération future.
+        ; Finding labels boutons partagés (révélé file_select + score) :
+        ; UI_STR_BUF unique → tous boutons rendent dernier label. Tentative
+        ; fix MVN revertée 2 fois (régression test_oricos_gui_demo : MSG_CONTROL
+        ; pas reçu post-clic, même après XH fix). Cause non isolée (probable
+        ; clobber subtil entre MVN et code main_loop, ou interaction sep/rep
+        ; pas couverte par .smart). Infrastructure BUTTON_LABELS = $016A00
+        ; (128B) conservée. À investiguer en session dédiée avec analyse
+        ; instruction-par-instruction. Workaround : labels identiques par app
+        ; (score "+1 +1 +1") ou différencier par position.
         ; SP-3.o S.4b : champ texte → câble son buffer (TEXT_BUFS + offset widget,
         ; car TEXT_BUF_SZ == WIDGET_ENTSZ == 16) et l'initialise vide (length 0).
         ; +15 (maxlen) reste ce que l'appelant a mis dans WG_CB+1.
