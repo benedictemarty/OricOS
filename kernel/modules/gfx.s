@@ -48,8 +48,10 @@ gwb_found:
         jsr kernel_gfx_set_bpl
         rts
 gwb_set_default:
-        ; Stride par défaut : pose bpl=0 si shadow != 0 ; sinon no-op
-        ; (évite un round-trip GPU gratuit dans le cas usuel).
+        ; Stride par défaut : pose bpl=0 si shadow != 0 ; sinon no-op.
+        ; M ambigu à ce point → force M=8 explicite (lda f: lit 1 octet).
+        php
+        sep #$20
         lda f:GFX_BPL_SHADOW
         ora f:GFX_BPL_SHADOW+1
         beq gwb_default_done
@@ -58,6 +60,7 @@ gwb_set_default:
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
 gwb_default_done:
+        plp
         rts
 
 ; ════════════════════════════════════════════════════════════════════

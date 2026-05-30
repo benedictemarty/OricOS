@@ -1221,7 +1221,7 @@ wcmp_visible:
         sta GFX_ARG3_LO                 ; 16-bit store → $76 (LO) et $77 (MID)
         lda WM_TABLE+WM_OFF_H,X         ; byte_h = h (déjà en octets ligne/ligne)
         sta GFX_ARG4_LO                 ; 16-bit store → $6E (LO) et $6F (MID)
-        sep #$20
+        sep #$20                        ; force M=8 explicite (post `rep #$20`)
         ; ADR-27 B2.b : si le slot est en mode compact, stride source = byte_w
         ; (déjà dans GFX_ARG3_LO/HI). Sinon : laisse la stride par défaut 512.
         lda f:WCMP_SLOT_ID              ; LDX abs-long non supporté → via A+TAX
@@ -1236,7 +1236,8 @@ wcmp_visible:
         jsr kernel_gfx_set_bpl
         bra wcmp_do_blit
 wcmp_default_stride:
-        ; Stride par défaut : ne touche bpl que si shadow != 0 (cas usuel : déjà 0).
+        ; Stride par défaut : ne touche bpl que si shadow != 0 (cas usuel).
+        ; M=8 garanti par le sep #$20 ci-dessus (lda f: lit 1 octet, propre).
         lda f:GFX_BPL_SHADOW
         ora f:GFX_BPL_SHADOW+1
         beq wcmp_do_blit
@@ -1255,6 +1256,9 @@ wcmp_done:
         ; ADR-27 B2.b : restaure bpl=0 (stride par défaut 512) — invariant ADR-27
         ; §0ter : `bpl` ne doit pas leak hors de compose (kernel_wm_redraw qui suit
         ; éventuellement dessine framebuffer XVGA en stride 512).
+        ; M ambigu à ce point (caller M=8 ou M=16) → force M=8 explicite.
+        php
+        sep #$20
         lda f:GFX_BPL_SHADOW
         ora f:GFX_BPL_SHADOW+1
         beq wcmp_really_done
@@ -1263,6 +1267,7 @@ wcmp_done:
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
 wcmp_really_done:
+        plp
         rts
 
 ; ── kernel_wm_redraw : efface le desktop + dessine toutes les fenêtres ──
@@ -1271,14 +1276,19 @@ wcmp_really_done:
 .export kernel_wm_redraw
 kernel_wm_redraw:
         ; ADR-27 B2.b : peinture framebuffer XVGA direct → stride par défaut 512.
-        ; Garde idempotente (no-op si shadow déjà 0, cas usuel).
+        ; Garde idempotente. php/sep #$20/plp protègent l'état M du caller
+        ; (callers en M=8 ou M=16 ; `lda f:` lirait 2 octets en M=16 sinon).
+        php
+        sep #$20
         lda f:GFX_BPL_SHADOW
         ora f:GFX_BPL_SHADOW+1
-        beq wmr_stride_ok
+        beq wmr_stride_skip
         lda #$00
         sta GFX_BPL_LO
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
+wmr_stride_skip:
+        plp
 wmr_stride_ok:
         ; Clear desktop (bleu 1) : gfx_clear(base=$100000, size=$060000, color=1).
         ; Base $100000 (1 MiB) : hors des démos GPU legacy ($004000-$00C000).

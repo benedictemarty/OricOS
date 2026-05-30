@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30s
+
+### Hardening — Gardes shadow bpl en M=8 forcé (validation interactive ADR-27)
+- Validation interactive `--compact` a révélé un rendu cassé (rect noirs
+  à la place des fenêtres OricOS/Editor). Cause **non-ADR-27** : compose
+  en boucle dans `task_compact` copie les backing stores vides des
+  fenêtres système (dont le chrome est dessiné DIRECTEMENT en
+  framebuffer par `_wm_draw_one`, pas dans le backing store) → noir.
+  Défaut d'architecture WM préexistant, distinct du flip compact.
+- **Patches défensifs malgré tout** (sûreté générale) : `php/sep #$20/plp`
+  autour des 3 gardes `shadow bpl` (lda f:`GFX_BPL_SHADOW` + ora) :
+  - `wm.s kernel_wm_redraw` (entrée)
+  - `wm.s kernel_wm_compose` à `wcmp_done`
+  - `gfx.s kernel_gfx_window_base` à `gwb_set_default`
+- M=8 explicite : `lda f:` lit toujours 1 octet (callers peuvent
+  arriver en M=8 ou M=16, `.smart` ne couvre pas les branchements).
+- Finding tracé séparément : « compose vs `_wm_draw_one` chrome
+  direct framebuffer » à instruire (hors-périmètre ADR-27).
+- 24/24 suites Phosphoric vertes, 12/12 helloc (incl. compact test).
+
 ## [Unreleased] - 2026-05-30q
 
 ### Added — ADR-27 Étape B2.c : activation effective + test de transparence
