@@ -518,6 +518,14 @@ wco_found:
         sta f:WM_OWNER,X        ; efface l'owner du slot
         txa                     ; A = slot id
         jsr kernel_wm_close     ; ferme (flags/titre/count/zorder/focus)
+        ; ADR-30 Étape 2b suite : redessine SEULEMENT si app-driven (= app C
+        ; appelle sys_exit après MSG_MENU/MSG_CLOSE). Évite le surcoût IRQ
+        ; pour les tests boot self-test qui n'attendent pas le redraw.
+        lda WM_APP_DRIVEN
+        cmp #$A5
+        bne wco_done
+        jsr kernel_wm_redraw
+wco_done:
         rts
 
 kernel_wm_close:
