@@ -934,8 +934,18 @@ GFX_BPL_SHADOW    = $016900     ; 2B : miroir kernel de gpu->bpl (0=512)
 WM_COMPACT_FLAGS  = $016902     ; 8B : flag compact par slot
 WM_COMPACT_MAGIC  = $A5         ; valeur indiquant slot en mode compact
 WCMP_SLOT_ID      = $01690A     ; 1B : slot id courant pendant compose (B2.b)
+; ── Finding chrome-direct-FB (post ADR-27 ratification 2026-05-30v) ──
+; Les fenêtres système (slots 0/1) dessinent leur chrome DIRECTEMENT
+; dans le framebuffer XVGA via `_wm_draw_one`, pas dans leur backing
+; store. Quand task_compact ou une app appelle `kernel_wm_compose` en
+; boucle, le compose copie leur backing store VIDE → carrés noirs à
+; leur place. Workaround : `WM_NO_BACKING_FLAGS[slot]=$A5` → compose
+; skip ce slot, laissant son chrome direct framebuffer intact.
+WM_NO_BACKING_FLAGS = $01690B   ; 8B : skip compose si $A5 (chrome direct FB)
+WM_NO_BACKING_MAGIC = $A5
 .assert WM_COMPACT_FLAGS + 8 <= $01EE00, error, "WM_COMPACT_FLAGS chevauche TC flags"
 .assert WCMP_SLOT_ID < $01EE00, error, "WCMP_SLOT_ID chevauche TC flags"
+.assert WM_NO_BACKING_FLAGS + 8 <= $01EE00, error, "WM_NO_BACKING_FLAGS chevauche TC flags"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

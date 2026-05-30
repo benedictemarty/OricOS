@@ -882,6 +882,12 @@ _skip_task_wm:
         sta WM_ARG_TITLE_HI
         jsr kernel_wm_add
         sta WM_TEST_RES+1       ; id1 = 1
+        ; Finding chrome-direct-FB : tag slots 0/1 (OricOS, Editor) — leur chrome
+        ; est dessiné directement framebuffer par _wm_draw_one, pas dans backing
+        ; store. compose les skip pour ne pas écraser leur rendu correct.
+        lda #WM_NO_BACKING_MAGIC
+        sta f:WM_NO_BACKING_FLAGS+0
+        sta f:WM_NO_BACKING_FLAGS+1
         ; hit-test (110,110) → 0
         rep #$20
         lda #110

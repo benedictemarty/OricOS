@@ -174,6 +174,15 @@ kernel_wm_init:
         sta f:WM_COMPACT_FLAGS+5
         sta f:WM_COMPACT_FLAGS+6
         sta f:WM_COMPACT_FLAGS+7
+        ; Finding chrome-direct-FB : init WM_NO_BACKING_FLAGS = 0.
+        sta f:WM_NO_BACKING_FLAGS+0
+        sta f:WM_NO_BACKING_FLAGS+1
+        sta f:WM_NO_BACKING_FLAGS+2
+        sta f:WM_NO_BACKING_FLAGS+3
+        sta f:WM_NO_BACKING_FLAGS+4
+        sta f:WM_NO_BACKING_FLAGS+5
+        sta f:WM_NO_BACKING_FLAGS+6
+        sta f:WM_NO_BACKING_FLAGS+7
         lda #$FF
         sta WM_FOCUS
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
@@ -1183,6 +1192,21 @@ wcmp_not_done:
         beq wcmp_visible
         jmp wcmp_next                   ; fenêtre cachée/minimisée → skip (jmp : portée étendue B2.b)
 wcmp_visible:
+        ; Finding chrome-direct-FB : skip si WM_NO_BACKING_FLAGS[slot] = $A5
+        ; (chrome dessiné direct framebuffer, backing store vide → ne pas
+        ; écraser le rendu correct par du noir). Évite phx/plx (X-width sensible).
+        lda WCMP_XB                     ; A = slot id
+        tax                             ; X = slot id (overwrite slot*10 temp)
+        lda f:WM_NO_BACKING_FLAGS,X
+        cmp #WM_NO_BACKING_MAGIC
+        beq _wcmp_skip_no_backing
+        ; Pas no-backing → recalcule X = slot*10 pour la suite.
+        lda WCMP_XB
+        jsr kernel_wm_offset            ; X = slot*WM_ENTSZ
+        bra wcmp_do_backing
+_wcmp_skip_no_backing:
+        jmp wcmp_next
+wcmp_do_backing:
         ; src = backing store = ($06+slot):$0000
         lda #$00
         sta GFX_BASE_LO

@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30w
+
+### Fixed — Finding chrome-direct-FB : fenêtres système rendues noires en --compact
+- **`kernel.s`** : nouvelle table `WM_NO_BACKING_FLAGS = $01690B` (8B,
+  $A5 = slot dessine chrome direct framebuffer, compose le skip).
+  `WM_NO_BACKING_MAGIC = $A5`. Assertion non-chevauchement TC flags.
+- **`wm.s kernel_wm_init`** : zéroise les 8 entrées.
+- **`wm.s kernel_wm_compose:wcmp_visible`** : nouvelle garde au début —
+  si `WM_NO_BACKING_FLAGS[slot] = $A5`, `jmp wcmp_next`. Sinon
+  recalcule `X = slot*WM_ENTSZ` et procède au BLIT. Évite `phx`/`plx`
+  (X-width sensible) en recalculant.
+- **`boot.s`** : après création des fenêtres système (slots 0/1 :
+  OricOS, Editor), pose `WM_NO_BACKING_FLAGS[0/1] = $A5`. Compose
+  les skip → leur chrome dessiné direct framebuffer reste intact.
+- **Cause** : `_wm_draw_one` dessine chrome+titre direct framebuffer
+  XVGA, pas dans backing store. Quand task_compact ou apps appellent
+  compose-loop, copie de backing store vide écrasait le chrome rendu
+  → rect noirs à leurs positions.
+- **Bug fix mineur** : `test_oricos_radio` cyc-sensible (140k → 200k
+  bootstrap, 280k → 440k total) car §0quater C-2 + cette garde
+  ajoutent du coût au boot.
+- **Validation oricrobot** : PPM pixels (105,115) = lightgray
+  (OricOS chrome), (305,315) = bleu (Editor chrome), (61,61) =
+  lightgray (task_compact rect). **Pas de noir nulle part**.
+
 ## [Unreleased] - 2026-05-30u
 
 ### Added — ADR-27 §0quater C-2 : garde XVGA bpl + B2.c re-livré
