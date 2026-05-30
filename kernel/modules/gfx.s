@@ -61,14 +61,37 @@ kernel_gfx_set_bpl:
         sep #$20                ; A 8-bit (I/O ports) ; informe .smart
         lda GFX_BPL_LO
         sta GPU_ARG1_LO_IO
+        sta f:GFX_BPL_SHADOW    ; ADR-27 Étape A : maintien du shadow kernel (low)
         lda GFX_BPL_HI
         sta GPU_ARG1_MID_IO
+        sta f:GFX_BPL_SHADOW+1  ; ADR-27 Étape A : maintien du shadow kernel (high)
         lda #$00
         sta GPU_ARG1_HI_IO
         lda #GPU_OP_SET_BPL
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
         plp                     ; restaure I (cli si syscall, sei si IRQ)
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_get_bpl_shadow — lit le shadow kernel de gpu->bpl
+; ════════════════════════════════════════════════════════════════════
+; Le GPU n'a pas de port de lecture pour bpl (ADR-27 §0bis option 4) ;
+; cette routine renvoie la dernière valeur posée par kernel_gfx_set_bpl.
+; Args   : aucun.
+; Retour : GFX_BPL_LO/HI (ZP) ← shadow ; 0 ↔ stride par défaut (512).
+; Modifie : A (8-bit). Préserve : X, Y.
+; Pré-cond : entrée arbitraire (mode M libre) ; sortie en M=8.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_get_bpl_shadow
+kernel_gfx_get_bpl_shadow:
+        php
+        sep #$20                ; A 8-bit ; informe .smart
+        lda f:GFX_BPL_SHADOW
+        sta GFX_BPL_LO
+        lda f:GFX_BPL_SHADOW+1
+        sta GFX_BPL_HI
+        plp
         rts
 
 .export kernel_gfx_clear

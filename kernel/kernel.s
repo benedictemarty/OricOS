@@ -915,6 +915,16 @@ HOTZONE_DEBUG_FLAG = $01EE90    ; $A5 → draw cadre 1px autour des hotzones act
 FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
 .assert FIELD_STR_OFF < $01FFE0, error, "FIELD_STR_BUF déborde sur vecteurs natifs"
 
+; ── ADR-27 Étape A : shadow kernel du registre GPU `bpl` ────────────
+; Le GPU n'expose pas de port de lecture pour `bpl` (réf §0bis option 4).
+; Le kernel maintient un miroir 16-bit ; toute modification via
+; `kernel_gfx_set_bpl` met le shadow à jour. Permet la garde IRQ
+; (save/restore autour de `kernel_wm_mouse_step`) prévue Étape B.
+; Invariant cible : shadow == valeur réelle posée dans le GPU. 0 = défaut
+; (512 octets/ligne) ; toute valeur != 0 = stride compacte d'une fenêtre.
+GFX_BPL_SHADOW    = $016900     ; 2B : miroir kernel de gpu->bpl (0=512)
+.assert GFX_BPL_SHADOW + 2 <= $01EE00, error, "GFX_BPL_SHADOW chevauche TC flags"
+
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
 WM_TABLE         = $015B22       ; 8 × 10 = 80 octets ($5B22-$5B71)

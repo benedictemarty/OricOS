@@ -163,6 +163,8 @@ kernel_wm_init:
         sta WM_COUNT
         sta WM_ZORDER_N          ; SP-3.R S4 : table Z-order vide
         sta WIDGET_COUNT         ; SP-3.d v0.2 : aucune widget au départ
+        sta f:GFX_BPL_SHADOW     ; ADR-27 Étape A : shadow bpl = 0 (stride par défaut 512)
+        sta f:GFX_BPL_SHADOW+1
         lda #$FF
         sta WM_FOCUS
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif

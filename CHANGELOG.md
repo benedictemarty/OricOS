@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30n
+
+### Added — ADR-27 Étape A : shadow kernel `bpl` (plomberie passive)
+- **`kernel.s`** : `GFX_BPL_SHADOW = $016900` (2B), miroir kernel du
+  registre GPU `bpl` (le GPU ne l'expose pas en lecture, ADR-27 §0bis
+  option 4). Assertion de non-chevauchement avec TC flags `$01EE00`.
+- **`wm.s kernel_wm_init`** : initialise `GFX_BPL_SHADOW = 0` au boot
+  (≡ stride par défaut 512, comportement actuel inchangé).
+- **`gfx.s kernel_gfx_set_bpl`** : maintient le shadow synchronisé à
+  chaque écriture du registre GPU `bpl` (2× `sta f:` 8-bit).
+- **`gfx.s kernel_gfx_get_bpl_shadow`** : nouveau helper, renvoie le
+  shadow dans `GFX_BPL_LO/HI` (ZP). Précautions `.smart` ca65 :
+  `php/sep #$20/plp` pour ne pas polluer l'état M propagé aux helpers
+  voisins (leçon `.a16` initialement posée — casse 46 tests).
+- **Statut** : étape passive — aucun appelant ne touche encore
+  `set_bpl`, donc shadow reste à 0, comportement runtime identique
+  (24/24 suites Phosphoric vertes). Étape B activera la garde IRQ
+  save/restore dans `kernel_wm_mouse_step` + bascule compact slot 0.
+
 ## [Unreleased] - 2026-05-30m
 
 ### Added — Hot-zones cliquables (pattern GEOS `DoIcons`, post-clôture ADR-30)
