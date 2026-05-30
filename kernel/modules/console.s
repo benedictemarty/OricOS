@@ -274,3 +274,11 @@ bundle_ctl:
 bundle_clock:
         .incbin "../apps/clock/build/clock.oos"
 
+; ─── Bundle score (ADR-30 capstone post-clôture, 2026-05-30) ────────────────
+; Score Keeper : première app utilisateur écrite *après* la clôture d'ADR-30,
+; exerce GU_FIELD + 3 GU_BUTTON + GU_MENU + oricos_ctl_set_value. Valide que
+; la toolbox suffit à écrire une app utilisateur en moins de 60 LOC C.
+.export bundle_score
+bundle_score:
+        .incbin "../apps/score/build/score.oos"
+

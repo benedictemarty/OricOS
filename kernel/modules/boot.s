@@ -1456,6 +1456,21 @@ _skip_ctlapp:
         jsr kernel_app_spawn
 _skip_clockapp:
 
+        ; ── ADR-30 capstone : spawn bundle_score (Score Keeper post-clôture) ──
+        ; TC_SCOREAPP_FLAG=$A5 → app C démontrant FIELD + 3 BUTTONs + MENU +
+        ; set_value pour un compteur de score interactif.
+        lda TC_SCOREAPP_FLAG
+        cmp #$A5
+        bne _skip_scoreapp
+        lda #<bundle_score
+        sta DP_PTR
+        lda #>bundle_score
+        sta DP_PTR+1
+        lda #$01
+        sta DP_PTR+2
+        jsr kernel_app_spawn
+_skip_scoreapp:
+
         ; ── Active interruptions et démarre task A ─────────────────
         ; g.4 : marque le scheduler actif → SYS_EXIT fait désormais teardown
         ; (et non STP). En deçà de ce point, les apps boot-context STP à l'exit.

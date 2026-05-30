@@ -4361,7 +4361,7 @@ sys_ctl_set_value:
         lda DP_SYS_ARG_X
         cmp WIDGET_COUNT
         bcs scsv_done
-        pha                     ; sauve id pour redraw ciblé
+        pha                     ; sauve id (pour redraw conditionnel)
         asl a
         asl a
         asl a
@@ -4369,11 +4369,18 @@ sys_ctl_set_value:
         tax
         tya                     ; value (arg Y)
         sta WIDGET_TABLE+WG_OFF_VALUE,x
-        ; ADR-30 Étape 5 : redraw ciblé pour que GU_FIELD (et autres value
-        ; widgets passifs) reflètent immédiatement la nouvelle valeur.
+        ; ADR-30 Étape 5 : redraw ciblé UNIQUEMENT pour GU_FIELD (les widgets
+        ; value classiques comme SCROLL_V/CHECK gardent leur cycle de redraw
+        ; standard — éviter de perturber les tests timing-sensibles comme
+        ; test_oricos_scroll_cost qui ne s'attendent pas à un redraw extra).
+        lda WIDGET_TABLE+2,x    ; type (offset +2)
+        cmp #WG_TYPE_FIELD
+        bne scsv_skip_redraw
         pla
         jsr kernel_wm_redraw_widget
         rts
+scsv_skip_redraw:
+        pla
 scsv_done:
         rts
 

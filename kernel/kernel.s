@@ -848,6 +848,8 @@ TC_LIST_FLAG     = $01EE20        ; SP-3.o S.4c : $A5 → crée task_list (test 
 TC_GENUI_FLAG    = $01EE30        ; SP-3.o S.5 : $A5 → crée task_genui (test tags GenUI déclaratifs)
 TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C démo contrôles)
 TC_CLOCKAPP_FLAG = $01EE50        ; Sprint 4 : $A5 → spawn bundle_clock (app C clock)
+TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
+                                  ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)
 WM_DRAG_NOTIFY_HINT = $01EE70     ; ADR-29 Étape 1 : 0 (default) = DELAYED_DRAG_NOTIFICATION
                                   ;                  $A5 = override IMMEDIATE global (kill-switch debug)
