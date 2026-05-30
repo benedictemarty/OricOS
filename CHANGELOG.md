@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31d
+
+### Findings — Investigations post-file_select (3 bugs/limitations tracés)
+- **Labels boutons partagés (debug approfondi)** : 2e tentative MVN
+  copy revertée + XH=0 fix testé sans succès. Diagnostic oricrobot :
+  WIDGET strptr correctement câblé vers BUTTON_LABELS+offset,
+  BUTTON_LABELS[id×16+0..n] contient bien le label, WIDGET_ACTIVE
+  posé à id du bouton cliqué. Mais l'app ne reçoit pas MSG_CONTROL
+  (print "gui: ui_define" présent, "gui: bouton" absent). Cause non
+  isolée — probable clobber subtil entre MVN block move 65C816 et
+  code main_loop / event posting. À investiguer instruction-par-
+  instruction en session dédiée. Infrastructure conservée.
+- **GU_LIST stride items courts** : `LIST_ITEM_STRIDE = 8` (= 7
+  chars + null) fixe. Mais `sud_list` (parser) copie packed sans
+  pad, alors que `kernel_tk_list` (renderer) accède `blob +
+  i*STRIDE` (assumant pad). Incohérence : items > 7 chars sont
+  partiellement copiés mais affichés à des offsets faux. Pour fix
+  proprement : passer STRIDE à 16 + padder sud_list + adapter
+  `task_list_entry` blob + 3 tests interactifs. Trop de cascading
+  changes pour une session courte. Workaround : limiter items à 7
+  chars dans les apps. Tracé pour itération future.
+- **Fast-drag artifact en --compact** (cf. ADR-27 §0quinquies) :
+  toujours pas adressé. Limitation connue.
+
+### Note méthodologique
+- 3 findings tracés sans fix : leçon de cette session GUI = la
+  validation visuelle interactive (PPM + oricrobot) révèle des
+  bugs que les tests fonctionnels id-based ne couvrent pas.
+  Plusieurs cycles de tentative-revert tracés explicitement comme
+  partie du dossier d'instruction (cause + ce qui a été testé).
+
 ## [Unreleased] - 2026-05-31c
 
 ### Added — App file_select (pattern GeoWorks GenFileSelectorClass MVP)
