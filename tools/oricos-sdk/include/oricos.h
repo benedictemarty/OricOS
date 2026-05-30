@@ -137,6 +137,20 @@
  * une boîte cadrée. Non cliquable. Update via `oricos_ctl_set_value(id, v)`. */
 #define GU_FIELD            16
 
+/* ADR-30 post-clôture (pattern GEOS DoMenu) : sous-menus cascading.
+ *
+ *   GU_MENU      "App"  0          // top-bar menu (idx 0)
+ *     GU_MENU_OPEN "Edit" submenu_idx   // item qui ouvre un submenu
+ *   GU_SUBMENU  "Edit"  submenu_idx   // menu caché (réf. par GU_MENU_OPEN)
+ *     GU_MENU_ITEM "Copy"  0           // item normal → MSG_MENU
+ *     GU_MENU_ITEM "Paste" 0
+ *
+ * Limite v1 : MENU_TOTAL_N = 4 (2 top-bar + 2 submenus). Sub-menus
+ * mono-niveau (pas de cascading récursif).
+ */
+#define GU_SUBMENU          17
+#define GU_MENU_OPEN        18
+
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
 #define ALERT_OKCANCEL      1

@@ -32,6 +32,12 @@ static const unsigned char ui[] = {
     GU_MENU,      'A','p','p', 0,                               /* ADR-30 Étape 2 */
     GU_MENU_ITEM, 'A','b','o','u','t', 0,
     GU_MENU_ITEM, 'Q','u','i','t', 0,
+    GU_MENU,      'E','d','i','t', 0,                           /* second top-bar menu */
+    GU_MENU_OPEN, 'F','o','n','t', 0, 2,                        /* item 0 : ouvre submenu idx 2 */
+    GU_MENU_ITEM, 'C','o','p','y', 0,                           /* item 1 : MSG_MENU normal */
+    GU_SUBMENU,   'F','o','n','t', 0,                           /* submenu idx 2 (caché) */
+    GU_MENU_ITEM, 'S','a','n','s', 0,
+    GU_MENU_ITEM, 'S','e','r','i','f', 0,
     GU_END
 };
 

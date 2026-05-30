@@ -1304,8 +1304,9 @@ kernel_menu_draw:
         lda #$00
         sta MENU_I
 _mdl_title:
-        ; ADR-30 Étape 2 : si MENU_DYN_ACTIVE = $A5, plafond = MENU_DYN_COUNT,
-        ; sinon MENU_N (statique). Permet aux apps de déclarer 0..N menus.
+        ; ADR-30 Étape 2 : si MENU_DYN_ACTIVE = $A5, plafond top-bar =
+        ; MENU_DYN_COUNT_BAR (post-clôture, exclut les submenus).
+        ; Sinon MENU_N (statique).
         lda MENU_DYN_ACTIVE
         cmp #$A5
         beq _mdl_title_dyn
@@ -1314,7 +1315,7 @@ _mdl_title:
         bra _mdl_title_cmp_done
 _mdl_title_dyn:
         lda MENU_I
-        cmp MENU_DYN_COUNT
+        cmp MENU_DYN_COUNT_BAR
 _mdl_title_cmp_done:
         bcs _mdl_drop
         jsr _menu_setbase
@@ -1458,7 +1459,7 @@ _mhc_inbar:
         lda #$00
         sta MENU_I
 _mhc_tl:
-        ; ADR-30 Étape 2 : plafond dynamique si MENU_DYN_ACTIVE.
+        ; ADR-30 Étape 2 : plafond dynamique top-bar si MENU_DYN_ACTIVE.
         lda MENU_DYN_ACTIVE
         cmp #$A5
         beq _mhc_tl_dyn
@@ -1467,7 +1468,7 @@ _mhc_tl:
         bra _mhc_tl_cmp_done
 _mhc_tl_dyn:
         lda MENU_I
-        cmp MENU_DYN_COUNT
+        cmp MENU_DYN_COUNT_BAR
 _mhc_tl_cmp_done:
         bcc _mhc_tl_go
         lda #$01                 ; barre vide → consommé
@@ -1555,6 +1556,17 @@ _mhc_it1:
         lda [DP_PCPTR],Y
         sta WG_CB_VEC+1
 _mhc_invoke:
+        ; ADR-30 post-clôture : si cb_hi == $80, c'est un lien submenu → ouvre
+        ; le menu cb_lo au lieu de fermer / invoquer cb / poster MSG_MENU.
+        lda WG_CB_VEC+1
+        cmp #$80
+        bne _mhc_invoke_normal
+        lda WG_CB_VEC            ; submenu_idx
+        sta MENU_OPEN            ; bascule sur le submenu (sa propre dropdown)
+        pla                      ; cleanup item_id sur la pile
+        lda #$01                 ; consommé
+        rts
+_mhc_invoke_normal:
         lda #$FF
         sta MENU_OPEN            ; ferme
         lda WG_CB_VEC
@@ -1629,6 +1641,9 @@ menu_defs:
         .word menu_i_hide
         .word menu_hide_cb
         .res 4
+        ; ADR-30 post-clôture : 2 slots additionnels pour submenus dynamiques
+        ; (mode dyn uniquement, statique laisse à zéro).
+        .res 32
 
 menu_t_system:
         .byte "System", $00

@@ -524,6 +524,11 @@ GU_FIELD          = $10         ; ADR-30 Étape 5 : + relx16 rely16 relw16 relh1
                                 ; Champ étiqueté (GeoWorks gFieldC) : label statique + value
                                 ; courante affichée 2 digits. Non cliquable. Value posée par
                                 ; l'app via SYS_CTL_SET_VALUE.
+GU_SUBMENU        = $11         ; ADR-30 post-clôture (pattern GEOS DoMenu) : + nom inline.
+                                ; Comme GU_MENU mais menu invisible du top-bar (caché). Ouvert
+                                ; en clic sur un item dont cb_hi == $80, cb_lo = idx du submenu.
+GU_MENU_OPEN      = $12         ; ADR-30 post-clôture : + label inline + submenu_idx8.
+                                ; Item de menu qui ouvre un sub-menu au lieu d'envoyer MSG_MENU.
 
 ; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
 ; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
@@ -714,7 +719,8 @@ CB_FLAG          = $015A87       ; 1B : compteur démo (clics sur "OK")
 MENU_OPEN        = $015A88       ; 1B : index menu ouvert, ou $FF=fermé
 MENU_I           = $015A89       ; 1B : index boucle menu
 MENU_BAR_H       = 14            ; hauteur barre de menu (px)
-MENU_N           = 2             ; nb de menus dans la barre
+MENU_N           = 2             ; nb de menus dans la barre (top-level static)
+MENU_TOTAL_N     = 4             ; nb total de menus en table (top + submenus dyn, ADR-30 post-clôture)
 MENU_ENTSZ       = 16            ; taille entrée menu_defs (octets)
 WIDGET_MAX       = 8
 WIDGET_ENTSZ     = 16
@@ -865,9 +871,10 @@ UI_PENDING_MIN_VALUE = $0163B8    ; 1B = min en attente, posé sur prochain widg
 ; ── ADR-30 Étape 2 : structures du parser GU_MENU / GU_MENU_ITEM ──────
 ; Bank 1, zone libre post-RAW_RING ($0164A4+).
 MENU_DYN_ACTIVE   = $0164B0     ; 1B : $A5 = menus dyn parsés (override menu_defs)
-MENU_DYN_COUNT    = $0164B1     ; 1B : nb menus déjà parsés (0..MENU_N)
+MENU_DYN_COUNT    = $0164B1     ; 1B : nb menus total (top + submenus), 0..MENU_TOTAL_N
 MENU_DYN_ITEM_CNT = $0164B2     ; 1B : nb items posés dans le menu courant (0..2)
 MENU_DYN_STR_OFF  = $0164B3     ; 1B : offset courant dans MENU_DYN_STR_BUF
+MENU_DYN_COUNT_BAR = $0164B4    ; 1B : nb menus dans la barre top (0..MENU_N), submenus exclus
 MENU_DYN_STR_BUF  = $0164C0     ; 192B : titres + labels (offset référencé par menu_defs)
 .assert MENU_DYN_STR_BUF + 192 <= $01FFE0, error, "MENU_DYN_STR_BUF déborde sur les vecteurs natifs"
 ; ── ADR-30 Étape 4 : scratch pour kernel_ctl_spin_click ──

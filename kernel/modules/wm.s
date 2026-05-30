@@ -3521,8 +3521,16 @@ sud_n2l:
         jmp sud_spin
 sud_n2m:
         cmp #GU_FIELD           ; ADR-30 Étape 5 : champ étiqueté (gFieldC)
-        bne sud_n3
+        bne sud_n2n
         jmp sud_field
+sud_n2n:
+        cmp #GU_SUBMENU         ; ADR-30 post-clôture : menu caché
+        bne sud_n2o
+        jmp sud_submenu
+sud_n2o:
+        cmp #GU_MENU_OPEN       ; ADR-30 post-clôture : item ouvre submenu
+        bne sud_n3
+        jmp sud_menu_open
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
@@ -3928,19 +3936,20 @@ sud_menu:
         sta MENU_DYN_ACTIVE
         lda #$00
         sta MENU_DYN_COUNT
+        sta MENU_DYN_COUNT_BAR
         sta MENU_DYN_ITEM_CNT
         sta MENU_DYN_STR_OFF
-        ; Zéroise les 32 octets de menu_defs (2 entrées × 16).
+        ; Zéroise les MENU_TOTAL_N*16 = 64 octets de menu_defs (top + submenus).
         ldx #$00
 sud_m_zero:
         lda #$00
         sta f:menu_defs+$10000,x
         inx
-        cpx #(MENU_N * MENU_ENTSZ)
+        cpx #(MENU_TOTAL_N * MENU_ENTSZ)
         bcc sud_m_zero
 sud_m_ready:
-        ; Cap : MENU_DYN_COUNT >= MENU_N → drop silencieux (consomme la chaîne).
-        lda MENU_DYN_COUNT
+        ; Cap : MENU_DYN_COUNT_BAR >= MENU_N → drop silencieux (consomme la chaîne).
+        lda MENU_DYN_COUNT_BAR
         cmp #MENU_N
         bcs sud_m_skip
         ; Copie la chaîne inline → MENU_DYN_STR_BUF[STR_OFF], avance STR_OFF.
@@ -3958,8 +3967,9 @@ sud_m_ready:
         sta f:menu_defs+$10000+0,x
         lda WG_RELX+1           ; hi
         sta f:menu_defs+$10000+1,x
-        ; bar_x : menu 0 = 4, menu 1 = 76 (cohérent avec le statique original)
-        lda MENU_DYN_COUNT
+        ; bar_x : top menu N = 4 + N*72 (slot top-bar). Submenu = parent_bar_x+64.
+        ; Ici top-bar : utilise MENU_DYN_COUNT_BAR (sera 0 ou 1).
+        lda MENU_DYN_COUNT_BAR
         bne sud_m_bx_1
         lda #4
         bra sud_m_bx_set
@@ -3967,17 +3977,140 @@ sud_m_bx_1:
         lda #76
 sud_m_bx_set:
         sta f:menu_defs+$10000+2,x     ; bar_x à offset +2
-        ; Reset item count, bump menu count
+        ; Reset item count, bump menu counts (total + bar)
+        lda #$00
+        sta MENU_DYN_ITEM_CNT
+        lda MENU_DYN_COUNT
+        inc a
+        sta MENU_DYN_COUNT
+        lda MENU_DYN_COUNT_BAR
+        inc a
+        sta MENU_DYN_COUNT_BAR
+        jmp sud_loop
+sud_m_skip:
+        ; Drop : consomme tag + chaîne sans l'enregistrer
+        iny
+        jsr _sud_skip_inline
+        jmp sud_loop
+
+; ── ADR-30 post-clôture : sud_submenu — comme sud_menu mais hors top-bar ───
+; (pattern GEOS DoMenu). Crée un menu caché ouvert sur clic d'un GU_MENU_OPEN.
+sud_submenu:
+        ; Premier menu (top OU submenu) ? Init si nécessaire.
+        lda MENU_DYN_ACTIVE
+        cmp #$A5
+        beq sud_sm_ready
+        lda #$A5
+        sta MENU_DYN_ACTIVE
+        lda #$00
+        sta MENU_DYN_COUNT
+        sta MENU_DYN_COUNT_BAR
+        sta MENU_DYN_ITEM_CNT
+        sta MENU_DYN_STR_OFF
+        ldx #$00
+sud_sm_zero:
+        lda #$00
+        sta f:menu_defs+$10000,x
+        inx
+        cpx #(MENU_TOTAL_N * MENU_ENTSZ)
+        bcc sud_sm_zero
+sud_sm_ready:
+        ; Cap : MENU_DYN_COUNT >= MENU_TOTAL_N → drop.
+        lda MENU_DYN_COUNT
+        cmp #MENU_TOTAL_N
+        bcs sud_sm_skip
+        iny                     ; passe tag GU_SUBMENU
+        jsr _sud_menu_copy_str  ; → WG_RELX = ptr, Y avance
+        lda MENU_DYN_COUNT
+        asl a
+        asl a
+        asl a
+        asl a                   ; *16
+        tax
+        lda WG_RELX
+        sta f:menu_defs+$10000+0,x
+        lda WG_RELX+1
+        sta f:menu_defs+$10000+1,x
+        ; bar_x submenu : décalage du dernier top menu + 64 (à droite de l'item).
+        ; Pour MVP : (MENU_DYN_COUNT - MENU_DYN_COUNT_BAR + 1) * 64 (slots droite).
+        lda MENU_DYN_COUNT
+        sec
+        sbc MENU_DYN_COUNT_BAR
+        clc
+        adc #1
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a                   ; *64
+        clc
+        adc #76                 ; offset après les top menus
+        sta f:menu_defs+$10000+2,x  ; bar_x submenu
         lda #$00
         sta MENU_DYN_ITEM_CNT
         lda MENU_DYN_COUNT
         inc a
         sta MENU_DYN_COUNT
         jmp sud_loop
-sud_m_skip:
-        ; Drop : consomme tag + chaîne sans l'enregistrer
+sud_sm_skip:
         iny
         jsr _sud_skip_inline
+        jmp sud_loop
+
+; ── ADR-30 post-clôture : sud_menu_open — item qui ouvre un sub-menu ────
+; Format : GU_MENU_OPEN + label inline + submenu_idx8. cb_lo = idx, cb_hi = $80.
+sud_menu_open:
+        lda MENU_DYN_COUNT
+        beq sud_mo_skip
+        lda MENU_DYN_ITEM_CNT
+        cmp #2
+        bcs sud_mo_skip
+        iny                     ; passe le tag
+        jsr _sud_menu_copy_str  ; → WG_RELX/+1 = ptr label, Y → submenu_idx
+        ; Lit submenu_idx (1 byte) AVANT de clobber les scratch.
+        lda [$D0],y
+        sta SPIN_ID             ; SPIN_ID = submenu_idx (cb_lo target)
+        iny                     ; consomme payload
+        ; slot menu : (COUNT-1)*16 → SPIN_TMP
+        lda MENU_DYN_COUNT
+        sec
+        sbc #1
+        asl a
+        asl a
+        asl a
+        asl a
+        sta SPIN_TMP
+        ; item offset : +4 (item0) ou +8 (item1)
+        lda MENU_DYN_ITEM_CNT
+        bne sud_mo_it1
+        lda SPIN_TMP
+        clc
+        adc #4
+        tax
+        bra sud_mo_write
+sud_mo_it1:
+        lda SPIN_TMP
+        clc
+        adc #8
+        tax
+sud_mo_write:
+        lda WG_RELX             ; ptr label lo (préservé par copy_str)
+        sta f:menu_defs+$10000+0,x
+        lda WG_RELX+1           ; ptr label hi
+        sta f:menu_defs+$10000+1,x
+        lda SPIN_ID             ; cb_lo = submenu_idx
+        sta f:menu_defs+$10000+2,x
+        lda #$80                ; cb_hi = $80 (= flag « submenu link »)
+        sta f:menu_defs+$10000+3,x
+        lda MENU_DYN_ITEM_CNT
+        inc a
+        sta MENU_DYN_ITEM_CNT
+        jmp sud_loop
+sud_mo_skip:
+        iny
+        jsr _sud_skip_inline
+        iny                     ; consomme payload submenu_idx
         jmp sud_loop
 
 ; sud_menu_item : tag GU_MENU_ITEM + label inline null-term. Ajoute un item

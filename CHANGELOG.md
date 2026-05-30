@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30k
+
+### Added — Sous-menus cascading (pattern GEOS `DoMenu`, post-clôture ADR-30)
+- **`kernel.s`** : `MENU_TOTAL_N = 4` (vs MENU_N=2 top-bar) ; `GU_SUBMENU =
+  $11` + `GU_MENU_OPEN = $12` ; `MENU_DYN_COUNT_BAR` distingue top-bar
+  des submenus dans MENU_DYN_COUNT.
+- **`wm.s sud_submenu`** : comme `sud_menu` mais n'incrémente pas BAR.
+  bar_x positionné à `76 + (sub_idx - bar_count + 1) * 64` pour cascading
+  visuel à droite des top menus.
+- **`wm.s sud_menu_open`** : tag pour un item qui ouvre un submenu.
+  Format : label inline + submenu_idx8. cb_lo = idx, cb_hi = $80
+  (= flag « submenu link »).
+- **`tk.s _mhc_invoke`** : si cb_hi == $80, bascule `MENU_OPEN = cb_lo`
+  (ouvre le submenu) au lieu d'invoquer cb ou poster MSG_MENU.
+- **`tk.s kernel_menu_draw/_handle_click`** : top-bar utilise
+  `MENU_DYN_COUNT_BAR` au lieu de `MENU_DYN_COUNT` pour ne pas afficher
+  les submenus dans la barre.
+- **`menu_defs`** : +32 octets (`.res 32`) pour 2 slots submenu additionnels.
+- **SDK** : `GU_SUBMENU = 17`, `GU_MENU_OPEN = 18` dans oricos.h.
+- **Démo ctl_demo** : nouveau top-menu `Edit` avec item `Font` qui ouvre
+  un submenu `[Sans, Serif]`.
+- **Verrouillage** : `test_oricos_ctl_demo` assertions
+  `MENU_DYN_COUNT == 3` + `MENU_DYN_COUNT_BAR == 2`. 24/24 verts.
+- **Limitation v1 connue** : un seul dropdown affiché à la fois (le parent
+  disparaît quand le submenu s'ouvre). Pour garder une vue cascading
+  GeoWorks-style, v2 ajouterait une `MENU_STACK` de niveaux ouverts. Le
+  cascading mécanique (parent → enfant → MSG_MENU) fonctionne déjà.
+
+Pattern identifié dans `mist64/geos kernal/menu/menu1.s:60-120`
+(cf. mémoire [[geos-sources]]).
+
 ## [Unreleased] - 2026-05-30j
 
 ### Added — ADR-30 Étape 5 livrée : `GU_FIELD` (champ étiqueté gFieldC) → ADR-30 clos
