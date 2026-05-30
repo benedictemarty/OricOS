@@ -165,6 +165,15 @@ kernel_wm_init:
         sta WIDGET_COUNT         ; SP-3.d v0.2 : aucune widget au départ
         sta f:GFX_BPL_SHADOW     ; ADR-27 Étape A : shadow bpl = 0 (stride par défaut 512)
         sta f:GFX_BPL_SHADOW+1
+        ; ADR-27 Étape B2 : init WM_COMPACT_FLAGS = 0 pour les 8 slots.
+        sta f:WM_COMPACT_FLAGS+0
+        sta f:WM_COMPACT_FLAGS+1
+        sta f:WM_COMPACT_FLAGS+2
+        sta f:WM_COMPACT_FLAGS+3
+        sta f:WM_COMPACT_FLAGS+4
+        sta f:WM_COMPACT_FLAGS+5
+        sta f:WM_COMPACT_FLAGS+6
+        sta f:WM_COMPACT_FLAGS+7
         lda #$FF
         sta WM_FOCUS
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
@@ -1170,12 +1179,15 @@ wcmp_not_done:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #(WM_F_USED | WM_F_VISIBLE)
         cmp #(WM_F_USED | WM_F_VISIBLE)
-        bne wcmp_next                   ; fenêtre cachée/minimisée → skip
+        beq wcmp_visible
+        jmp wcmp_next                   ; fenêtre cachée/minimisée → skip (jmp : portée étendue B2.b)
+wcmp_visible:
         ; src = backing store = ($06+slot):$0000
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
         lda WCMP_XB                     ; slot id
+        sta f:WCMP_SLOT_ID              ; ADR-27 B2.b : mémorise slot avant écrasement
         clc
         adc #$06
         sta GFX_BASE_HI
@@ -1210,6 +1222,29 @@ wcmp_not_done:
         lda WM_TABLE+WM_OFF_H,X         ; byte_h = h (déjà en octets ligne/ligne)
         sta GFX_ARG4_LO                 ; 16-bit store → $6E (LO) et $6F (MID)
         sep #$20
+        ; ADR-27 B2.b : si le slot est en mode compact, stride source = byte_w
+        ; (déjà dans GFX_ARG3_LO/HI). Sinon : laisse la stride par défaut 512.
+        lda f:WCMP_SLOT_ID              ; LDX abs-long non supporté → via A+TAX
+        tax                             ; X = slot id (consommé jusqu'au BLIT)
+        lda f:WM_COMPACT_FLAGS,X
+        cmp #WM_COMPACT_MAGIC
+        bne wcmp_default_stride
+        lda GFX_ARG3_LO                 ; byte_w (LO)
+        sta GFX_BPL_LO
+        lda GFX_ARG3_MID                ; byte_w (HI)
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+        bra wcmp_do_blit
+wcmp_default_stride:
+        ; Stride par défaut : ne touche bpl que si shadow != 0 (cas usuel : déjà 0).
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq wcmp_do_blit
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+wcmp_do_blit:
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
 wcmp_next:
         lda WCMP_SLOT
@@ -1217,6 +1252,17 @@ wcmp_next:
         sta WCMP_SLOT
         jmp wcmp_loop           ; bra hors de portée → JMP absolu (même bank)
 wcmp_done:
+        ; ADR-27 B2.b : restaure bpl=0 (stride par défaut 512) — invariant ADR-27
+        ; §0ter : `bpl` ne doit pas leak hors de compose (kernel_wm_redraw qui suit
+        ; éventuellement dessine framebuffer XVGA en stride 512).
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq wcmp_really_done
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+wcmp_really_done:
         rts
 
 ; ── kernel_wm_redraw : efface le desktop + dessine toutes les fenêtres ──
@@ -1224,6 +1270,16 @@ wcmp_done:
 ; à SDRAM $100000 (ADR-20). Modifie A, X, Y.
 .export kernel_wm_redraw
 kernel_wm_redraw:
+        ; ADR-27 B2.b : peinture framebuffer XVGA direct → stride par défaut 512.
+        ; Garde idempotente (no-op si shadow déjà 0, cas usuel).
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq wmr_stride_ok
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+wmr_stride_ok:
         ; Clear desktop (bleu 1) : gfx_clear(base=$100000, size=$060000, color=1).
         ; Base $100000 (1 MiB) : hors des démos GPU legacy ($004000-$00C000).
         lda #$00
@@ -4999,36 +5055,41 @@ sys_free_bank:
 
 ; $0D — SYS_GFX_CLEAR : args via I/O ZP (ADR-21 convention) ──────────
 sys_gfx_clear:
-        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
+        jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_clear
+        jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
         lda #$00
         rts
 
 ; $0E — SYS_GFX_FILL_RECT ─────────────────────────────────────────────
 sys_gfx_fill_rect:
-        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
+        jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_fill_rect
+        jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
         lda #$00
         rts
 
 ; $0F — SYS_GFX_BLIT ──────────────────────────────────────────────────
 sys_gfx_blit:
-        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
+        jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_blit
+        jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
         lda #$00
         rts
 
 ; $10 — SYS_GFX_LINE ──────────────────────────────────────────────────
 sys_gfx_line:
-        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
+        jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_line
+        jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
         lda #$00
         rts
 
 ; $11 — SYS_GFX_TEXT ──────────────────────────────────────────────────
 sys_gfx_text:
-        jsr kernel_gfx_window_base   ; G.4 : GFX_BASE = backing store fenêtre du caller
+        jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_text
+        jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
         lda #$00
         rts
 

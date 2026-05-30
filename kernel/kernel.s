@@ -925,6 +925,16 @@ FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
 GFX_BPL_SHADOW    = $016900     ; 2B : miroir kernel de gpu->bpl (0=512)
 .assert GFX_BPL_SHADOW + 2 <= $01EE00, error, "GFX_BPL_SHADOW chevauche TC flags"
 
+; ── ADR-27 Étape B2 : bascule compact slot par slot ──────────────────
+; WM_COMPACT_FLAGS[slot] = $A5 → backing store compact (stride = byte_w
+; = WM_TABLE[slot].W>>1). Sinon stride par défaut 512 (compat v1).
+; Maintenu par les helpers WM, lu par kernel_gfx_window_base / compose.
+WM_COMPACT_FLAGS  = $016902     ; 8B : flag compact par slot
+WM_COMPACT_MAGIC  = $A5         ; valeur indiquant slot en mode compact
+WCMP_SLOT_ID      = $01690A     ; 1B : slot id courant pendant compose (B2.b)
+.assert WM_COMPACT_FLAGS + 8 <= $01EE00, error, "WM_COMPACT_FLAGS chevauche TC flags"
+.assert WCMP_SLOT_ID < $01EE00, error, "WCMP_SLOT_ID chevauche TC flags"
+
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).
 WM_TABLE         = $015B22       ; 8 × 10 = 80 octets ($5B22-$5B71)

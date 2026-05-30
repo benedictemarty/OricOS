@@ -25,10 +25,39 @@ gwb_found:
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
-        txa
+        txa                     ; A = slot
         clc
         adc #$06                ; bank SDRAM du backing store = $06 + slot
         sta GFX_BASE_HI
+        ; ADR-27 Étape B2 : pose la stride GPU selon le flag compact du slot.
+        ; X = slot encore valide (préservé depuis gwb_loop).
+        lda f:WM_COMPACT_FLAGS,X
+        cmp #WM_COMPACT_MAGIC
+        bne gwb_set_default     ; flag != $A5 → stride par défaut 512
+        ; Compact : byte_w = WM_TABLE[slot].W >> 1.
+        phx                     ; sauve slot (X consommé par kernel_wm_offset)
+        txa                     ; A = slot
+        jsr kernel_wm_offset    ; X = slot*WM_ENTSZ
+        lda f:WM_TABLE+WM_OFF_W,X
+        sta GFX_BPL_LO
+        lda f:WM_TABLE+WM_OFF_W+1,X
+        sta GFX_BPL_HI
+        lsr GFX_BPL_HI          ; byte_w = W >> 1 (8 bits par 2 px = 1 byte/2px)
+        ror GFX_BPL_LO
+        plx                     ; restore slot
+        jsr kernel_gfx_set_bpl
+        rts
+gwb_set_default:
+        ; Stride par défaut : pose bpl=0 si shadow != 0 ; sinon no-op
+        ; (évite un round-trip GPU gratuit dans le cas usuel).
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq gwb_default_done
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+gwb_default_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
@@ -71,6 +100,37 @@ kernel_gfx_set_bpl:
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
         plp                     ; restaure I (cli si syscall, sei si IRQ)
+        rts
+
+; ════════════════════════════════════════════════════════════════════
+;  kernel_gfx_finish — restaure bpl=0 si le slot du caller est compact
+; ════════════════════════════════════════════════════════════════════
+; ADR-27 Étape B2 point §0ter 2 : confine `byte_w` au syscall gfx.
+; À appeler après tout `kernel_gfx_*` dans les wrappers `sys_gfx_*`.
+; Invariant cible : `bpl = 512` hors d'un dessin backing-store compact.
+; Modifie : A, X. Préserve : Y.
+; ════════════════════════════════════════════════════════════════════
+.export kernel_gfx_finish
+kernel_gfx_finish:
+        ldx #$00
+gfin_loop:
+        lda f:WM_OWNER,X
+        cmp TASK_CUR
+        beq gfin_found
+        inx
+        cpx #WM_MAX
+        bcc gfin_loop
+        rts                     ; pas de fenêtre → rien à restaurer
+gfin_found:
+        lda f:WM_COMPACT_FLAGS,X
+        cmp #WM_COMPACT_MAGIC
+        bne gfin_done           ; non compact → bpl déjà à 0 par window_base
+        ; Slot compact : on a posé bpl=byte_w au début du syscall, on remet 0.
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
+gfin_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════

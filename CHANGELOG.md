@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30p
+
+### Added — ADR-27 Étape B2 : plomberie compact slot (flag par défaut inactif)
+- **`kernel.s`** : `WM_COMPACT_FLAGS = $016902` (8B, un par slot,
+  défaut $00 = stride 512), `WM_COMPACT_MAGIC = $A5` (slot compact),
+  `WCMP_SLOT_ID = $01690A` (scratch compose). Assertions de non-
+  chevauchement avec TC flags.
+- **`wm.s kernel_wm_init`** : zéroise les 8 entrées `WM_COMPACT_FLAGS`.
+- **`gfx.s kernel_gfx_window_base`** : après calcul `GFX_BASE`, lit
+  `WM_COMPACT_FLAGS[slot]` ; si `$A5`, pose `bpl = WM_TABLE[slot].W>>1`
+  via `kernel_gfx_set_bpl` ; sinon, pose `bpl=0` (idempotent : skip si
+  shadow déjà 0).
+- **`gfx.s kernel_gfx_finish`** : helper qui restaure `bpl=0` si slot
+  du caller est compact (point §0ter 2). À appeler après tout
+  `kernel_gfx_*` dans les wrappers `sys_gfx_*`.
+- **`wm.s sys_gfx_clear/fill_rect/blit/line/text`** : insertion
+  `jsr kernel_gfx_finish` après le dessin. Confine `byte_w` au syscall.
+- **`wm.s kernel_wm_compose`** : par slot composé, lit
+  `WM_COMPACT_FLAGS[slot]` ; si compact, pose `bpl=byte_w` (déjà dans
+  `GFX_ARG3_LO/MID`) avant `kernel_gfx_blit` (point §0ter 3). En
+  `wcmp_done`, restaure `bpl=0` (idempotent). Refactor `bne wcmp_next`
+  → `beq wcmp_visible / jmp wcmp_next` (portée bcc trop courte après
+  l'ajout).
+- **`wm.s kernel_wm_redraw`** : pose `bpl=0` à l'entrée (point §0ter 4 ;
+  paranoïa : la garde IRQ B1 + le `finish` des syscalls assurent
+  déjà l'invariant, mais redraw écrit framebuffer XVGA direct).
+- **Effet runtime** : `WM_COMPACT_FLAGS` reste à 0 sur tous les slots →
+  toute la plomberie est no-op (24/24 suites vertes). Validation du
+  flip compact = sprint d'activation séparé (B2.c) avec test dédié ou
+  validation interactive utilisateur.
+
 ## [Unreleased] - 2026-05-30o
 
 ### Added — ADR-27 Étape B1 : garde IRQ `bpl` (transparence, fast-path)
