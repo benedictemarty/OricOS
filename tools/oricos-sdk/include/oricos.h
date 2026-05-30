@@ -130,6 +130,13 @@
  * (qui ajoute déjà le min — voir Étape 3). */
 #define GU_SPIN             15
 
+/* ADR-30 Étape 5 : champ étiqueté aligné GeoWorks gFieldC.
+ * Format : GU_FIELD, relx_lo, relx_hi, rely_lo, rely_hi, relw_lo, relw_hi,
+ *          relh_lo, relh_hi, <label chars + 0>
+ * Affichage : label (gauche, noir) + value 2 digits (droite, noir) dans
+ * une boîte cadrée. Non cliquable. Update via `oricos_ctl_set_value(id, v)`. */
+#define GU_FIELD            16
+
 /* ── Types d'alerte (SYS_ALERT) ──────────────────────────────────── */
 #define ALERT_OK            0
 #define ALERT_OKCANCEL      1
@@ -405,6 +412,20 @@ uint8_t oricos_ctl_get_value(uint8_t id) {
         : "a", "x"
     );
     return v;
+}
+
+/* SYS_CTL_SET_VALUE : pose la value d'un contrôle (X = id, Y = value). */
+static __attribute__((always_inline)) inline
+void oricos_ctl_set_value(uint8_t id, uint8_t value) {
+    __asm__ volatile (
+        "ldx %[id]\n"
+        "ldy %[v]\n"
+        _ORICOS_LDA_SYS(SYS_CTL_SET_VALUE)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [id] "r" (id), [v] "r" (value)
+        : "a", "x", "y"
+    );
 }
 
 /* Détail du dernier message MainLoop (bloc ZP $DA) : id contrôle pour MSG_CONTROL,

@@ -520,6 +520,10 @@ GU_MENU_ITEM      = $0D         ; ADR-30 Étape 2 : + label INLINE null-term. It
 GU_SPIN           = $0F         ; ADR-30 Étape 4 : + relx16 rely16 relw16 relh16 + max8.
                                 ; Incrémenteur (GeoWorks SpinClass). Value (+14) clampée
                                 ; à [min..max] où min = GU_HINT_MIN_VALUE si présent.
+GU_FIELD          = $10         ; ADR-30 Étape 5 : + relx16 rely16 relw16 relh16 + label inline.
+                                ; Champ étiqueté (GeoWorks gFieldC) : label statique + value
+                                ; courante affichée 2 digits. Non cliquable. Value posée par
+                                ; l'app via SYS_CTL_SET_VALUE.
 
 ; ── ADR-29 Étape 2 : hints déclaratifs (alignement GeoWorks GenValueClass) ──
 ; Placés AVANT un widget value-type (GU_SCROLL_V/H, GU_VIEW) pour basculer ce
@@ -729,6 +733,9 @@ WG_TYPE_LIST     = $08           ; SP-3.o S.4c : liste (GenList) ; strptr(+12/13
 WG_TYPE_SPIN     = $09           ; ADR-30 Étape 4 : incrémenteur (GenValue, alignement
                                  ; GeoWorks SpinClass). value(+14) ; max(+15). Click haut
                                  ; moitié = +1, click bas moitié = -1, clamp [min..max].
+WG_TYPE_FIELD    = $0A           ; ADR-30 Étape 5 : champ étiqueté (gFieldC). Label statique
+                                 ; (strptr +12/13 bank 1) + value (+14) affichée 2 digits.
+                                 ; Non cliquable. Update via SYS_CTL_SET_VALUE.
                                  ; (count slots de LIST_ITEM_STRIDE o), selected(+14)/count(+15)
 LIST_ITEM_STRIDE = 8             ; octets par item (7 caractères + null)
 LIST_ITEM_H      = 16            ; hauteur d'une ligne d'item (px) — puissance de 2 (>>4)
@@ -864,6 +871,11 @@ MENU_DYN_STR_BUF  = $0164C0     ; 192B : titres + labels (offset référencé pa
 ; ── ADR-30 Étape 4 : scratch pour kernel_ctl_spin_click ──
 SPIN_ID           = $016580     ; 1B : id widget en cours de spin click
 SPIN_TMP          = $016581     ; 1B : scratch (min value, etc.)
+; ── ADR-30 Étape 5 : buffer pour labels des champs GU_FIELD ──
+; 128 octets (jusqu'à 8 champs × ~16 chars en moyenne).
+FIELD_STR_BUF     = $016600
+FIELD_STR_OFF     = $016680     ; 1B : offset d'écriture courant dans le buffer
+.assert FIELD_STR_OFF < $01FFE0, error, "FIELD_STR_BUF déborde sur vecteurs natifs"
 
 ; ─── Window manager — table + Z-order (SP-3.e v0.1, SP-3.R S4) ─────
 ; WM_MAX=8 fenêtres × 10 octets. Entry : flags(1) id(1) x(2) y(2) w(2) h(2).

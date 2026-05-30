@@ -3450,6 +3450,7 @@ sys_ui_define:
         lda #$00
         sta WM_ARG_TITLE_LO     ; défaut : pas de titre
         sta WM_ARG_TITLE_HI
+        sta FIELD_STR_OFF       ; ADR-30 Étape 5 : reset buffer labels GU_FIELD
         lda #$FF
         sta DLG_WIN             ; handle « fenêtre courante » (réutilise DLG_WIN ;
                                 ; ui_define et dlgbox ne tournent jamais concurremment)
@@ -3516,8 +3517,12 @@ sud_n2k:
         jmp sud_menu_item
 sud_n2l:
         cmp #GU_SPIN            ; ADR-30 Étape 4 : incrémenteur (GenValue/SpinClass)
-        bne sud_n3
+        bne sud_n2m
         jmp sud_spin
+sud_n2m:
+        cmp #GU_FIELD           ; ADR-30 Étape 5 : champ étiqueté (gFieldC)
+        bne sud_n3
+        jmp sud_field
 sud_n3:
         jmp sud_done            ; tag inconnu → stop sécurité
 sud_hint_immediate:                ; ADR-29 Étape 2 : tag seul, pose hint en attente
@@ -3762,6 +3767,52 @@ sud_rd_col:
         lda #$00
         sta DP_PCPTR
         sta DP_PCPTR+1
+        jsr _sud_attach
+        jmp sud_loop
+
+; ── ADR-30 Étape 5 : sud_field — champ étiqueté (gFieldC).
+; Format : GU_FIELD relx16 rely16 relw16 relh16 + label inline null-term.
+; Label copié bank app → FIELD_STR_BUF (bank 1). Value (+14) init 0. Non
+; cliquable, mis à jour via SYS_CTL_SET_VALUE.
+sud_field:
+        jsr _sud_rect           ; Y → premier byte label
+        ; Copie label inline → FIELD_STR_BUF[FIELD_STR_OFF]. Sauve le ptr.
+        lda #<FIELD_STR_BUF
+        clc
+        adc FIELD_STR_OFF
+        sta WG_RELX             ; lo du ptr (16-bit dans bank 1)
+        lda #>FIELD_STR_BUF
+        adc #$00                ; carry propag.
+        sta WG_RELX+1
+        lda FIELD_STR_OFF
+        tax
+_sud_fld_loop:
+        lda [$D0],y
+        sta f:FIELD_STR_BUF,x
+        iny
+        inx
+        cmp #$00
+        beq _sud_fld_done
+        cpx #127                ; cap buffer 128 octets (laisse 1 pour null)
+        bcc _sud_fld_loop
+        lda #$00
+        sta f:FIELD_STR_BUF,x
+        inx
+_sud_fld_done:
+        txa
+        sta FIELD_STR_OFF
+        ; Pose strptr = WG_RELX (lo/hi 16-bit bank 1).
+        lda WG_RELX
+        sta DP_PCPTR
+        lda WG_RELX+1
+        sta DP_PCPTR+1
+        lda #$00
+        sta WG_CB               ; value init 0 (+14)
+        sta WG_CB+1             ; +15 inutilisé (pas de max)
+        lda #$07                ; lightgray
+        sta GFX_COLOR
+        lda #WG_TYPE_FIELD
+        sta WG_TYPE
         jsr _sud_attach
         jmp sud_loop
 
@@ -4310,6 +4361,7 @@ sys_ctl_set_value:
         lda DP_SYS_ARG_X
         cmp WIDGET_COUNT
         bcs scsv_done
+        pha                     ; sauve id pour redraw ciblé
         asl a
         asl a
         asl a
@@ -4317,6 +4369,11 @@ sys_ctl_set_value:
         tax
         tya                     ; value (arg Y)
         sta WIDGET_TABLE+WG_OFF_VALUE,x
+        ; ADR-30 Étape 5 : redraw ciblé pour que GU_FIELD (et autres value
+        ; widgets passifs) reflètent immédiatement la nouvelle valeur.
+        pla
+        jsr kernel_wm_redraw_widget
+        rts
 scsv_done:
         rts
 

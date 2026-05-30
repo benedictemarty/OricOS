@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30j
+
+### Added — ADR-30 Étape 5 livrée : `GU_FIELD` (champ étiqueté gFieldC) → ADR-30 clos
+- **`kernel.s`** : `GU_FIELD = $10`, `WG_TYPE_FIELD = $0A`, `FIELD_STR_BUF`
+  (128B à `$016600`) + `FIELD_STR_OFF`.
+- **`wm.s sud_field`** : parser rect + label inline. Copie label bank app
+  → bank 1, pointe widget.strptr. Reset `FIELD_STR_OFF` à chaque
+  `sys_ui_define`.
+- **`tk.s kernel_tk_field`** : draw face blanche + cadre + label noir
+  gauche + value 2 digits droite. Non cliquable.
+- **`sys_ctl_set_value`** : ajoute `kernel_wm_redraw_widget` post-écriture
+  → les value widgets passifs (FIELD, futurs) se rafraîchissent immédiat.
+- **SDK** : `GU_FIELD = 16` + helper `oricos_ctl_set_value(id, value)`.
+- **Démo ctl_demo** : `GU_FIELD "Clicks"` rel (12, 130, 120, 16). Sur
+  MSG_MENU avec item valide, l'app fait `set_value(7, ++clicks)` → le
+  champ se redessine avec le compteur.
+- **Verrouillage** : `test_oricos_ctl_demo` étendu avec assert
+  `WIDGET_TABLE[7*16+14] == 1` après clic About. 24/24 vertes.
+- **Coût** : ~140 LOC asm + 5 LOC SDK + 4 LOC démo.
+
+**ADR-30 clos** : 14 widgets exposés (~88 % couverture GeoWorks
+GenInteraction directe). Cf. `docs/adr/0030-roadmap-toolbox-DRAFT.md`
+§7.6 pour post-mortem.
+
 ## [Unreleased] - 2026-05-30i
 
 ### Added — ADR-30 Étape 4 livrée : `GU_SPIN` (incrémenteur GenValue)

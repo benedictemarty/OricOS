@@ -27,6 +27,8 @@ static const unsigned char ui[] = {
                   'I','t','e','m',' ','B',  0,                  /* item 1 */
                   'I','t','e','m',' ','C',  0,                  /* item 2 */
     GU_SPIN,     140, 0, 124, 0,  24, 0,  30, 0,  20,           /* ADR-30 Étape 4 : split haut+1/bas-1, max=20 */
+    GU_FIELD,     12, 0, 130, 0, 120, 0,  16, 0,                 /* ADR-30 Étape 5 : labeled value */
+                  'C','l','i','c','k','s', 0,
     GU_MENU,      'A','p','p', 0,                               /* ADR-30 Étape 2 */
     GU_MENU_ITEM, 'A','b','o','u','t', 0,
     GU_MENU_ITEM, 'Q','u','i','t', 0,
@@ -36,6 +38,7 @@ static const unsigned char ui[] = {
 int main(void) {
     oricos_print_string("ctl: ui_define\r\n");
     oricos_ui_define(ui);
+    unsigned char clicks = 0;          /* ADR-30 Étape 5 : compteur affiché dans GU_FIELD id=7 */
 
     for (;;) {
         unsigned char msg = oricos_main_loop();
@@ -58,6 +61,9 @@ int main(void) {
             oricos_print_string(" i=");
             oricos_print_char('0' + item);
             oricos_print_string("\r\n");
+            /* ADR-30 Étape 5 : incrémente compteur affiché dans le field. */
+            if (clicks < 99) clicks++;
+            oricos_ctl_set_value(7, clicks);
             if (menu == 0 && item == 1) break;   /* App > Quit */
         } else if (msg == MSG_CLOSE) {
             break;

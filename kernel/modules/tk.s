@@ -723,6 +723,8 @@ _wdb_clip_y_ok:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_FIELD       ; 10 = field (ADR-30 Étape 5)
+        beq _wdws_field
         cmp #WG_TYPE_SPIN        ; 9 = spin (ADR-30 Étape 4)
         beq _wdws_spin
         cmp #WG_TYPE_LIST        ; 8 = liste (GenList)
@@ -738,6 +740,9 @@ _wdb_clip_y_ok:
         bra _wdws_btn            ; 1 = bouton, 2 = checkbox (dessiné en bouton coloré)
 _wdws_spin:
         jsr kernel_tk_spin       ; ADR-30 Étape 4 : boîte + value + barre split haut/bas
+        rts
+_wdws_field:
+        jsr kernel_tk_field      ; ADR-30 Étape 5 : boîte + label + value 2 digits
         rts
 _wdws_label:
         jsr kernel_tk_label
@@ -951,6 +956,124 @@ kernel_tk_view:
         lda #WG_COL_THUMB
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+        rts
+
+; ── kernel_tk_field (ADR-30 Étape 5) : dessine un champ étiqueté ────
+; Args : WM_ARG_X/Y/W/H, value lue depuis WIDGET_TABLE[WG_I*16+14],
+; strptr (label bank 1) via WIDGET_TABLE[WG_I*16+12/13]. Visuel : face
+; blanc + cadre darkgray + label texte (gauche, noir) + value "NN"
+; right-aligned (noir). Non cliquable.
+.export kernel_tk_field
+kernel_tk_field:
+        rep #$20
+        lda WM_ARG_X
+        sta TK_X
+        lda WM_ARG_Y
+        sta TK_Y
+        lda WM_ARG_W
+        sta TK_W
+        lda WM_ARG_H
+        sta TK_H
+        sep #$20
+        ; 1. face blanche
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$0F
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; 2. cadre darkgray
+        rep #$20
+        lda TK_X
+        sta WM_ARG_X
+        lda TK_Y
+        sta WM_ARG_Y
+        lda TK_W
+        sta WM_ARG_W
+        lda TK_H
+        sta WM_ARG_H
+        sep #$20
+        lda #$08
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        ; 3. label texte (noir) à (x+2, y+2) via DP_PCPTR déjà posé bank 1.
+        rep #$20
+        lda TK_X
+        clc
+        adc #2
+        sta WM_ARG_X
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        ; DP_PCPTR pour label : lit strptr depuis WIDGET_TABLE
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+        lda WIDGET_TABLE+12,X
+        sta DP_PCPTR
+        lda WIDGET_TABLE+13,X
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
+        ; 4. value 2 digits à (x+w-16, y+2) : tens via boucle sub-10
+        lda WG_I
+        asl a
+        asl a
+        asl a
+        asl a
+        clc
+        adc #14
+        tax
+        lda WIDGET_TABLE,X       ; value (0..99)
+        ldy #'0'
+_tkf_tens:
+        cmp #10
+        bcc _tkf_tens_done
+        sec
+        sbc #10
+        iny
+        bra _tkf_tens
+_tkf_tens_done:
+        pha
+        tya
+        sta f:TB_WIN_SCRATCH+0
+        pla
+        clc
+        adc #'0'
+        sta f:TB_WIN_SCRATCH+1
+        lda #$00
+        sta f:TB_WIN_SCRATCH+2
+        rep #$20
+        lda TK_X
+        clc
+        adc TK_W
+        sec
+        sbc #16
+        sta WM_ARG_X
+        lda TK_Y
+        clc
+        adc #2
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        lda #<TB_WIN_SCRATCH
+        sta DP_PCPTR
+        lda #>TB_WIN_SCRATCH
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2
+        jsr kernel_tk_label
         rts
 
 ; ── kernel_tk_spin (ADR-30 Étape 4) : dessine un incrémenteur ────────
