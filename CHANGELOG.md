@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-30g
+
+### Fixed — ADR-30 Étape 2 : forcer bank 1 dans `sta menu_defs,X`
+- `ld65` résout `menu_defs` en 16-bit (segment CODE sans bank info dans
+  `kernel.cfg`). ca65 émettait `sta f:menu_defs,X` avec bank=$00 → les
+  writes du parser allaient en bank 0 au lieu du vrai `menu_defs` en
+  bank 1. Validation utilisateur interactive : seul « About » visible
+  dans la barre top (et pas « App »).
+- Fix : `sta f:menu_defs+$10000,X` — `$10000` force ca65 à encoder
+  explicitement bank $01. Listing vérifié : `9F BF 24 01` (bank 01) au
+  lieu de `9F BF 24 00`. menu_defs slot 0 maintenant correctement peuplé
+  (title→"App", item0→"About", item1→"Quit"). 24/24 suites vertes.
+- **Note technique** : ce pattern devra être généralisé pour tout écrit
+  vers un symbole de segment depuis du code non-DBR-1-aware.
+
 ## [Unreleased] - 2026-05-30f
 
 ### Added — ADR-30 Étape 2 livrée : `GU_MENU` + `GU_MENU_ITEM` déclaratifs
