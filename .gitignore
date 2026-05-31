@@ -7,6 +7,9 @@ build/*.oosobj
 apps/*/build/
 *.o
 
+# Stamp file SDK install (Makefile target) — local, jamais commité
+tools/oricos-sdk/.installed-stamp
+
 # Editor / OS
 *.swp
 .DS_Store

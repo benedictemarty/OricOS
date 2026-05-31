@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31p
+
+### Added — `Makefile` P0 : install.sh câblé dans la chaîne make (anti-divergence SDK)
+- **`Makefile`** : nouveau mécanisme stamp file pour garantir que
+  `liboricos.a` (et `crt0`, `oricos.h`, `link.ld`) installés dans
+  `$(LLVM_MOS)/mos-platform/oricos/` correspondent toujours au SDK
+  source du repo. Sans ça, SDK source et `.a` installée divergent
+  silencieusement (apps linkent contre `.a` fossile, tests passent
+  par erreur) — cause racine du désastre découvert 2026-05-31 (cf.
+  bisect : 6 tests Phosphoric fail avec fresh build depuis 881c9f3
+  = commit initial hello_c).
+- **Mécanisme** :
+  - Stamp `tools/oricos-sdk/.installed-stamp` (gitignoré).
+  - Stamp dépend des sources SDK (`oricos.h`, `liboricos.c`,
+    `malloc.c`, `crt0.S`, `link.ld`, `mos-oricos.cfg`, `install.sh`).
+  - Recette stamp = `bash install.sh` puis `touch stamp` puis `rm`
+    des artefacts apps `apps/*/build/*.{bin,oos,oosobj}`. Sans le
+    rm, les Makefile sous apps/ ne re-compilent pas (leurs .bin ne
+    déclarent pas la `.a` installée comme dep — limitation P2).
+  - `all:` et `apps:` dépendent du stamp → `make` garantit que
+    toute modif d'un fichier SDK source déclenche `install.sh` +
+    rebuild apps + rebuild kernel (via `.incbin` des bundles).
+  - Nouvelle cible PHONY `sdk-install` pour forcer manuellement.
+  - Variable `LLVM_MOS ?= $(HOME)/llvm-mos` (override possible).
+- **Test du mécanisme** :
+  - Clean rebuild : install.sh run ✓
+  - `make` (no-op) : "Rien à faire" ✓
+  - `touch tools/oricos-sdk/lib/liboricos.c` : install.sh re-run +
+    apps recompilés + kernel relinké ✓
+- **`.gitignore`** : ajout `tools/oricos-sdk/.installed-stamp`.
+- **Limites out-of-scope P0** :
+  - 8 Makefile d'apps ne déclarent pas `liboricos.a` comme dep
+    direct. Le `rm` du stamp compense, mais shared `apps/oricos-app.mk`
+    + `$(SDK_DEPS)` dans chaque .bin serait plus propre (P2).
+  - `cd Phosphoric && make tests` ne rebuild PAS OricOS au préalable.
+    À câbler côté Phosphoric ou via CI (P2).
+- **Reste P1** : les 6 tests Phosphoric qui fail avec fresh build
+  sont un bug réel pré-existant, NON résolu par P0 (qui empêche juste
+  la prochaine divergence d'accumuler). Investigation séparée requise.
+- Réf : critique utilisateur 2026-05-31 (revue toolbox) + bisect
+  kernel 2026-05-31 (régression chronique depuis 881c9f3).
+
 ## [Unreleased] - 2026-05-31o
 
 ### Changed — `oricos_print_string` : N COP → 1 COP (wrapper SYS_PRINT_STRING)

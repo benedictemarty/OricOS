@@ -33,9 +33,30 @@ APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/score/build/score.oos \
               apps/file_select/build/fileselect.oos
 
-.PHONY: all clean info apps audit-smart test-libc-fmt test-libc-calloc $(APPS)
+# ── SDK userland (liboricos.a + crt0 + header + linker script) ─────
+# install.sh recompile liboricos.a depuis le source SDK et l'installe
+# dans $(LLVM_MOS)/mos-platform/oricos/. Sans ce câblage, le SDK source
+# et la .a installée peuvent diverger silencieusement (les apps linkent
+# contre une .a fossile, les tests passent par erreur) — c'est ce qui a
+# causé la régression diagnostiquée 2026-05-31 (cf. CHANGELOG).
+#
+# Stamp file : recommence install.sh ssi un fichier SDK source plus
+# récent. La marque est gitignorée. Les apps dépendent du stamp → make
+# garantit que l'image SDK installée correspond au source courant.
+LLVM_MOS    ?= $(HOME)/llvm-mos
+SDK_DIR     = tools/oricos-sdk
+SDK_SRCS    = $(SDK_DIR)/include/oricos.h \
+              $(SDK_DIR)/lib/liboricos.c \
+              $(SDK_DIR)/lib/malloc.c \
+              $(SDK_DIR)/lib/crt0.S \
+              $(SDK_DIR)/lib/link.ld \
+              $(SDK_DIR)/mos-oricos.cfg \
+              $(SDK_DIR)/install.sh
+SDK_STAMP   = $(SDK_DIR)/.installed-stamp
 
-all: apps audit-smart $(KERNEL_BIN)
+.PHONY: all clean info apps audit-smart test-libc-fmt test-libc-calloc sdk-install $(APPS)
+
+all: $(SDK_STAMP) apps audit-smart $(KERNEL_BIN)
 
 # Détecte les labels suspects type bug taskbar 2026-05-30 (cf. CLAUDE.md §5
 # « `.smart` ca65 — convention obligatoire »). Exit 1 sur suspect → bloque
@@ -62,7 +83,25 @@ test-libc-calloc:
 	  | tail -1 \
 	  || { echo "test-libc-calloc: FAILED"; exit 1; }
 
-apps: $(APPS)
+# ── SDK install : refresh liboricos.a + crt0 + header si source change ──
+# La cible `sdk-install` force la réinstallation. Le stamp est utilisé
+# en interne pour gater les apps. Si LLVM_MOS introuvable, install.sh
+# error-out proprement.
+sdk-install:
+	@bash $(SDK_DIR)/install.sh $(LLVM_MOS)
+	@touch $(SDK_STAMP)
+
+$(SDK_STAMP): $(SDK_SRCS)
+	@bash $(SDK_DIR)/install.sh $(LLVM_MOS)
+	@touch $@
+	@# Les Makefile sous apps/ ne déclarent PAS la .a installée comme dep
+	@# de leur .bin. Pour garantir que les apps soient recompilées contre
+	@# la nouvelle liboricos.a, on supprime ici leurs artefacts → le
+	@# prochain `make apps` les régénère. Sans ça, divergence garantie
+	@# entre SDK source et apps linkées (cf. CHANGELOG 2026-05-31 P0).
+	@rm -f apps/*/build/*.bin apps/*/build/*.oos apps/*/build/*.oosobj
+
+apps: $(SDK_STAMP) $(APPS)
 
 $(APPS):
 	$(MAKE) -C apps/$@
