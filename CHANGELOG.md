@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31k
+
+### Added — ADR-32 Étapes 2+3 : flag `WM_TASKMODE` (infrastructure, legacy unchanged)
+- **Nouveau flag `WM_TASKMODE = $01EE68`** (zone TC_* sentinelles).
+  Default $00 → comportement legacy (mouse_step appelé en IRQ),
+  $A5 → mouse_step appelé par `task_wm` après `raw_pop` (l'IRQ skip).
+  Rollback runtime instantané (écrire $00 au flag restaure le legacy).
+- **`handlers.s`** : gate `WM_TASKMODE` ajoutée autour de
+  `jsr kernel_wm_mouse_step` (Étape 2 ADR-32).
+- **`event.s task_wm_entry`** : gate `WM_TASKMODE` ajoutée pour appeler
+  `jsr kernel_wm_mouse_step` après `kernel_raw_pop` (Étape 3 ADR-32).
+- **Atomicité par flag unique** (anti-revert ADR-28 Étape 3) : les deux
+  gates lisent le MÊME flag — soit l'IRQ fait mouse_step (legacy),
+  soit task_wm le fait (nouveau), JAMAIS les deux ni aucun.
+- **Pré-requis activation** : Étape 4 ADR-32 (migration `_cursor_draw`
+  hors IRQ + validation interactive) non encore livrée → ne PAS flipper
+  le défaut. Le flag existe pour permettre aux tests d'injection async
+  (avec `cpu816_set_pc_hook` côté Phosphoric, déjà livré ÉTAPE 1) de
+  valider le nouveau chemin sans affecter le comportement utilisateur.
+- Suite tests Phosphoric verte sans régression (legacy inchangé).
+  Réf : `docs/adr/0032-zp-race-irq-task-DRAFT.md` §3 + §5 Étapes 2-3.
+
 ## [Unreleased] - 2026-05-31j
 
 ### Refactored — Audit 65C816 §3.6 COMPLET : couche géométrie isolée

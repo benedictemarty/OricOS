@@ -893,6 +893,9 @@ TC_FILESELECT_FLAG = $01EEB0      ; $A5 → spawn bundle_fileselect (file select
 TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
                                   ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)
+WM_TASKMODE      = $01EE68        ; ADR-32 §3 : $A5 → IRQ skip mouse_step + task_wm le fait
+                                  ; (anti-revert ADR-28 Étape 3 ; default $00 = comportement
+                                  ; actuel ; rollback runtime instantané possible)
 WM_DRAG_NOTIFY_HINT = $01EE70     ; ADR-29 Étape 1 : 0 (default) = DELAYED_DRAG_NOTIFICATION
                                   ;                  $A5 = override IMMEDIATE global (kill-switch debug)
 WIDGET_HINTS        = $016320     ; ADR-29 Étape 2 : 8 × 1B = hint par widget (0=DELAYED, 1=IMMEDIATE)

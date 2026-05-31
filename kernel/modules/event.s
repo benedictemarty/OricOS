@@ -682,10 +682,16 @@ krpop_copy:
 task_wm_entry:
         jsr kernel_raw_wait              ; bloque jusqu'à un record dispo
         jsr kernel_raw_pop               ; $D0..$D9 = record (A = what)
-        ; ADR-28 : appel mouse_step en contexte tâche (Étape 3) REVERTÉ — bug
-        ; interactif observé. mouse_step reste appelé en IRQ (handlers.s).
-        ; Le serveur fait passe-plat pur (Étape 2 fonctionnelle, tests verts).
-        ; Investigation Étape 3 reportée. Cf. ADR-28 §7.4.
+        ; ADR-32 §3 : si WM_TASKMODE=$A5, task_wm est le SEUL appelant de
+        ; mouse_step (l'IRQ a sauté son appel — atomicité). Default $00 →
+        ; pas d'appel ici, comportement legacy (mouse_step en IRQ).
+        ; Pré-requis pour activer ($A5) : Étape 4 ADR-32 (migration curseur)
+        ; non encore livrée → ne PAS flipper le défaut.
+        lda WM_TASKMODE
+        cmp #$A5
+        bne task_wm_skip_mstep
+        jsr kernel_wm_mouse_step
+task_wm_skip_mstep:
         jsr kernel_event_push_verbatim   ; → EVENT_RING (drop si plein, OK v1)
         jsr kernel_event_wake            ; réveille l'app si elle attend
         bra task_wm_entry

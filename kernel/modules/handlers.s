@@ -130,13 +130,15 @@ kernel_irq_handler:
         and #$80                ; bit7 = event
         beq irq_no_mou
         jsr kernel_mouse_read
-        ; ADR-28 : Étape 3 (skip mouse_step en mode serveur) REVERTÉE après bug
-        ; interactif (curseur figé, widgets non réactifs malgré tests headless verts).
-        ; État courant : mouse_step toujours appelé en IRQ ; en mode serveur, le
-        ; serveur fait un double appel (idempotent mais pas optimal). Investigation
-        ; de la cause racine du bug Étape 3 reportée. Ratification ADR-28 (design C)
-        ; tient ; Étape 3 implémentation à reprendre proprement. Cf. §7.4 limites.
+        ; ADR-32 §3 : si WM_TASKMODE=$A5 (anti-revert ADR-28 Étape 3), l'IRQ
+        ; ne fait PAS mouse_step — c'est task_wm qui le fait après raw_pop
+        ; (atomicité par flag unique). Default $00 → comportement legacy
+        ; inchangé (mouse_step en IRQ comme avant).
+        lda WM_TASKMODE
+        cmp #$A5
+        beq irq_skip_mouse_step
         jsr kernel_wm_mouse_step
+irq_skip_mouse_step:
         ; ── SP-3.n G.1 : poste l'événement souris dans la file (edge-detect ──
         ; bouton gauche : down/up sur transition, moved sinon). Coexiste avec
         ; kernel_wm_mouse_step (qui garde sa logique focus/drag actuelle).
