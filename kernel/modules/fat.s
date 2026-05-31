@@ -488,6 +488,10 @@ sd_wait:
 
         ; Copy 512 bytes from SD_DATA to [DP_PCPTR],Y
         ; Y 16-bit pour parcourir 512 bytes.
+        ; IRQ_CONFORMITE §3.3 A audit : ⚠ RISQUE RÉEL — 512 iters,
+        ; Y.hi atteint 2. T1 fire → sep #$30 IRQ handler détruit Y.hi.
+        ; NON observé : SYS_FAT_READ rare, charge SD séquentielle. v2 :
+        ; wrap sei/cli OU option B (IRQ save 16-bit).
         rep #$10                ; X 16-bit (Y aussi)
         ldy #$0000
 sd_copy:
@@ -654,6 +658,11 @@ al_after_alloc:
         lda BUNDLE_FOUND_SIZE           ; 16-bit size (low+high)
         sta $16                         ; $16/$17 = counter 16-bit
         sep #$20                        ; M=1 → A 8-bit
+        ; IRQ_CONFORMITE §3.3 A audit : ⚠ RISQUE RÉEL — copy bundle code
+        ; jusqu'à 64 KiB → Y.hi peut atteindre $FF. T1 fire → sep #$30
+        ; IRQ handler détruit Y.hi → corruption silencieuse copy. NON
+        ; observé : kernel_app_load appelé hors hot-path (boot/spawn).
+        ; v2 : wrap sei/cli OU option B (IRQ save 16-bit).
         rep #$10                        ; X=0 → Y 16-bit
         ldy #$0000
 ae_copy:

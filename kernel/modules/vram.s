@@ -29,6 +29,10 @@ kernel_vram_write_block:
         lda VRAM_OP_ADDR_HI
         sta VRAM_ADDR_HI_IO
         ; Loop : Y 16-bit pour offset.
+        ; IRQ_CONFORMITE §3.3 A audit : X=0 ici → Y.hi peut être détruit par
+        ; sep #$30 dans IRQ handler si T1 fire avec Y > 255. Risque actuel
+        ; théorique : VRAM_OP_LEN typiquement ≤ 256 dans tous les callsites
+        ; courants (charset 1024 = lvl boot, app_load chunks ≤256). v1 OK.
         rep #$10
         ldy #$0000
 vwb_loop:
@@ -59,6 +63,8 @@ kernel_vram_read_block:
         sta VRAM_ADDR_MID_IO
         lda VRAM_OP_ADDR_HI
         sta VRAM_ADDR_HI_IO
+        ; IRQ_CONFORMITE §3.3 A audit : idem vram_write_block — risque
+        ; théorique borné par LEN typique ≤ 256.
         rep #$10
         ldy #$0000
 vrb_loop:

@@ -156,6 +156,13 @@ pc_done:
 ; Pré-cond : mode N M=X=1, DBR=0.
 .export kernel_scroll_up
 kernel_scroll_up:
+        ; IRQ_CONFORMITE §3.3 A audit : ⚠ RISQUE RÉEL — X 16-bit pendant
+        ; ~4500 cycles (1080+40 copy iters × ~4 cyc), couvre largement
+        ; une période T1 (4096 cyc). Si T1 fire avec X > 255, le
+        ; sep #$30 dans IRQ handler détruit X.hi → loop redémarre ou
+        ; saute des bytes. NON observé en pratique (fréquence d'appel
+        ; faible : scroll n'arrive qu'au wrap d'écran). À durcir v2
+        ; avec sei/cli wrapper OU option B (IRQ save 16-bit).
         rep #$10                 ; X 16-bit (compteur > 255)
         ldx #$0000
         ; f: force l'adressage long (bank 0 explicite) : indépendant du DBR

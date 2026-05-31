@@ -2,6 +2,48 @@
 ; Copyright (c) 2026 Bénédicte Marty
 ; Module : handlers.s — inclus depuis kernel.s
 ;
+; ════════════════════════════════════════════════════════════════════
+;  INVARIANT « index 8-bit aux points préemptibles » (IRQ_CONFORMITE §3.3 A)
+; ════════════════════════════════════════════════════════════════════
+;
+;  Le `kernel_irq_handler` ci-dessous fait `sep #$30` AVANT `pha/phx/phy`.
+;  Conséquence : si la tâche interrompue était en X=0 (index 16-bit), les
+;  octets HAUTS de X et Y sont mis à zéro par le `sep #$30` AVANT la
+;  sauvegarde 8-bit. Au `rti`, P restore le X bit du caller (→ X=0 16-bit
+;  à nouveau) mais les VALEURS hautes de X/Y restent à 0 — silencieusement.
+;
+;  Pour éviter cette corruption silencieuse, INVARIANT v1 :
+;
+;    « Toute tâche et tout handler de syscall est en X=1 (index 8-bit)
+;      aux points préemptibles. Tout passage en X=0 (rep #$10/#$30) doit
+;      être une région tightement bornée, soit (a) appelée à un moment où
+;      le timer T1 n'est pas armé (boot), soit (b) telle que Y.hi reste
+;      naturellement à 0 (≤ 255 iter), soit (c) protégée par sei/cli. »
+;
+;  Audit des sites kernel utilisant rep #$10/#$30 (2026-05-31) :
+;
+;    Site                          | Risque       | Mitigation actuelle
+;    ──────────────────────────────|──────────────|──────────────────────────
+;    console.s install_charset     | aucun (MVN)  | MVN HW, pas de Y loop
+;    console.s clear_screen        | théorique    | (a) boot only, T1 inactif
+;    console.s scroll_up           | RÉEL ≤1080   | (b) ⚠ post-boot — à
+;                                  |              |     wrapper sei/cli v2
+;    vram.s vram_write_block       | théorique    | (b) LEN typiquement ≤ 256
+;    vram.s vram_read_block        | théorique    | (b) LEN typiquement ≤ 256
+;    tk.s   _tk_upload_str         | aucun        | (b) borné à 255 octets
+;    fat.s  sd_read_block (sd_copy)| RÉEL 512     | (c) ⚠ à wrapper sei/cli v2
+;    fat.s  kernel_app_load ae_copy| RÉEL ≤64KiB  | (c) ⚠ à wrapper sei/cli v2
+;
+;  v1 status : 3 sites RÉELS identifiés ; aucun n'a déclenché de bug
+;  observable dans la suite Phosphoric verte (probablement parce que
+;  la fenêtre de course est étroite vs la période T1 et la fréquence
+;  d'appel post-boot). À durcir avec sei/cli wrappers en v2 quand un
+;  bug se manifeste, OU faire option B (IRQ handler save/restore en
+;  16-bit, frame format change — multi-fichiers atomique).
+;
+;  Référence : IRQ_CONFORMITE.md §3.3 (livré par bmarty 2026-05-31).
+; ════════════════════════════════════════════════════════════════════
+
         .segment "NMI_HANDLER"
 
 .export kernel_nmi_handler

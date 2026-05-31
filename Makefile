@@ -54,9 +54,9 @@ SDK_SRCS    = $(SDK_DIR)/include/oricos.h \
               $(SDK_DIR)/install.sh
 SDK_STAMP   = $(SDK_DIR)/.installed-stamp
 
-.PHONY: all clean info apps audit-smart test-libc-fmt test-libc-calloc sdk-install $(APPS)
+.PHONY: all clean info apps audit-smart audit-rep-x test-libc-fmt test-libc-calloc sdk-install $(APPS)
 
-all: $(SDK_STAMP) apps audit-smart $(KERNEL_BIN)
+all: $(SDK_STAMP) apps audit-smart audit-rep-x $(KERNEL_BIN)
 
 # Détecte les labels suspects type bug taskbar 2026-05-30 (cf. CLAUDE.md §5
 # « `.smart` ca65 — convention obligatoire »). Exit 1 sur suspect → bloque
@@ -65,6 +65,22 @@ audit-smart:
 	@python3 tools/tests/test_audit_smart.py >/dev/null \
 	  || { echo "audit-smart: corpus de regression FAILED — voir tools/tests/test_audit_smart.py"; exit 1; }
 	@python3 tools/audit-smart.py kernel
+
+# IRQ_CONFORMITE §3.3 A : détecte les nouveaux sites `rep #$10/#$30` (X 16-bit)
+# qui pourraient corrompre Y.hi si T1 fire pendant. Compte vs baseline auditée
+# (cf. handlers.s tableau du §3.3 A). Échoue si nouveau site non documenté.
+AUDIT_REP_X_BASELINE := 8
+audit-rep-x:
+	@count=$$(grep -rnE 'rep #\$$[13][0-9a-fA-F]' kernel/modules/ kernel/kernel.s 2>/dev/null | grep -v '\.assert\|asize\|isize' | grep -v ':;' | wc -l); \
+	if [ "$$count" != "$(AUDIT_REP_X_BASELINE)" ]; then \
+	    echo "audit-rep-x : $$count sites rep #\$$1x/#\$$3x trouvés (baseline = $(AUDIT_REP_X_BASELINE))."; \
+	    echo "  → nouveau site potentiellement à risque IRQ_CONFORMITE §3.3 A."; \
+	    echo "  → auditer + annoter en commentaire, puis MAJ AUDIT_REP_X_BASELINE dans Makefile."; \
+	    grep -rnE 'rep #\$$[13][0-9a-fA-F]' kernel/modules/ kernel/kernel.s 2>/dev/null | grep -v '\.assert\|asize\|isize' | grep -v ':;'; \
+	    exit 1; \
+	else \
+	    echo "audit-rep-x : $$count sites, conforme baseline (tous annotés handlers.s §3.3 A)."; \
+	fi
 
 # Test natif (host gcc) du formatage liboricos — verrouille le fix %u
 # (bug : itoa((int)v, …, 10) → "-25536" pour 40000 en env int=16-bit).

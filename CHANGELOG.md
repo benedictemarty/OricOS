@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31t
+
+### Added — IRQ_CONFORMITE §3.3 A : invariant index 8-bit + audit + cible CI
+- **`handlers.s`** : section invariant en tête de fichier qui acte la
+  convention « toute tâche/handler de syscall est en X=1 (index 8-bit)
+  aux points préemptibles ». Documente le piège : `kernel_irq_handler`
+  fait `sep #$30` AVANT `pha/phx/phy` → si caller en X=0, octets HAUTS
+  de X/Y mis à zéro par le sep AVANT la sauvegarde → corruption
+  silencieuse au `rti`.
+- **Audit complet** : 8 sites `rep #$10/#$30` identifiés (kernel
+  uniquement, hors macros) :
+  * `kernel_install_charset` (MVN, pas de Y loop) — aucun risque
+  * `kernel_clear_screen` — théorique, boot only (T1 inactif)
+  * `kernel_scroll_up` — **RÉEL** (~1080 iters post-boot)
+  * `kernel_vram_write_block` / `read_block` — théorique (LEN ≤ 256)
+  * `_tk_upload_str` — borné à 255 octets
+  * `sd_read_block` (sd_copy) — **RÉEL** (512 iters)
+  * `kernel_app_load` (ae_copy) — **RÉEL** (≤ 64 KiB)
+- **Annotations in-line** ajoutées aux 3 sites RÉELS + 2 théoriques
+  bornés, documentant le risque + mitigation actuelle (boucle bornée /
+  contexte d'appel rare) + plan v2 (sei/cli wrappers OU option B
+  IRQ save 16-bit).
+- **Nouvelle cible Makefile `audit-rep-x`** : grep + count vs baseline
+  (`AUDIT_REP_X_BASELINE := 8`), échec si nouveau site non documenté.
+  Câblée à `all:` → bloque build sur régression. Canary test validé :
+  injection 9e site fait échouer le build, retrait → pass.
+- **Status v1 stable** : aucun bug observable dans la suite Phosphoric
+  (12/12 helloc, 0 FAIL global). Les 3 sites RÉELS sont latents par
+  chance (fenêtre étroite vs période T1, fréquence d'appel faible
+  post-boot). Si un bug se manifeste interactivement, durcir par
+  sei/cli wrapper OU passer en option B (IRQ handler save 16-bit,
+  multi-fichiers atomique cf. IRQ_CONFORMITE.md §3.3 B).
+- Réf : `IRQ_CONFORMITE.md` §3.3 option A (livré par bmarty
+  2026-05-31).
+
 ## [Unreleased] - 2026-05-31s
 
 ### Added — GFX ABI livré (audit §3) + fix dette ZP via save/restore kernel
