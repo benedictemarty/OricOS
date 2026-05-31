@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31s
+
+### Added — GFX ABI livré (audit §3) + fix dette ZP via save/restore kernel
+- **Fix racine** (option D du P2 documenté en 2026-05-31r) :
+  `sys_gfx_fill_rect` save/restore `$90-$93` (`GFX_BPL_LO/HI`,
+  `GFX_ARG4_LO/MID`) sur la stack avant/après appel à
+  `kernel_gfx_window_base`/`kernel_gfx_fill_rect`. Ces slots ZP
+  overlap les imag-regs llvm-mos `__rc7..__rc10` utilisés par les
+  apps userland. Sans préservation, kernel_gfx_window_base
+  corrompait silencieusement les pointeurs intermédiaires de
+  l'app → boucle infinie (cas exposé par clock.c).
+- **Solution choisie** : 8 instructions (4 pha + 4 pla) au début/fin
+  du syscall. Coût : ~8 stack bytes + ~24 cycles. Mineur vs le
+  refactor invasif des autres options.
+- **ABI userland migrée** : `oricos_gfx_fill_rect` écrit désormais
+  dans le bloc dédié `$D0-$D4` (PAS `$73-$78`). Kernel
+  `sys_gfx_fill_rect` recopie vers `GFX_*` sous son propre contrôle.
+  Ferme la course IRQ↔task §3.3a pour ce syscall (l'IRQ qui touche
+  `GFX_*` ne peut plus corrompre les args app posés en `$D0-$D4`).
+- **Sites kernel-internal migrés** : `task_wdraw_entry` +
+  `task_compact_entry` (2 sites dans alloc.s) → écrivent `$D0-$D4`
+  comme un caller userland.
+- **Validation** : suite Phosphoric **COMPLET vert** — 12/12
+  test_oricos_helloc + 0 FAIL global. La régression chronique des
+  6 tests qui datait de 881c9f3 est désormais résolue (P0 install.sh
+  + P1 crt0 + P2 GFX ABI).
+- Réf : critique utilisateur 2026-05-31 (revue toolbox §3).
+
 ## [Unreleased] - 2026-05-31r
 
 ### Investigation — option B P2 testée et insuffisante

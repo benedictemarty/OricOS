@@ -5180,10 +5180,40 @@ sys_gfx_clear:
         rts
 
 ; $0E — SYS_GFX_FILL_RECT ─────────────────────────────────────────────
+; ABI userland (audit §3 toolbox 2026-05-31) : args dans le bloc
+; user→kernel dédié $D0-$D4 (PAS dans les scratch kernel $73-$78).
+; Save/restore $90-$93 (GFX_BPL/ARG4 kernel scratch) car ces slots ZP
+; overlap les imag-regs llvm-mos __rc7..__rc10 utilisés par les apps.
 sys_gfx_fill_rect:
+        lda $90
+        pha
+        lda $91
+        pha
+        lda $92
+        pha
+        lda $93
+        pha
+        lda $D0
+        sta GFX_ARG2_LO              ; x
+        lda $D1
+        sta GFX_ARG2_MID             ; y
+        lda $D2
+        sta GFX_ARG3_LO              ; w
+        lda $D3
+        sta GFX_ARG3_MID             ; h
+        lda $D4
+        sta GFX_COLOR
         jsr kernel_gfx_window_base   ; G.4 + ADR-27 B2 : GFX_BASE + bpl du slot
         jsr kernel_gfx_fill_rect
         jsr kernel_gfx_finish        ; ADR-27 B2 : confine bpl au syscall
+        pla
+        sta $93
+        pla
+        sta $92
+        pla
+        sta $91
+        pla
+        sta $90
         lda #$00
         rts
 

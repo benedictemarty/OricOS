@@ -338,11 +338,11 @@ uint8_t oricos_win_create(uint16_t x, uint16_t y, uint16_t w, uint16_t h) {
 static __attribute__((always_inline)) inline
 void oricos_gfx_fill_rect(uint8_t x, uint8_t y, uint8_t w, uint8_t h, uint8_t color) {
     __asm__ volatile (
-        "lda %[x]\n sta $73\n"
-        "lda %[y]\n sta $74\n"
-        "lda %[w]\n sta $76\n"
-        "lda %[h]\n sta $77\n"
-        "lda %[c]\n sta $78\n"
+        "lda %[x]\n sta $D0\n"
+        "lda %[y]\n sta $D1\n"
+        "lda %[w]\n sta $D2\n"
+        "lda %[h]\n sta $D3\n"
+        "lda %[c]\n sta $D4\n"
         _ORICOS_LDA_SYS(SYS_GFX_FILL_RECT)
         ".byte 0x02, 0xAA\n"
         :

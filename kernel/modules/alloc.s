@@ -720,15 +720,16 @@ task_wdraw_entry:
         lda #$13                ; SYS_WIN_CREATE
         cop #$AA
         sta TASK_WIN_HANDLE
+        ; SYS_GFX_FILL_RECT ABI 2026-05-31 : args via $D0-$D4.
         lda #$00
-        sta GFX_ARG2_LO         ; x local = 0
-        sta GFX_ARG2_MID        ; y local = 0
+        sta $D0
+        sta $D1
         lda #$08
-        sta GFX_ARG3_LO         ; w = 8
-        sta GFX_ARG3_MID        ; h = 8
+        sta $D2
+        sta $D3
         lda #$0F
-        sta GFX_COLOR           ; couleur 15 (blanc, $FF) — distincte du fond desktop ($44)
-        lda #$0E                ; SYS_GFX_FILL_RECT (→ backing store fenêtre)
+        sta $D4
+        lda #$0E                ; SYS_GFX_FILL_RECT
         cop #$AA
         ; G.4bis : composite les backing stores → framebuffer XVGA (tâche kernel
         ; → appel direct ; en vrai une app passerait par un futur SYS_WIN_FLUSH).
@@ -774,26 +775,26 @@ task_compact_entry:
         tax
         lda #WM_COMPACT_MAGIC
         sta f:WM_COMPACT_FLAGS,X
-        ; FILL_RECT (0,0, 64,64) couleur 1 (bleu = bg) en backing-store compact
+        ; FILL_RECT (0,0, 64,64) couleur 1. ABI 2026-05-31 : args via $D0-$D4.
         lda #$00
-        sta GFX_ARG2_LO
-        sta GFX_ARG2_MID
+        sta $D0
+        sta $D1
         lda #64
-        sta GFX_ARG3_LO
-        sta GFX_ARG3_MID
+        sta $D2
+        sta $D3
         lda #$01
-        sta GFX_COLOR
+        sta $D4
         lda #$0E                ; SYS_GFX_FILL_RECT
         cop #$AA
         ; FILL_RECT (10,10, 20,20) couleur 7 (rouge)
         lda #10
-        sta GFX_ARG2_LO
-        sta GFX_ARG2_MID
+        sta $D0
+        sta $D1
         lda #20
-        sta GFX_ARG3_LO
-        sta GFX_ARG3_MID
+        sta $D2
+        sta $D3
         lda #$07
-        sta GFX_COLOR
+        sta $D4
         lda #$0E
         cop #$AA
 task_compact_loop:
