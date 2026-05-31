@@ -2708,77 +2708,105 @@ _wm_redraw_ctl:
 ;   _ : [win_x+win_w-36 .. win_x+win_w-25]
 ; Y titlebar : [win_y .. win_y+13]
 ; Modifie A, X.
+; ── _point_in_rect16 : (MOUSE_X, MOUSE_Y) ∈ PIR_RECT_* ? (audit §3.6 / 8.2) ──
+; Primitive géométrique unique. Caller pose le rect dans la ZP dédiée
+; (PIR_RECT_X/Y/W/H, 16-bit chacun) puis appelle. Point lu directement depuis
+; MOUSE_X/MOUSE_Y (bank 1, 16-bit).
+; Out : C=1 si (x,y) ∈ [rx..rx+w) × [ry..ry+h), C=0 sinon.
+; Mode : entre/sort M=8 (ASSERT_A8). UNE seule frontière rep/sep, AUCUNE
+;        branche ne la traverse — toutes les bcc/bcs/bra restent en M=16.
+;        Discipline issue de l'audit §3.6 et axe 8.3.
+; Préserve : X, Y (callers itèrent dessus).
+.export _point_in_rect16
+_point_in_rect16:
+        ASSERT_A8
+        rep #$20
+        .a16
+        ; mouse_x >= rx ?
+        lda MOUSE_X
+        cmp PIR_RECT_X
+        bcc _pir_out
+        ; rx + w → PIR_TMP, puis mouse_x < rx+w ?
+        lda PIR_RECT_X
+        clc
+        adc PIR_RECT_W
+        sta PIR_TMP
+        lda MOUSE_X
+        cmp PIR_TMP
+        bcs _pir_out
+        ; mouse_y >= ry ?
+        lda MOUSE_Y
+        cmp PIR_RECT_Y
+        bcc _pir_out
+        ; ry + h → PIR_TMP, puis mouse_y < ry+h ?
+        lda PIR_RECT_Y
+        clc
+        adc PIR_RECT_H
+        sta PIR_TMP
+        lda MOUSE_Y
+        cmp PIR_TMP
+        bcs _pir_out
+        sec                     ; inside
+        bra _pir_done
+_pir_out:
+        .a16                    ; reached via bcc/bcs after flow-break (bra)
+        clc                     ; outside
+_pir_done:
+        .a16                    ; reached via bra (flow-break) ou fall-through
+        sep #$20
+        .a8
+        rts
+
 _wm_chrome_hit:
         ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         lda WIN_SLOT
         cmp #WM_MAX
         bcs _crh_no              ; slot invalide → 0
         jsr kernel_wm_offset     ; X = slot*10
+        ; ── Pose le rect commun : y = win_y, h = 13, w = 12.
+        ;    rx = win_right - 12 (zone × = la + à droite, priorité 1).
         rep #$20
-        ; Vérifie d'abord MOUSE_Y dans la titlebar [win_y .. win_y+13]
-        lda MOUSE_Y
-        cmp WM_TABLE+WM_OFF_Y,X
-        bcc _crh_no16            ; mouse_y < win_y → no
         lda WM_TABLE+WM_OFF_Y,X
-        clc
-        adc #13
-        sta WM_DP_TMP
-        lda MOUSE_Y
-        cmp WM_DP_TMP
-        bcs _crh_no16            ; mouse_y > win_y+13 → no
-        ; Calcule win_x + win_w (bord droit exclus)
+        sta PIR_RECT_Y
+        lda #13
+        sta PIR_RECT_H
+        lda #12
+        sta PIR_RECT_W
         lda WM_TABLE+WM_OFF_X,X
         clc
-        adc WM_TABLE+WM_OFF_W,X
-        sta WM_DP_TMP            ; win_right = win_x + win_w
-        ; MOUSE_X < win_right ? (à droite totalement → no)
-        lda MOUSE_X
-        cmp WM_DP_TMP
-        bcs _crh_no16
-        ; Test zone × : [win_right-12 .. win_right-1]
-        lda WM_DP_TMP
+        adc WM_TABLE+WM_OFF_W,X ; A = win_right
         sec
         sbc #12
-        sta WM_CRH_TMP           ; close_left = win_right - 12
-        lda MOUSE_X
-        cmp WM_CRH_TMP
-        bcc _crh_test_max        ; mouse_x < close_left → test □
-        ; mouse_x >= close_left et < win_right → × hit
+        sta PIR_RECT_X          ; rx = win_right - 12 (× zone)
         sep #$20
+        jsr _point_in_rect16    ; teste × zone
+        bcc _crh_try_max
         lda #$01
         rts
-_crh_test_max:
-        ; Test zone □ : [win_right-24 .. win_right-13]
-        ; Note : atteint depuis rep #$20 (M=0) par bcc, mais le sep #$20
-        ; juste avant trompe ca65. Forcer 16-bit explicitement.
+_crh_try_max:
+        ASSERT_A8
         rep #$20
-        lda WM_CRH_TMP           ; close_left = win_right-12
+        lda PIR_RECT_X
         sec
         sbc #12
-        sta WM_CRH_TMP+2         ; max_left = win_right-24
-        lda MOUSE_X
-        cmp WM_CRH_TMP+2
-        bcc _crh_test_min        ; mouse_x < max_left → test _
-        ; mouse_x >= max_left et < close_left → □ hit
+        sta PIR_RECT_X          ; rx -= 12 → □ zone
         sep #$20
+        jsr _point_in_rect16
+        bcc _crh_try_min
         lda #$02
         rts
-_crh_test_min:
-        ; Test zone _ : [win_right-36 .. win_right-25]
+_crh_try_min:
+        ASSERT_A8
         rep #$20
-        lda WM_CRH_TMP+2         ; max_left = win_right-24
+        lda PIR_RECT_X
         sec
         sbc #12
-        sta WM_CRH_TMP+4         ; min_left = win_right-36
-        lda MOUSE_X
-        cmp WM_CRH_TMP+4
-        bcc _crh_no16            ; mouse_x < min_left → no
-        ; mouse_x >= min_left et < max_left → _ hit
+        sta PIR_RECT_X          ; rx -= 12 → _ zone
         sep #$20
+        jsr _point_in_rect16
+        bcc _crh_no
         lda #$03
         rts
-_crh_no16:
-        sep #$20
 _crh_no:
         lda #$00
         rts

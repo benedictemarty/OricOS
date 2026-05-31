@@ -285,6 +285,9 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $25-$2A   6B       WM_CRH_TMP         scratch _wm_chrome_hit (SP-3.h)
 ;  $32-$33   2B       WM_RH_TMP          scratch _wm_resize_hit (audit §3.6.2 :
 ;                                        ex WM_ARG_DX overload — conflit IRQ↔task)
+;  $34-$3B   8B       PIR_RECT_*         rect 16-bit pour _point_in_rect16
+;                                        (X/Y/W/H, audit §3.6 / axe 8.2)
+;  $3C-$3D   2B       PIR_TMP            scratch interne _point_in_rect16
 ;  $2B       1B       WM_ZN_CACHE        cache ZP de WM_ZORDER_N (CPY/CPX sans mode long)
 ;  $2C-$2E   3B       SCHED_PTR          pointeur &tcb[pid] (scheduler, contexte IRQ)
 ;  $2F       1B       SCHED_CAND         pid candidat scan round-robin
@@ -1025,6 +1028,15 @@ WM_ZN_CACHE     = $2B           ; 1B cache ZP de WM_ZORDER_N (CPY/CPX ne font pa
 ; Audit §3.6.2 : scratch dédié _wm_resize_hit (était : overload WM_ARG_DX,
 ; problématique car WM_ARG_DX est un ARG syscall partagé avec contexte IRQ).
 WM_RH_TMP       = $32           ; 2B : win_bottom 16-bit
+
+; Audit §3.6 / axe 8.2 : primitive _point_in_rect16 — couche géométrie isolée.
+; Le rect est posé en ZP par le caller, le point est lu directement depuis
+; MOUSE_X/MOUSE_Y (bank 1) par la primitive. Conserve X/Y pour itérations.
+PIR_RECT_X      = $34           ; 2B : rect.x (16-bit)
+PIR_RECT_Y      = $36           ; 2B : rect.y (16-bit)
+PIR_RECT_W      = $38           ; 2B : rect.w (16-bit)
+PIR_RECT_H      = $3A           ; 2B : rect.h (16-bit)
+PIR_TMP         = $3C           ; 2B : scratch interne (rx+w, ry+h)
 
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)
