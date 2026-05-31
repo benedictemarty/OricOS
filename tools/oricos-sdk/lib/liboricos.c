@@ -71,20 +71,12 @@ int strcmp(const char *a, const char *b) {
 
 /* ── Conversion entier → chaîne ─────────────────────────────────── */
 
-/* itoa : base 10 ou 16. buf doit être ≥ 7 bytes (16-bit max = 65535). */
-char *itoa(int val, char *buf, int base) {
+/* _utoa : primitive unsigned 16-bit → string (base 10 ou 16). Pas de signe.
+ * buf doit être ≥ 6 bytes (5 chiffres décimaux max + '\0' pour 65535). */
+static char *_utoa(uint16_t u, char *buf, int base) {
     static const char digits[] = "0123456789abcdef";
     char tmp[8];
     uint8_t i = 0;
-    uint16_t u;
-    uint8_t neg = 0;
-
-    if (base == 10 && val < 0) {
-        neg = 1;
-        u = (uint16_t)(-(int16_t)val);
-    } else {
-        u = (uint16_t)val;
-    }
 
     if (u == 0) {
         tmp[i++] = '0';
@@ -94,12 +86,23 @@ char *itoa(int val, char *buf, int base) {
             u = u / (uint16_t)base;
         }
     }
-    if (neg) tmp[i++] = '-';
 
     /* Reverse */
     char *p = buf;
     while (i--) *p++ = tmp[i];
     *p = '\0';
+    return buf;
+}
+
+/* itoa : signed wrapper de _utoa. Le signe n'est appliqué qu'en base 10
+ * (en base 16, val est traité comme unsigned 16-bit). */
+char *itoa(int val, char *buf, int base) {
+    if (base == 10 && val < 0) {
+        buf[0] = '-';
+        _utoa((uint16_t)(-(int16_t)val), buf + 1, 10);
+    } else {
+        _utoa((uint16_t)val, buf, base);
+    }
     return buf;
 }
 
@@ -173,8 +176,11 @@ static int _vfmtcore(void (*out_char)(char, void *), void *ctx,
             break;
         }
         case 'u': {
+            /* Fix critique : itoa((int)v, …, 10) traitait v en signed →
+             * %u 40000 imprimait "-25536" (40000 cast → int16=-25536 →
+             * itoa ajoute '-' et imprime abs). _utoa direct = unsigned. */
             unsigned int v = va_arg(ap, unsigned int);
-            itoa((int)v, nbuf, 10);
+            _utoa((uint16_t)v, nbuf, 10);
             const char *p = nbuf;
             while (*p) {
                 if (out_char) out_char(*p, ctx); else putchar(*p);
@@ -184,7 +190,7 @@ static int _vfmtcore(void (*out_char)(char, void *), void *ctx,
         }
         case 'x': {
             unsigned int v = va_arg(ap, unsigned int);
-            itoa((int)v, nbuf, 16);
+            _utoa((uint16_t)v, nbuf, 16);
             const char *p = nbuf;
             while (*p) {
                 if (out_char) out_char(*p, ctx); else putchar(*p);

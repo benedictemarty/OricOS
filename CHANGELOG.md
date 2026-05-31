@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31m
+
+### Fixed — `liboricos.c` : `%u` cassé pour val ≥ 32768 (bug `itoa((int)v)`)
+- **`tools/oricos-sdk/lib/liboricos.c`** : `_vfmtcore` faisait
+  `itoa((int)v, nbuf, 10)` pour `%u`. En env OricOS (int=16-bit),
+  `(int)40000` = -25536 (wrap signed) → `itoa` voyait `val<0`, ajoutait
+  `-` et imprimait `"-25536"` au lieu de `"40000"`. Toute app printf
+  un compteur > 32767 voyait des résultats faux silencieusement.
+- **Fix** : nouvelle primitive interne `_utoa(uint16_t, char*, int)`,
+  unsigned-only (pas de logique de signe). `%u` et `%x` l'appellent
+  directement. `itoa` (API publique) la wrap, n'ajoute le `-` qu'en
+  base 10 sur val négative. Plus de cast `(int)v` dans le chemin
+  unsigned → impossible structurellement de reproduire le bug.
+- **Corpus de test natif** (`tools/oricos-sdk/lib/tests/`) : 22 cas
+  couvrant `_utoa` sur uint16_t critiques (0, INT16_MAX, INT16_MAX+1,
+  40000 — la valeur du bug, UINT16_MAX), bases 10 et 16, + `itoa`
+  signed (INT16_MIN), + sprintf %%u/%%x. Stub minimal de `oricos.h`
+  (decls extern seulement) pour bypass l'inline asm 65816 → compile
+  en gcc native.
+- **Anti-régression** : sans le fix, le test échoue à la COMPILE
+  (implicit declaration de `_utoa`) — signal plus fort qu'un FAIL
+  runtime.
+- **`Makefile`** : cible `make test-libc-fmt` lance le test natif.
+- **Limite documentée** : sur host (int=32-bit), le bug original n'est
+  pas reproductible via `sprintf("%u", 40000u)` (cast garde la
+  positivité). Le test verrouille donc la primitive `_utoa` directement
+  sur les uint16_t critiques.
+- Réf : critique utilisateur 2026-05-31 (revue toolbox).
+
 ## [Unreleased] - 2026-05-31l
 
 ### Fixed — `audit-smart.py` : pré-filtre `"20" in operand` ignorait `rep/sep #$30`

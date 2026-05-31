@@ -33,7 +33,7 @@ APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/score/build/score.oos \
               apps/file_select/build/fileselect.oos
 
-.PHONY: all clean info apps audit-smart $(APPS)
+.PHONY: all clean info apps audit-smart test-libc-fmt $(APPS)
 
 all: apps audit-smart $(KERNEL_BIN)
 
@@ -44,6 +44,15 @@ audit-smart:
 	@python3 tools/tests/test_audit_smart.py >/dev/null \
 	  || { echo "audit-smart: corpus de regression FAILED — voir tools/tests/test_audit_smart.py"; exit 1; }
 	@python3 tools/audit-smart.py kernel
+
+# Test natif (host gcc) du formatage liboricos — verrouille le fix %u
+# (bug : itoa((int)v, …, 10) → "-25536" pour 40000 en env int=16-bit).
+test-libc-fmt:
+	@cd tools/oricos-sdk/lib && gcc -std=c99 -Wall -Wextra -Wno-unused-function \
+	  -Itests/stubs -o /tmp/test_liboricos_fmt tests/test_liboricos_fmt.c \
+	  && /tmp/test_liboricos_fmt 2>&1 \
+	  | tail -1 \
+	  || { echo "test-libc-fmt: FAILED"; exit 1; }
 
 apps: $(APPS)
 
