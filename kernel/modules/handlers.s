@@ -46,6 +46,11 @@
 
         .segment "NMI_HANDLER"
 
+; IRQ_CONFORMITE §3.4 hygiène : aucune source NMI câblée v1
+; (pas de bouton reset, pas d'overflow VIA, pas de cartridge IRQ). Le
+; vecteur NMI bank 1 ($5500) reçoit l'éventuel NMI parasite et `rti`
+; immédiat — no-op silencieux. Si une homologation HW exige robustesse,
+; ajouter un log minimal (PANIC_NMI_SPURIOUS) avant rti.
 .export kernel_nmi_handler
 kernel_nmi_handler:
         rti
@@ -204,6 +209,12 @@ irq_mou_post:
         jsr kernel_event_push_mouse
 irq_no_mou:
         ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring ───────────
+        ; IRQ_CONFORMITE §3.4 : optimisation envisagée (court-circuit si
+        ; KBD2_STATUS bit7 = 0) testée mais cassait des sentinelles
+        ; cycle-précises de ctl_demo (drag scrollbar). Gain ~24 cycles/IRQ
+        ; trop marginal pour justifier la régression de test. À reconsidérer
+        ; quand §3.1 (top-half minimal) sera livrée et que les tests timing
+        ; seront rebasés.
         jsr kernel_kbd_poll
         ; ── g.5 : réveille la tâche bloquée sur le clavier (si touche dispo) ──
         jsr kernel_kbd_wake
