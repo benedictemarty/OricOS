@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31h
+
+### Cleaned — Audit 65C816 §5 : nettoyages mineurs
+- **`kernel.s`** : commentaire ADR-20 corrigé `SVGA 800×600` → `XVGA
+  1024×768×4bpp` (cohérence avec BPL=512, `_cursor_clamp` 1016/760, et
+  reste du kernel).
+- **`fat.s` (`kernel_app_load`)** : suppression `cmp #$00` redondant
+  après `jsr kernel_alloc_bank` (Z déjà positionné par le retour A).
+
 ## [Unreleased] - 2026-05-31g
 
 ### Fixed — Audit 65C816 §3.2 : fuite page de pile par dérivation pid

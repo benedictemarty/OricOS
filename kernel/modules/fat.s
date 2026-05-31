@@ -626,8 +626,7 @@ al_after_validate:
         rts
 al_after_find:
         jsr kernel_alloc_bank
-        cmp #$00
-        bne al_after_alloc
+        bne al_after_alloc              ; retour A=0 → Z déjà positionné
         rts                             ; A=$00 (pool exhausted)
 al_after_alloc:
         sta BUNDLE_APP_BANK

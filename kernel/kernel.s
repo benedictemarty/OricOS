@@ -132,8 +132,8 @@ BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
 
 ; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19 + ADR-20) ─────
 ; Pool live : banks 132-159 (= $84..$9F, 28 banks) en BRAM ECP5.
-; Banks 128-131 ($80..$83) réservés au framebuffer principal SVGA
-; 800x600x4bpp (4 banks consécutifs, ADR-20).
+; Banks 128-131 ($80..$83) réservés au framebuffer principal XVGA
+; 1024×768×4bpp (4 banks consécutifs, ADR-20 ; BPL=512 → 1024 px/ligne).
 ; Pool live = backing-stores fenêtres GUI actives + buffers GPU.
 BANK_LIVE_NEXT       = $015458   ; prochain bank live via bump (uint8)
 BANK_LIVE_DEMO       = $015468   ; 4 octets : résultats alloc/free demo
