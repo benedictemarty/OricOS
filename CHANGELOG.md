@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31r
+
+### Investigation — GFX ABI ($D0-$D4) bloquée par dette ZP kernel↔user
+- Tentative de relivrer l'item §3 toolbox (GFX_FILL_RECT via $D0-$D4
+  au lieu de $73-$78 direct) post-P1. Échec sur `test_oricos_clock`
+  uniquement (11/12). Investigation profonde :
+  * Disasm clock.bin : compiler LLVM (LTO + always_inline) génère un
+    code qui place pointeurs intermédiaires en **__rc7..__rc10
+    ($90-$93)** AVANT l'appel `oricos_gfx_fill_rect`.
+  * **OR le kernel** `kernel_gfx_window_base` (appelé depuis
+    sys_gfx_fill_rect) écrit `GFX_BPL_LO=$90`, `GFX_BPL_HI=$91`
+    (compact slot OU shadow non-zéro). Conflit kernel ZP ↔ user
+    imag-regs.
+  * Bug pré-existant (même conflit avec OLD ABI $73-$78) — mais la
+    recompilation contre la nouvelle oricos.h change l'allocation
+    rc du compilateur. Avec ancien ABI, clock plaçait ses pointeurs
+    dans rc11+ (= $94+), évitant fortuitement le conflit. Avec
+    nouveau ABI, allocations différentes → conflit manifeste.
+- **GFX ABI reverté** au state HEAD pour garder suite verte.
+  Documenté ici comme **dette structurelle P2** pour §9 :
+  * Kernel ZP $90-$93 (`GFX_BPL_LO/HI`, `GFX_ARG4_LO/MID`)
+    overlap user imag-regs `__rc7..__rc10`.
+  * Fix propre : déplacer GFX_BPL/ARG4 hors zone $89-$A8 (kernel
+    move) OU augmenter __rc0 base au-dessus de $93 (link.ld user
+    change, mais réduit user ZP utile).
+  * Sans ce fix, toute évolution ABI userland qui touche $D0-$DF
+    risque de réveiller le conflit pour d'autres apps.
+- **Status mes commits SDK session restants** : audit-smart, %u,
+  calloc, print_string wrapper — tous validés end-to-end 12/12 PASS.
+  Seul GFX ABI reste bloqué pendant que le P2 ci-dessus n'est pas
+  traité.
+
 ## [Unreleased] - 2026-05-31q
 
 ### Fixed — P1 : `install.sh` supprimait `crt0.o` → duplicate `jsr main`
