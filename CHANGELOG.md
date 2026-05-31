@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31g
+
+### Fixed — Audit 65C816 §3.2 : fuite page de pile par dérivation pid
+- **`kernel_task_create` (sched.s)** : la page de pile est désormais
+  **dérivée du pid** (`stack_page(pid) = pid + 1` pour pid ≥ 3, saute
+  I/O $03), au lieu d'un bump `STACK_NEXT_PAGE` qui ne redescendait
+  jamais. Quand un slot TCB est libéré (bitmap_clear) et qu'un nouveau
+  pid est alloué, la page de pile est automatiquement réutilisée → la
+  fuite par création/destruction successives disparaît par construction.
+  Pids 1/2 conservés en cas spécial (task A page $01, task B page $02 —
+  frame pré-forgée à $02F5+ en boot.s). Pid 3 → page $04 (préserve le
+  comportement du 1er bump → tests sentinelles intacts). Suite tests
+  Phosphoric verte sans régression. `STACK_NEXT_PAGE` devient dead
+  (init boot.s conservée par prudence). Réf audit :
+  `AUDIT_65C816_REMEDIATION.md` §3.2.
+
 ## [Unreleased] - 2026-05-31f
 
 ### Added — Audit 65C816 §3.1 : garde linker CODE < TICK_COUNTER

@@ -117,11 +117,24 @@ tcc_next:
         rts
 tcc_slot:
         stx TC_PID              ; X = pid alloué
-        ; ── 2. alloue une page de pile (bump) ──
-        lda STACK_NEXT_PAGE
-        sta TC_PAGE             ; page courante
-        inc a
-        sta STACK_NEXT_PAGE     ; prochaine
+        ; ── 2. page de pile DÉRIVÉE du pid (audit §3.2) ──
+        ; Plus de bump : page = pid + 1 pour pid ≥ 3 (saute la page $03 = I/O).
+        ; Réutilisable lorsque le slot TCB est libéré (fix fuite page de pile).
+        ; pids 1/2 réservés au boot (task A page $01, task B page $02 — frame
+        ; pré-forgée à $02F5+ en boot.s) → conservés via STACK_NEXT_PAGE init.
+        ; Hypothèse : kernel_task_create n'est jamais appelé pour pid 1/2
+        ; (créés directement par boot.s). Vérifié au runtime via cpx #$03/bcc.
+        cpx #$03
+        bcs tcc_page_dyn
+        ; cas pid 1/2 (théoriquement impossible — sécurité) : page = pid.
+        txa
+        sta TC_PAGE
+        bra tcc_page_done
+tcc_page_dyn:
+        txa                     ; A = pid (≥ 3)
+        inc a                   ; page = pid + 1 (saute I/O $03)
+        sta TC_PAGE
+tcc_page_done:
         ; ── 3. init TCB[pid] ──
         lda TC_PID
         jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[pid]
