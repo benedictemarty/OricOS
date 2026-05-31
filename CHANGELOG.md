@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31j
+
+### Refactored — Audit 65C816 §3.6 COMPLET : couche géométrie isolée
+Axe 8.2 — extraction d'une primitive `_point_in_rect16` unique +
+refactor des 4 hit-testers WM pour l'appeler. Élimine toute branche
+`bcc/bcs` traversant les frontières `rep`/`sep` dans les zones
+chaudes (le danger n°1 de maintenabilité 65C816 pointé par l'audit
+§3.6.1). 4 commits atomiques, tests verts entre chaque.
+
+- **`kernel.s`** : ZP dédiée `PIR_RECT_X/Y/W/H` ($34-$3B) +
+  `PIR_TMP` ($3C-$3D).
+- **`wm.s` `_point_in_rect16`** : primitive géométrique pure.
+  Caller pose le rect en ZP, point lu depuis MOUSE_X/Y. UNE seule
+  frontière `rep #$20 → sep #$20`, AUCUNE branche ne la traverse.
+  `.a16` sur les labels `_pir_out` + `_pir_done` après flow-break
+  (convention CLAUDE.md §5 `.smart`). Préserve X, Y.
+- **`_wm_chrome_hit`** : 3 zones (×, □, _) testées en cascade
+  par décrément simple de `PIR_RECT_X`.
+- **`_wm_resize_hit`** : 2 rects (bord droit, bord bas) ; coin =
+  `right_hit ∧ bottom_hit` via WM_CRH_TMP comme drapeau 1 octet
+  (`rol a` clean).
+- **`_wm_widget_hit` (tk.s)** : rect absolu = parent.x/y + rel,
+  test délégué. WG_RELX/Y/W/H ne sont plus surchargés comme
+  scratch intermédiaire.
+- **`_wm_hotzone_hit`** : phx/plx autour de la primitive pour
+  préserver l'X iterating HOTZONE_TABLE.
+
+Suite tests Phosphoric verte (chrome, resize, widget, hotzone tests
+spécifiques tous PASS). Réf : `AUDIT_65C816_REMEDIATION.md` §3.6 +
+axe 8.2.
+
 ## [Unreleased] - 2026-05-31i
 
 ### Added — Audit 65C816 §3.6 partiel : discipline mode M/X + scratch dédié resize-hit
