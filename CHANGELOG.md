@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31l
+
+### Fixed — `audit-smart.py` : pré-filtre `"20" in operand` ignorait `rep/sep #$30`
+- **`tools/audit-smart.py`** : le pré-filtre `if mnemo == "rep" and "20"
+  in operand.replace(...)` (et idem pour `sep`) ne matchait QUE
+  `#$20` — `#$30` (qui pose ET le bit M ET le bit X) était silencieusement
+  ignoré par le tracker `m_state`. Conséquence : sur tout fichier kernel
+  utilisant `rep/sep #$30` (boot.s, wm.s, handlers.s, sched.s, console.s,
+  event.s — tous, en pratique) le tracker était faux à tous ces points,
+  et le verdict `kernel propre — aucun label suspect` n'était pas fiable.
+  Linter de miscompile silencieux qui se trompe silencieusement = pire
+  que pas de linter (endort).
+- **Fix** : suppression du pré-filtre. La logique `parse_imm` + `val &
+  0x20` qui suivait était déjà correcte — il suffisait de lui laisser
+  voir tous les `rep/sep`.
+- **Aussi nettoyé** : boucle morte dans le handler `.a16` (lignes
+  97-99 du fichier original, commentée comme « impossible same line »).
+- **Vérification** : audit-smart relancé sur le kernel actuel → toujours
+  propre (aucun nouveau suspect révélé). Bonne nouvelle : les refactors
+  §3.6 et changements ADR-32 livrés cette session étaient *vraiment*
+  propres, pas faussement propres.
+- **Corpus de régression** (`tools/tests/`) : 4 fixtures `.s` (2
+  known-bad reproduisant le pattern du bug taskbar 2026-05-30 en `#$20`
+  ET `#$30`, 2 known-good avec `.a16` ou sans branche M=16). Runner
+  `test_audit_smart.py` vérifie le verdict du linter sur chacun.
+  **Régression vérifiée** : avec l'ancien code (bug restauré via
+  `git stash`), le fixture `#$30` n'est PAS détecté → corpus FAIL ;
+  avec le fix → 4/4 OK.
+- **`Makefile`** : `make audit-smart` lance désormais le corpus AVANT
+  le scan kernel. Échec corpus → build cassé avec message explicite.
+- Réf critique utilisateur 2026-05-31 (revue toolbox).
+
 ## [Unreleased] - 2026-05-31k
 
 ### Added — ADR-32 Étapes 2+3 : flag `WM_TASKMODE` (infrastructure, legacy unchanged)

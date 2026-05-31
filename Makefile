@@ -41,6 +41,8 @@ all: apps audit-smart $(KERNEL_BIN)
 # « `.smart` ca65 — convention obligatoire »). Exit 1 sur suspect → bloque
 # le build. À lancer aussi en local avant commit.
 audit-smart:
+	@python3 tools/tests/test_audit_smart.py >/dev/null \
+	  || { echo "audit-smart: corpus de regression FAILED — voir tools/tests/test_audit_smart.py"; exit 1; }
 	@python3 tools/audit-smart.py kernel
 
 apps: $(APPS)

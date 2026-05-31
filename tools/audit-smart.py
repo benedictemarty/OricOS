@@ -93,24 +93,24 @@ def scan_file(path: str):
         # Update M-state (directives + rep/sep).
         if mnemo == ".a16":
             m_state = 0
-            # Si on est juste après un label, noter qu'il a `.a16`.
-            for name, ln in labels.items():
-                if ln == i - 0:  # impossible same line; check via heuristic
-                    pass
             continue
         if mnemo == ".a8":
             m_state = 1
             continue
-        if mnemo == "rep" and "20" in operand.replace("$", "").replace("#", ""):
-            # rep #$20 → M=0 (16-bit). On accepte aussi rep #$30.
+        # rep/sep : on regarde le bit 5 (M) de l'immédiat. NE PAS pré-filtrer
+        # sur "20" dans la chaîne — ça écartait `#$30` (qui pose ET M ET X)
+        # et corrompait silencieusement le tracker (bug critique : le linter
+        # rendait des verdicts faussement verts sur tout fichier utilisant
+        # rep/sep #$30 — cf. boot.s, wm.s, handlers.s, etc.).
+        if mnemo == "rep":
             val = parse_imm(operand)
             if val is not None and (val & 0x20):
-                m_state = 0
+                m_state = 0           # M=0 → A 16-bit
             continue
-        if mnemo == "sep" and "20" in operand.replace("$", "").replace("#", ""):
+        if mnemo == "sep":
             val = parse_imm(operand)
             if val is not None and (val & 0x20):
-                m_state = 1
+                m_state = 1           # M=1 → A 8-bit
             continue
 
         # Note la première instr réelle pour caractériser les flow-breaks.
