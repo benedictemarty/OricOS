@@ -1718,57 +1718,42 @@ _wh_used:
         beq _wh_isbtn
         jmp _wh_next             ; label → non cliquable
 _wh_isbtn:
-        lda WIDGET_TABLE+1,X
+        ; Refactor audit §3.6/8.2 : rect absolu posé dans PIR_RECT_*,
+        ; test délégué à _point_in_rect16 (plus de bcc/bcs traversant rep/sep).
+        lda WIDGET_TABLE+1,X     ; parent slot
         sta WG_PARENT
         rep #$20
+        ; rel x/y/w/h → PIR_RECT_*
         lda WIDGET_TABLE+4,X
-        sta WG_RELX
+        sta PIR_RECT_X
         lda WIDGET_TABLE+6,X
-        sta WG_RELY
+        sta PIR_RECT_Y
         lda WIDGET_TABLE+8,X
-        sta WG_RELW
+        sta PIR_RECT_W
         lda WIDGET_TABLE+10,X
-        sta WG_RELH
+        sta PIR_RECT_H
         sep #$20
+        ; Recalcule X = parent*WM_ENTSZ (clobbe l'X widget — déjà copié).
         lda WG_PARENT
-        jsr kernel_wm_offset     ; X = parent*10
+        jsr kernel_wm_offset
         rep #$20
-        ; abs_x = win.x + rel_x  (réutilise WG_RELX)
-        lda WM_TABLE+WM_OFF_X,X
+        ; abs x/y = parent.x/y + rel
+        lda PIR_RECT_X
         clc
-        adc WG_RELX
-        sta WG_RELX
-        lda MOUSE_X
-        cmp WG_RELX
-        bcc _wh_miss             ; MOUSE_X < abs_x
-        lda WG_RELX
+        adc WM_TABLE+WM_OFF_X,X
+        sta PIR_RECT_X
+        lda PIR_RECT_Y
         clc
-        adc WG_RELW
-        sta WG_RELW              ; abs_x2
-        lda MOUSE_X
-        cmp WG_RELW
-        bcs _wh_miss             ; MOUSE_X >= abs_x2
-        lda WM_TABLE+WM_OFF_Y,X
-        clc
-        adc WG_RELY
-        sta WG_RELY              ; abs_y
-        lda MOUSE_Y
-        cmp WG_RELY
-        bcc _wh_miss
-        lda WG_RELY
-        clc
-        adc WG_RELH
-        sta WG_RELH              ; abs_y2
-        lda MOUSE_Y
-        cmp WG_RELH
-        bcs _wh_miss
-        ; HIT
+        adc WM_TABLE+WM_OFF_Y,X
+        sta PIR_RECT_Y
         sep #$20
+        jsr _point_in_rect16
+        ASSERT_A8
+        bcc _wh_next
+        ; HIT
         lda WG_I
         sta WIDGET_ACTIVE
         rts
-_wh_miss:
-        sep #$20
 _wh_next:
         lda WG_I
         inc a
