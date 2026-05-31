@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2026-05-31r
 
+### Investigation — option B P2 testée et insuffisante
+- Tentative `__rc0 = 0x94` dans `link.ld` (déplacer imag-regs au-dessus
+  de `$93`). install.sh rebuild, link OK avec nouveau ASSERT
+  `__rc31 == 0xb3`. Mais suite tests Phosphoric tombe à **5/12** :
+  toutes les apps C qui font des prints (hello_c, win_app, gui_demo,
+  view_demo, ctl_demo) n'impriment plus rien. Le CPU s'arrête
+  correctement (stp), mais sys_print_string ne produit aucun byte
+  dans le buffer texte.
+- **Cause non isolée** : le COP firing OK (disasm hello_c montre
+  X/Y/A corrects avant cop $AA, pointeur "Hello..." = $0312 valide).
+  Le kernel n'a pas changé. Mais la sortie console est vide.
+  Hypothèse non vérifiée : DBR à l'entrée du COP serait altéré par
+  le shift d'imag-regs (ex. crt0 utiliserait $89-$93 avant `phk/plb`,
+  et le nouveau layout corrompt cet usage). Reverté.
+- **GFX ABI reste bloqué** ; les 3 options du P2 (move kernel
+  scratch / shift link.ld / refactor ZP) demandent toutes
+  investigation supplémentaire avant livraison.
+
 ### Investigation — GFX ABI ($D0-$D4) bloquée par dette ZP kernel↔user
 - Tentative de relivrer l'item §3 toolbox (GFX_FILL_RECT via $D0-$D4
   au lieu de $73-$78 direct) post-P1. Échec sur `test_oricos_clock`
