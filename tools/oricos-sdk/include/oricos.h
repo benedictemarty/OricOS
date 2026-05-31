@@ -192,10 +192,29 @@ void oricos_print_char(uint8_t c) {
     );
 }
 
+/* SYS_PRINT_STRING ($02) — wrapper natif kernel : X=lo, Y=hi du ptr,
+ * bank = DBR appelant (= PBR app, posé par crt0 phk/plb). UN SEUL COP
+ * pour toute la chaîne, au lieu d'un par caractère.
+ *
+ * Avant ce wrapper, l'impl bouclait sur oricos_print_char → N COP pour
+ * une chaîne de N octets (cli/forbid/dispatch × N). Cas typique d'app
+ * textuelle (puts("Hello OricOS from C!\r\n")) : 22 COP → 1 COP.
+ *
+ * Le kernel sys_print_string (wm.s) reconstruit le pointeur 24-bit via
+ * `phb / pla → DP_PTR+2 ; X → DP_PTR ; Y → DP_PTR+1` et appelle
+ * kernel_print_string qui lit la chaîne via long indirect [DP_PTR],Y. */
 static __attribute__((always_inline)) inline
 void oricos_print_string(const char *s) {
-    for (; *s; ++s)
-        oricos_print_char((uint8_t)*s);
+    __asm__ volatile (
+        "ldx %[lo]\n"
+        "ldy %[hi]\n"
+        _ORICOS_LDA_SYS(SYS_PRINT_STRING)
+        ".byte 0x02, 0xAA\n"
+        :
+        : [lo] "r" ((uint8_t)(unsigned)s),
+          [hi] "r" ((uint8_t)((unsigned)s >> 8))
+        : "a", "x", "y"
+    );
 }
 
 /* ── Contrôle du processus ───────────────────────────────────────── */

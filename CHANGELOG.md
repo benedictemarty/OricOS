@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31o
+
+### Changed — `oricos_print_string` : N COP → 1 COP (wrapper SYS_PRINT_STRING)
+- **`tools/oricos-sdk/include/oricos.h`** : `oricos_print_string`
+  bouclait sur `oricos_print_char` → **N COP** pour une chaîne de
+  N caractères (chacun : cli/forbid/dispatch/table syscall). Cas
+  typique : `puts("Hello OricOS from C!\r\n")` = 22 COP. SYS_PRINT_STRING
+  ($02) existe pourtant côté kernel depuis Sprint 2.e (wm.s
+  `sys_print_string`) avec l'ABI X=lo, Y=hi, bank=DBR appelant.
+- **Fix** : wrapper natif inline asm — `ldx lo / ldy hi /
+  lda #SYS_PRINT_STRING / cop $AA`. **UN SEUL COP** pour toute la
+  chaîne. DBR set par crt0 (`phk / plb`) à l'entrée de l'app → la
+  chaîne est lue dans le bank de l'app sans param explicite.
+- **Bonus — `_vfmtcore` case `'s'`** : `printf("%s", …)` bouclait
+  aussi en per-char. Optimisation : si `out_char == NULL` (printf
+  path), bascule sur `oricos_print_string` (1 COP) + `count +=
+  strlen(s)`. Sprintf path (out_char = `_sbuf_putc`) inchangé
+  (per-char vers buffer caller, pas de raccourci possible).
+- **Gain mesuré (théorique)** : pour `printf("%s\r\n", str_n_chars)`
+  → 2 COP au lieu de N+2. Pour une app textuelle (Score Keeper,
+  hello_c, etc.), gain typique × 10-20 sur le débit console.
+- **Validation** : suite tests Phosphoric verte (test_oricos_helloc,
+  test_oricos_clock, test_oricos_score, etc. — tous exercent
+  printf/puts). Comportement utilisateur identique, juste plus
+  rapide. Test natif `test_liboricos_fmt` : 22/22 toujours OK
+  (sprintf path inchangé).
+- Réf : critique utilisateur 2026-05-31 (revue toolbox).
+
 ## [Unreleased] - 2026-05-31n
 
 ### Fixed — `malloc.c` : overflow `calloc(nmemb, size)` en 16-bit

@@ -159,9 +159,17 @@ static int _vfmtcore(void (*out_char)(char, void *), void *ctx,
         case 's': {
             const char *s = va_arg(ap, const char *);
             if (!s) s = "(null)";
-            while (*s) {
-                if (out_char) out_char(*s, ctx); else putchar(*s);
-                s++; count++;
+            if (out_char) {
+                /* sprintf : per-char vers buffer caller (out_char =
+                 * _sbuf_putc). Pas de raccourci possible. */
+                while (*s) { out_char(*s, ctx); s++; count++; }
+            } else {
+                /* printf : 1 seul SYS_PRINT_STRING au lieu de N COP.
+                 * Pré-calcul de count via strlen — équivalent au
+                 * incrément in-loop original. */
+                size_t n = strlen(s);
+                count += (int)n;
+                oricos_print_string(s);
             }
             break;
         }
