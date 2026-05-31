@@ -2814,10 +2814,9 @@ _crh_no:
 ; ── _wm_resize_hit : hit-test bords resize de WIN_SLOT. SP-3.i ────────
 ; Retourne A : 0=non, 1=bord droit, 2=bord bas, 3=coin bas-droit.
 ; Pré-cond : WIN_SLOT valide. Ne modifie pas WIN_SLOT. Modifie A, X.
-; Scratch 16-bit : WM_DP_TMP=win_right, WM_RH_TMP=win_bottom (dédié,
-;   audit §3.6.2 : ex WM_ARG_DX overload — WM_ARG_DX est un arg syscall
-;   partagé avec contexte IRQ, ne doit pas servir de scratch local),
-;   WM_CRH_TMP+2=right_lo, WM_CRH_TMP+4=bot_lo, WM_CRH_TMP(1B)=right_hit.
+; Refactor audit §3.6 / 8.2 : 2 rects (droit, bas) testés via
+; _point_in_rect16. Le coin = right_hit ∧ bottom_hit.
+; Scratch : WM_CRH_TMP (1B = right_hit) ; PIR_RECT_* pour la primitive.
 _wm_resize_hit:
         ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         ; Fenêtre maximisée → pas de resize
@@ -2825,76 +2824,62 @@ _wm_resize_hit:
         tax
         lda WM_STATES,X          ; WM_STATES[slot]
         cmp #WM_STATE_MAXED
-        bne _rh_skip_max
-        jmp _rh_no
-_rh_skip_max:
-        ; Calculer win_right et win_bottom
+        beq _rh_no
         lda WIN_SLOT
-        jsr kernel_wm_offset     ; X = slot*10
+        jsr kernel_wm_offset     ; X = slot*WM_ENTSZ ; clobbe WM_DP_TMP
+        ; ── Rect bord droit : (win_x+win_w-MARGIN, win_y+14, MARGIN, win_h-14) ──
         rep #$20
         lda WM_TABLE+WM_OFF_X,X
         clc
         adc WM_TABLE+WM_OFF_W,X
-        sta WM_DP_TMP            ; win_right = win_x + win_w
-        lda WM_TABLE+WM_OFF_Y,X
-        clc
-        adc WM_TABLE+WM_OFF_H,X
-        sta WM_RH_TMP            ; win_bottom = win_y + win_h (audit §3.6.2)
-        lda WM_DP_TMP
         sec
         sbc #RESIZE_MARGIN
-        sta WM_CRH_TMP+2         ; right_lo = win_right - MARGIN
-        lda WM_RH_TMP
-        sec
-        sbc #RESIZE_MARGIN
-        sta WM_CRH_TMP+4         ; bot_lo = win_bottom - MARGIN
-        sep #$20
-        lda #$00
-        sta WM_CRH_TMP           ; right_hit = 0
-        rep #$20
-        ; ── Test bord droit : mouse_x in [right_lo, win_right), mouse_y in [win_y+14, win_bottom) ─
-        lda MOUSE_X
-        cmp WM_CRH_TMP+2         ; mouse_x >= right_lo ?
-        bcc _rh_test_bottom
-        cmp WM_DP_TMP            ; mouse_x < win_right ?
-        bcs _rh_test_bottom
-        ; Test Y : mouse_y in [win_y+14, win_bottom)
+        sta PIR_RECT_X           ; rx = win_right - MARGIN
         lda WM_TABLE+WM_OFF_Y,X
         clc
         adc #14
-        sta WM_CRH_TMP+2         ; win_y+14 (right_lo not needed anymore)
-        lda MOUSE_Y
-        cmp WM_CRH_TMP+2         ; mouse_y >= win_y+14 ?
-        bcc _rh_test_bottom
-        cmp WM_RH_TMP            ; mouse_y < win_bottom ? (audit §3.6.2)
-        bcs _rh_test_bottom
+        sta PIR_RECT_Y           ; ry = win_y + 14 (sous titlebar)
+        lda #RESIZE_MARGIN
+        sta PIR_RECT_W
+        lda WM_TABLE+WM_OFF_H,X
+        sec
+        sbc #14
+        sta PIR_RECT_H           ; rh = win_h - 14
         sep #$20
-        lda #$01
-        sta WM_CRH_TMP           ; right_hit = 1
+        jsr _point_in_rect16     ; préserve X
+        ASSERT_A8
+        ; Sauve right_hit ∈ {0,1} dans WM_CRH_TMP via ROL.
+        lda #$00
+        rol a                    ; C → bit 0
+        sta WM_CRH_TMP
+        ; ── Rect bord bas : (win_x, win_y+win_h-MARGIN, win_w, MARGIN) ──
         rep #$20
-_rh_test_bottom:
-        ; ── Test bord bas : mouse_y in [bot_lo, win_bottom), mouse_x in [win_x, win_right) ─
-        lda MOUSE_Y
-        cmp WM_CRH_TMP+4         ; mouse_y >= bot_lo ?
-        bcc _rh_done
-        cmp WM_RH_TMP            ; mouse_y < win_bottom ? (audit §3.6.2)
-        bcs _rh_done
-        lda MOUSE_X
-        cmp WM_TABLE+WM_OFF_X,X  ; mouse_x >= win_x ?
-        bcc _rh_done
-        cmp WM_DP_TMP            ; mouse_x < win_right ?
-        bcs _rh_done
+        lda WM_TABLE+WM_OFF_X,X
+        sta PIR_RECT_X
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        sec
+        sbc #RESIZE_MARGIN
+        sta PIR_RECT_Y           ; ry = win_bottom - MARGIN
+        lda WM_TABLE+WM_OFF_W,X
+        sta PIR_RECT_W
+        lda #RESIZE_MARGIN
+        sta PIR_RECT_H
         sep #$20
-        lda WM_CRH_TMP           ; right_hit ?
+        jsr _point_in_rect16
+        ASSERT_A8
+        bcs _rh_bottom_in
+        ; bottom miss → renvoie right_hit (0 ou 1)
+        lda WM_CRH_TMP
+        rts
+_rh_bottom_in:
+        lda WM_CRH_TMP
         beq _rh_bottom_only
-        lda #$03                 ; coin bas-droit
+        lda #$03                 ; coin bas-droit (right AND bottom)
         rts
 _rh_bottom_only:
         lda #$02                 ; bord bas seul
-        rts
-_rh_done:
-        sep #$20
-        lda WM_CRH_TMP           ; right_hit (0 ou 1)
         rts
 _rh_no:
         lda #$00
