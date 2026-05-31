@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31n
+
+### Fixed — `malloc.c` : overflow `calloc(nmemb, size)` en 16-bit
+- **`tools/oricos-sdk/lib/malloc.c`** : `calloc` faisait `size_t total =
+  nmemb * size` directement. En env OricOS (size_t = 16-bit), ce mul
+  wrappe silencieusement. Cas critique : `calloc(256, 256)` = 65536
+  = 0 mod 2^16 → `malloc(0)` (qui devient `malloc(2)` par notre
+  `n == 0 → n = 2`) → buffer 2 octets retourné → caller (qui croit
+  avoir 65536 octets) écrit 65534 octets au-delà → **corruption
+  silencieuse du bank entier**.
+- **Fix** : nouvelle primitive interne `_calloc_overflows(nmemb, size)`
+  qui détecte le wrap AVANT le mul, via `nmemb > SIZE_MAX / size`.
+  Algorithme standard, marche à n'importe quelle largeur size_t.
+  Si overflow → calloc retourne NULL net.
+- **Corpus de test natif** (`tools/oricos-sdk/lib/tests/test_liboricos_calloc.c`) :
+  15 cas couvrant le helper `_calloc_overflows` directement — cas
+  zéro (par construction safe), petites valeurs, limites exactes
+  `SIZE_MAX`, overflows triviaux et non-triviaux. Plus une section
+  « simulation 16-bit » qui réplique le check typé `uint16_t` et
+  verrouille le cas exact du bug (`calloc(256, 256)` overflow,
+  `calloc(255, 256)` borderline, `calloc(257, 256)` overflow).
+- **Anti-régression** : sans le fix, le test échoue à la COMPILE
+  (implicit declaration de `_calloc_overflows`).
+- **`Makefile`** : cible `make test-libc-calloc`.
+- **Limite documentée** : sur host (size_t = 32-bit), le bug exact
+  `calloc(256, 256)` ne wrappe pas. Le test utilise SIZE_MAX-scalé
+  pour la logique générale + simulation uint16_t pour la borne
+  exacte du bug OricOS.
+- Réf : critique utilisateur 2026-05-31 (revue toolbox).
+
 ## [Unreleased] - 2026-05-31m
 
 ### Fixed — `liboricos.c` : `%u` cassé pour val ≥ 32768 (bug `itoa((int)v)`)

@@ -20,6 +20,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <limits.h>     /* SIZE_MAX pour calloc overflow check */
 
 /* Symboles fournis par link.ld */
 extern char __heap_start;   /* adresse de début du heap (fin du BSS) */
@@ -63,7 +64,20 @@ void free(void *p) {
     (void)p;
 }
 
+/* _calloc_overflows : 1 si nmemb*size dépasse SIZE_MAX (sinon 0).
+ * Détecte le wrap avant la multiplication — l'ancien calloc faisait le
+ * mul direct qui wrappait en 16-bit (env OricOS, size_t = 16-bit).
+ * Exemple bug : calloc(256, 256) = 65536 = 0 mod 2^16 → malloc(0) →
+ * buffer 2 octets → caller écrit 65536 octets → corruption bank.
+ * Helper testable isolément (cf. tests/test_liboricos_calloc.c). */
+static int _calloc_overflows(size_t nmemb, size_t size) {
+    return size != 0 && nmemb > (size_t)SIZE_MAX / size;
+}
+
 void *calloc(size_t nmemb, size_t size) {
+    if (_calloc_overflows(nmemb, size)) {
+        return NULL;            /* overflow → refus net */
+    }
     size_t total = nmemb * size;
     void *p = malloc(total);
     if (p) {

@@ -33,7 +33,7 @@ APP_BUNDLES = apps/hello/build/hello.oosobj \
               apps/score/build/score.oos \
               apps/file_select/build/fileselect.oos
 
-.PHONY: all clean info apps audit-smart test-libc-fmt $(APPS)
+.PHONY: all clean info apps audit-smart test-libc-fmt test-libc-calloc $(APPS)
 
 all: apps audit-smart $(KERNEL_BIN)
 
@@ -53,6 +53,14 @@ test-libc-fmt:
 	  && /tmp/test_liboricos_fmt 2>&1 \
 	  | tail -1 \
 	  || { echo "test-libc-fmt: FAILED"; exit 1; }
+
+# Test natif du fix overflow calloc (bug : nmemb*size wrap en 16-bit).
+test-libc-calloc:
+	@cd tools/oricos-sdk/lib && gcc -std=c99 -Wall -Wextra -Wno-unused-function \
+	  -o /tmp/test_liboricos_calloc tests/test_liboricos_calloc.c \
+	  && /tmp/test_liboricos_calloc 2>&1 \
+	  | tail -1 \
+	  || { echo "test-libc-calloc: FAILED"; exit 1; }
 
 apps: $(APPS)
 
