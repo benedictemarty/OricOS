@@ -30,6 +30,27 @@
         .setcpu "65816"
         .smart  +
 
+; ─── Macros d'invariant mode M/X (audit 65C816 §3.6 / 8.3) ──────────
+; `.smart` ca65 ne suit le mode A/I qu'en linéaire ; toute branche qui
+; entre dans un label depuis ailleurs peut désynchroniser l'état tracé
+; et le mode réel runtime (cf. bug taskbar `_tbh_advance:` 2026-05-30 et
+; convention `.a16` du CLAUDE.md OricOS). Ces macros documentent
+; l'invariant attendu en tête de routine/bloc et servent d'ancre de
+; revue. Elles s'appuient sur les pseudo-fonctions `.asize` (A bits) et
+; `.isize` (X/Y bits) de ca65 — vérification à l'assemblage.
+.macro ASSERT_A16
+        .assert .asize = 16, error, "ASSERT_A16 : ici A doit etre 16-bit (rep #$20)"
+.endmacro
+.macro ASSERT_A8
+        .assert .asize = 8, error, "ASSERT_A8 : ici A doit etre 8-bit (sep #$20)"
+.endmacro
+.macro ASSERT_I16
+        .assert .isize = 16, error, "ASSERT_I16 : ici X/Y doivent etre 16-bit (rep #$10)"
+.endmacro
+.macro ASSERT_I8
+        .assert .isize = 8, error, "ASSERT_I8 : ici X/Y doivent etre 8-bit (sep #$10)"
+.endmacro
+
 ; ─── Constantes ─────────────────────────────────────────────────────
 TICK_COUNTER    = $015400
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
@@ -262,6 +283,8 @@ CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
 ;  $23       1B       WM_ARG_TITLE_HI    pointeur titre (hi)
 ;  $24       1B       WIN_SLOT           slot fenêtre courant (STABLE post-wm_offset)
 ;  $25-$2A   6B       WM_CRH_TMP         scratch _wm_chrome_hit (SP-3.h)
+;  $32-$33   2B       WM_RH_TMP          scratch _wm_resize_hit (audit §3.6.2 :
+;                                        ex WM_ARG_DX overload — conflit IRQ↔task)
 ;  $2B       1B       WM_ZN_CACHE        cache ZP de WM_ZORDER_N (CPY/CPX sans mode long)
 ;  $2C-$2E   3B       SCHED_PTR          pointeur &tcb[pid] (scheduler, contexte IRQ)
 ;  $2F       1B       SCHED_CAND         pid candidat scan round-robin
@@ -999,6 +1022,9 @@ WM_ARG_DY        = $1E           ; 2B signé
 WM_DP_TMP        = $20           ; 2B scratch
 WM_CRH_TMP      = $25           ; 6B scratch pour _wm_chrome_hit (SP-3.h) : $25-$2A
 WM_ZN_CACHE     = $2B           ; 1B cache ZP de WM_ZORDER_N (CPY/CPX ne font pas le mode long)
+; Audit §3.6.2 : scratch dédié _wm_resize_hit (était : overload WM_ARG_DX,
+; problématique car WM_ARG_DX est un ARG syscall partagé avec contexte IRQ).
+WM_RH_TMP       = $32           ; 2B : win_bottom 16-bit
 
 ; ZP args pour kernel_gfx_clear / kernel_gfx_fill_rect
 ; (sémantique partagée selon le helper appelé)

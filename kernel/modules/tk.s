@@ -1676,6 +1676,7 @@ menu_i_hide:
 ; Position absolue = fenêtre parente + offset relatif. Écrit WIDGET_ACTIVE
 ; = index du bouton touché, ou $FF. Modifie A,X,Y,WG_*. (SP-3.d v0.3)
 _wm_widget_hit:
+        ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         lda #$FF
         sta WIDGET_ACTIVE
         lda #$00

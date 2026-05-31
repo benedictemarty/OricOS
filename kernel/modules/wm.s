@@ -2709,6 +2709,7 @@ _wm_redraw_ctl:
 ; Y titlebar : [win_y .. win_y+13]
 ; Modifie A, X.
 _wm_chrome_hit:
+        ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         lda WIN_SLOT
         cmp #WM_MAX
         bcs _crh_no              ; slot invalide → 0
@@ -2785,9 +2786,12 @@ _crh_no:
 ; ── _wm_resize_hit : hit-test bords resize de WIN_SLOT. SP-3.i ────────
 ; Retourne A : 0=non, 1=bord droit, 2=bord bas, 3=coin bas-droit.
 ; Pré-cond : WIN_SLOT valide. Ne modifie pas WIN_SLOT. Modifie A, X.
-; Scratch 16-bit : WM_DP_TMP=win_right, WM_ARG_DX=win_bottom,
+; Scratch 16-bit : WM_DP_TMP=win_right, WM_RH_TMP=win_bottom (dédié,
+;   audit §3.6.2 : ex WM_ARG_DX overload — WM_ARG_DX est un arg syscall
+;   partagé avec contexte IRQ, ne doit pas servir de scratch local),
 ;   WM_CRH_TMP+2=right_lo, WM_CRH_TMP+4=bot_lo, WM_CRH_TMP(1B)=right_hit.
 _wm_resize_hit:
+        ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         ; Fenêtre maximisée → pas de resize
         lda WIN_SLOT
         tax
@@ -2807,12 +2811,12 @@ _rh_skip_max:
         lda WM_TABLE+WM_OFF_Y,X
         clc
         adc WM_TABLE+WM_OFF_H,X
-        sta WM_ARG_DX            ; win_bottom = win_y + win_h
+        sta WM_RH_TMP            ; win_bottom = win_y + win_h (audit §3.6.2)
         lda WM_DP_TMP
         sec
         sbc #RESIZE_MARGIN
         sta WM_CRH_TMP+2         ; right_lo = win_right - MARGIN
-        lda WM_ARG_DX
+        lda WM_RH_TMP
         sec
         sbc #RESIZE_MARGIN
         sta WM_CRH_TMP+4         ; bot_lo = win_bottom - MARGIN
@@ -2834,7 +2838,7 @@ _rh_skip_max:
         lda MOUSE_Y
         cmp WM_CRH_TMP+2         ; mouse_y >= win_y+14 ?
         bcc _rh_test_bottom
-        cmp WM_ARG_DX            ; mouse_y < win_bottom ?
+        cmp WM_RH_TMP            ; mouse_y < win_bottom ? (audit §3.6.2)
         bcs _rh_test_bottom
         sep #$20
         lda #$01
@@ -2845,7 +2849,7 @@ _rh_test_bottom:
         lda MOUSE_Y
         cmp WM_CRH_TMP+4         ; mouse_y >= bot_lo ?
         bcc _rh_done
-        cmp WM_ARG_DX            ; mouse_y < win_bottom ?
+        cmp WM_RH_TMP            ; mouse_y < win_bottom ? (audit §3.6.2)
         bcs _rh_done
         lda MOUSE_X
         cmp WM_TABLE+WM_OFF_X,X  ; mouse_x >= win_x ?
@@ -4968,6 +4972,7 @@ khi_loop:
 ; Modifie A, X, Y, WG_*.
 .export _wm_hotzone_hit
 _wm_hotzone_hit:
+        ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
         sta WIN_SLOT             ; slot fenêtre dont on cherche les hotzones
         ldx #$00
 hzh_loop:

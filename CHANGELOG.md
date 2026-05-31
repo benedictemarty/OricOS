@@ -8,6 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31i
+
+### Added — Audit 65C816 §3.6 partiel : discipline mode M/X + scratch dédié resize-hit
+- **`kernel.s`** : 4 nouvelles macros `ASSERT_A16`/`ASSERT_A8`/
+  `ASSERT_I16`/`ASSERT_I8` basées sur `.asize`/`.isize` de ca65 →
+  l'invariant de mode A/I (8 vs 16-bit) attendu en tête de routine est
+  documenté ET vérifié à l'assemblage. Pré-requis axe 8.3 (« convention
+  M/X explicite et outillée »). Canary test validé : `ASSERT_A16` placé
+  en entrée d'une routine M=8 → `Error: ASSERT_A16 : ici A doit etre
+  16-bit (rep #$20)`.
+- **`wm.s` / `tk.s`** : `ASSERT_A8` posé en entrée des 4 hit-testers
+  (`_wm_chrome_hit`, `_wm_resize_hit`, `_wm_widget_hit`,
+  `_wm_hotzone_hit`) — verrouille l'invariant et sert d'ancre de revue.
+- **`kernel.s`** : nouveau scratch ZP `WM_RH_TMP = $32` (2B), dédié
+  `_wm_resize_hit` pour stocker `win_bottom`. **Remplace l'overload de
+  `WM_ARG_DX`** qui est un arg syscall partagé avec le contexte IRQ —
+  conflit IRQ↔task identifié dans l'audit §3.6.2. La carte ZP
+  ($25-$2A + $32-$33) reste cohérente avec la zone scratch documentée.
+  Suite tests Phosphoric verte sans régression. Refactor
+  `_point_in_rect16` unifié des 4 hit-testers reporté (commit suivant).
+  Réf : `AUDIT_65C816_REMEDIATION.md` §3.6 + axe 8.3.
+
 ## [Unreleased] - 2026-05-31h
 
 ### Cleaned — Audit 65C816 §5 : nettoyages mineurs
