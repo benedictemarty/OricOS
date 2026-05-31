@@ -30,7 +30,24 @@ cp "$SDK_DIR/lib/link.ld" "$LLVM_MOS/mos-platform/oricos/lib/link.ld"
 # Header OricOS API
 cp "$SDK_DIR/include/oricos.h" "$LLVM_MOS/mos-platform/oricos/include/oricos.h"
 
-# Compiler crt0.S et créer libcrt0.a
+# Compiler crt0.S → crt0.o (laissé tel quel + dans libcrt0.a).
+#
+# ⚠️ CRITIQUE — NE PAS supprimer crt0.o. Le driver clang `--target=mos-*`
+# auto-ajoute `-l:crt0.o` au link, qui cherche LITTÉRALEMENT le fichier
+# `crt0.o` dans le path de search. Sans notre fichier dans oricos/lib/,
+# le linker retombe sur `common/lib/crt0.o` qui contient SON propre
+# `.call_main: jsr main`. Concaténé avec NOTRE `.call_main: jsr main`
+# (via -lcrt0 → libcrt0.a), le binaire app contient **2 jsr main
+# back-to-back** → main() s'exécute deux fois !
+#
+# Symptôme observé 2026-05-31 : hello_c se ré-exécutait après son
+# SYS_EXIT, le 2e run se bloquait sur SYS_READ_CHAR (le test avait
+# déjà délivré la touche pour le 1er run) → CPU stuck en WAI →
+# 6 tests Phosphoric fail.
+#
+# Fix : conserver crt0.o en oricos/lib/ pour que `-l:crt0.o`
+# (auto-ajouté) trouve LA NÔTRE. La libcrt0.a (via `-lcrt0` user)
+# devient redondante mais inoffensive (mêmes symboles).
 echo "Compilation crt0.S..."
 "$LLVM_MOS/bin/clang" --target=mos-oricos -fno-lto \
     -c "$SDK_DIR/lib/crt0.S" \
@@ -38,7 +55,7 @@ echo "Compilation crt0.S..."
 "$LLVM_MOS/bin/llvm-ar" rcs \
     "$LLVM_MOS/mos-platform/oricos/lib/libcrt0.a" \
     "$LLVM_MOS/mos-platform/oricos/lib/crt0.o"
-rm "$LLVM_MOS/mos-platform/oricos/lib/crt0.o"
+# ⚠️ NE PAS rm crt0.o — cf. commentaire ci-dessus.
 
 # Compiler liboricos.a (libc minimale : printf, malloc, string)
 echo "Compilation liboricos.a..."

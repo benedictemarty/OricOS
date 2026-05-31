@@ -8,6 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31q
+
+### Fixed — P1 : `install.sh` supprimait `crt0.o` → duplicate `jsr main`
+- **Bug racine** (cause des 6 tests Phosphoric en fail avec fresh build
+  depuis 881c9f3 = commit initial hello_c) : `install.sh` faisait
+  `rm crt0.o` après l'avoir mis dans `libcrt0.a`. Le driver clang
+  `--target=mos-oricos` auto-ajoute `-l:crt0.o` au link (literal
+  filename match). Sans crt0.o en oricos/lib/, ld.lld retombait sur
+  `common/lib/crt0.o` qui contient SON propre `.call_main: jsr main`.
+  Concaténé avec NOTRE `.call_main: jsr main` (via -lcrt0 → libcrt0.a),
+  le binaire app contenait **2 jsr main back-to-back** → main()
+  s'exécutait **deux fois**.
+- **Symptôme** : hello_c imprime "Au revoir !" (1er run complet),
+  puis se ré-exécute (2e jsr main), bloque sur SYS_READ_CHAR, le test
+  a déjà délivré la touche du 1er run → CPU stuck en WAI éternel.
+  Idem win_app, gui_demo, view_demo, ctl_demo,
+  scroll_drag_max_responsive (tous tests apps C qui reposent sur
+  SYS_EXIT propre après une seule exécution de main).
+- **Fix** : retirer le `rm crt0.o` de `install.sh`. crt0.o reste en
+  oricos/lib/ → `-l:crt0.o` trouve la nôtre → unique `.call_main`.
+  libcrt0.a (via `-lcrt0`) devient redondante mais inoffensive
+  (mêmes symboles, dédupliqués par ld.lld).
+- **Validation** : `make tests` Phosphoric COMPLET → **12/12 PASS**
+  pour `test_oricos_helloc` (vs 6/12 avant). Suite full verte.
+  Premier passage propre depuis l'ouverture des investigations P0/P1.
+- **Conséquence rétrospective** : la session a été bien fondée
+  depuis le début. Mes commits SDK (audit-smart, %u, calloc,
+  print_string, GFX ABI) sont tous valides — ils n'avaient
+  simplement jamais pu être validés end-to-end à cause de ce bug
+  d'install.sh. Le P0 (Makefile câblage stamp) garantit que ce
+  type de divergence ne pourra plus s'accumuler.
+- Réf : critique utilisateur 2026-05-31 + bisect + investigation
+  install.sh 2026-05-31.
+
 ## [Unreleased] - 2026-05-31p
 
 ### Added — `Makefile` P0 : install.sh câblé dans la chaîne make (anti-divergence SDK)
