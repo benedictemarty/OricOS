@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31e
+
+### Fixed — Audit 65C816 §2.1 : fuite bank de code au teardown
+- **`se_teardown` (wm.s)** : `sys_exit` libérait le slot TCB via
+  `kernel_bitmap_clear` mais oubliait de rendre le bank de code de
+  l'app à la free-list → fuite définitive du bank. Après ~124
+  spawn/exit → `ERR_BANK_EXHAUSTED`. Fix : après `bitmap_clear`,
+  re-fetch `SCHED_PTR` (clobbé par `kernel_wm_close_owner`), lecture
+  `TCB_PB`, garde `cmp #BANK_POOL_BASE / bcc` (tâche kernel PB=1 ne
+  va JAMAIS sur la free-list), `jsr kernel_free_bank`. Réf audit :
+  `AUDIT_65C816_REMEDIATION.md` §2.1. Build OK, suite tests Phosphoric
+  verte sans régression. Test dédié `test_teardown_frees_bank`
+  (audit `test_oricos_remediation.c`) à câbler en suivant.
+
 ## [Unreleased] - 2026-05-31d
 
 ### Findings — Investigations post-file_select (3 bugs/limitations tracés)

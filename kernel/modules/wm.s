@@ -3311,6 +3311,18 @@ se_teardown:
         jsr kernel_wm_close_owner ; G.5 : ferme la fenêtre de la tâche qui sort
         lda TASK_CUR
         jsr kernel_bitmap_clear ; libère le slot
+        ; ── FIX 2.1 (audit 65C816 §2.1) : libère le bank de code si app ──
+        ; Tâche kernel : PB=1 → ne JAMAIS pousser sur la free-list (bank kernel).
+        ; App : PB ≥ BANK_POOL_BASE ($04) → bank pris par kernel_alloc_bank,
+        ; doit revenir sur la free-list sinon fuite (épuisement après ~124 spawn).
+        lda TASK_CUR
+        jsr kernel_tcb_ptr      ; SCHED_PTR = &tcb[CUR] (re-fetch : clobbé)
+        ldy #TCB_PB
+        lda [SCHED_PTR],Y       ; A = bank de code de la tâche morte
+        cmp #BANK_POOL_BASE
+        bcc se_no_bank_free     ; PB < 4 → tâche kernel → skip
+        jsr kernel_free_bank    ; push sur free-list
+se_no_bank_free:
         lda TASK_CUR
         jsr kernel_sched_find_next  ; A = prochaine READY (CUR DEAD → ignorée)
         sta TASK_CUR
