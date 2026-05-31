@@ -4999,58 +4999,36 @@ hzh_check_slot:
         beq hzh_check_bounds
         jmp hzh_next
 hzh_check_bounds:
-        ; Compute abs_x = win.x + rel_x, abs_y = win.y + rel_y.
-        ; Lit rect rel hotzone.
+        ; Refactor audit §3.6/8.2 : rect absolu posé dans PIR_RECT_*,
+        ; test délégué à _point_in_rect16 (primitive préserve X).
         rep #$20
         lda f:HOTZONE_TABLE+2,x
-        sta WG_RELX
+        sta PIR_RECT_X
         lda f:HOTZONE_TABLE+4,x
-        sta WG_RELY
+        sta PIR_RECT_Y
         lda f:HOTZONE_TABLE+6,x
-        sta WG_RELW
+        sta PIR_RECT_W
         lda f:HOTZONE_TABLE+8,x
-        sta WG_RELH
+        sta PIR_RECT_H
         sep #$20
-        ; X save (besoin pour calcul de l'id)
-        phx
-        ; abs via parent window
+        phx                      ; sauve X = offset hotzone (clobbé par wm_offset)
         lda WIN_SLOT
-        jsr kernel_wm_offset    ; X = slot*10
+        jsr kernel_wm_offset     ; X = slot*WM_ENTSZ
         rep #$20
-        lda WM_TABLE+WM_OFF_X,x
+        lda PIR_RECT_X
         clc
-        adc WG_RELX
-        sta WG_RELX             ; abs_x
-        lda WM_TABLE+WM_OFF_Y,x
+        adc WM_TABLE+WM_OFF_X,x
+        sta PIR_RECT_X           ; abs x
+        lda PIR_RECT_Y
         clc
-        adc WG_RELY
-        sta WG_RELY             ; abs_y
-        ; hit test
-        lda MOUSE_X
-        cmp WG_RELX
-        bcc hzh_miss16
-        lda WG_RELX
-        clc
-        adc WG_RELW
-        sta WG_RELW             ; abs_x2
-        lda MOUSE_X
-        cmp WG_RELW
-        bcs hzh_miss16
-        lda MOUSE_Y
-        cmp WG_RELY
-        bcc hzh_miss16
-        lda WG_RELY
-        clc
-        adc WG_RELH
-        sta WG_RELH             ; abs_y2
-        lda MOUSE_Y
-        cmp WG_RELH
-        bcs hzh_miss16
-        ; HIT
+        adc WM_TABLE+WM_OFF_Y,x
+        sta PIR_RECT_Y           ; abs y
         sep #$20
-        plx                      ; X = entry_offset
-        ; id = entry_offset / 10 ; on a stocké id*10 dans X. Pour récupérer
-        ; l'id, on cherche : entry_offset / 10. v1 : itérer / soustraire 10.
+        jsr _point_in_rect16     ; préserve X (irrelevant ici, on restore)
+        ASSERT_A8
+        plx                      ; restore offset hotzone
+        bcc hzh_next
+        ; HIT : id = X / HOTZONE_ENTSZ (boucle soustractive, v1).
         txa
         ldy #$00
 hzh_to_id:
@@ -5064,9 +5042,6 @@ hzh_id_done:
         tya
         ora #HOTZONE_ID_BASE     ; |= $80
         rts
-hzh_miss16:
-        sep #$20
-        plx
 hzh_next:
         ; X += HOTZONE_ENTSZ
         txa
