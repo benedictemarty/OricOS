@@ -1117,6 +1117,16 @@ T1_PERIOD_HI    = $10
 ; les tailles réelles (WM_MAX, TCB_*, KBD_RING_SIZE) : grossir une structure
 ; au-delà de sa zone échoue à la compilation.
 
+; ── Garde linker : CODE ne doit pas déborder TICK_COUNTER ($5400) ──────
+; Audit 65C816 §3.1 : les `.assert` ci-dessous couvrent les chevauchements
+; entre variables nommées, mais PAS la croissance de CODE au-delà du plancher
+; data runtime. ld65 n'erreure que si CODE percute NMI_HANDLER ($5500) — la
+; zone $5400-$54FF est sinon écrasable SILENCIEUSEMENT (corruption déjà
+; survenue : relocalisation SENTINEL en SP-3.o S.4c).
+; Symboles ld65 auto-générés pour le segment CODE.
+.import __CODE_LOAD__, __CODE_SIZE__
+.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5400, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015400)"
+
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"
 .assert ICON_TABLE   + 4*16        <= TCB_BITMAP,      error, "overlap ICON_TABLE/TCB_BITMAP"

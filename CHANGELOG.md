@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-05-31f
+
+### Added — Audit 65C816 §3.1 : garde linker CODE < TICK_COUNTER
+- **`kernel.s` + `kernel.cfg`** : ajout `define = yes` sur segment CODE
+  → ld65 exporte `__CODE_LOAD__` et `__CODE_SIZE__`. Nouvelle assertion
+  `.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5400`. Empêche la
+  corruption silencieuse de la zone $5400-$54FF (variables data
+  runtime hardcodées) par la croissance du segment CODE. ld65 ne
+  signalait qu'un dépassement vers NMI_HANDLER ($5500) — bug déjà
+  survenu (relocalisation SENTINEL SP-3.o S.4c). Critère
+  d'acceptation validé : `.repeat $600 / .byte $EA` dans CODE
+  déclenche bien `Error: Assertion failed`. Réf audit :
+  `AUDIT_65C816_REMEDIATION.md` §3.1.
+
 ## [Unreleased] - 2026-05-31e
 
 ### Fixed — Audit 65C816 §2.1 : fuite bank de code au teardown
