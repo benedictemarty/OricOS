@@ -239,6 +239,7 @@ wm_init_lp:
         tax
         cpx #(WM_MAX*WM_ENTSZ)
         bcc wm_init_lp
+        jsr kernel_wm_sprite_init    ; ADR-33 : upload bitmap curseur + activation sprite HW
         rts
 
 ; ── kernel_wm_add : args WM_ARG_X/Y/W/H (16-bit), WM_ARG_TITLE_LO/HI → A = id ou $FF ────
@@ -3009,24 +3010,71 @@ _dr_skip_dy:
 _dr_done:
         rts
 
-; ── kernel_wm_draw_cursor : après un full-redraw du desktop ────────────
-; Le fond sous le curseur a été repeint → l'ancien backing est périmé.
-; Invalide, capture le nouveau fond, dessine le curseur. Modifie A,X,Y.
+; ── kernel_wm_draw_cursor (ADR-33) : positionne le sprite HW ──────────
+; Ferme ADR-32 §9 (rétractation Étape 4 software) : pas de save/draw/
+; restore, pas de backing store, pas de race. Le compositor matériel
+; (Phosphoric sprite_device, à terme ULA HDL) compose le sprite over
+; le framebuffer. Aligné pattern GEOS C64 sprite VIC-II. Écrit
+; juste MOUSE_X/Y aux registres SPR_X/Y. Modifie A.
 .export kernel_wm_draw_cursor
 kernel_wm_draw_cursor:
-        lda #$00
-        sta CURSOR_VALID         ; ancien backing périmé (desktop repeint)
-        jsr _cursor_save_and_draw
+        ; X 10-bit : SPR_X_LO = MOUSE_X[7:0], SPR_X_HI = MOUSE_X[9:8]
+        lda MOUSE_X
+        sta SPR_X_LO
+        lda MOUSE_X+1
+        and #$03
+        sta SPR_X_HI
+        lda MOUSE_Y
+        sta SPR_Y_LO
+        lda MOUSE_Y+1
+        and #$03
+        sta SPR_Y_HI
         rts
 
-; ── kernel_wm_cursor_blit : déplacement léger du curseur (motion) ──────
-; Restaure le fond sous l'ancien curseur, capture le nouveau, dessine.
-; PAS de redraw desktop. Modifie A,X,Y.
+; ── kernel_wm_cursor_blit (ADR-33) : alias kernel_wm_draw_cursor ──────
+; En sprite HW, draw_cursor et cursor_blit sont équivalents (pas de
+; distinction save vs invalidate). Garde l'export pour compat sources.
 .export kernel_wm_cursor_blit
 kernel_wm_cursor_blit:
-        jsr kernel_wm_cursor_restore
-        jsr _cursor_save_and_draw
+        jmp kernel_wm_draw_cursor
+
+; ── kernel_wm_sprite_init (ADR-33) : upload bitmap + activation ───────
+; Appelé une fois par kernel_wm_init. Reset DATA_IDX, push 128 octets
+; bitmap curseur, active sprite. Modifie A,X.
+kernel_wm_sprite_init:
+        stz SPR_DATA_IDX_LO
+        stz SPR_DATA_IDX_HI
+        ldx #$00
+_kwsi_lp:
+        lda cursor_bitmap_data,x
+        sta SPR_DATA
+        inx
+        cpx #128
+        bcc _kwsi_lp
+        lda #SPR_ENABLE_ON
+        sta SPR_ENABLE
         rts
+
+; ── cursor_bitmap_data (ADR-33) : flèche 16×16 4bpp ────────────────────
+; Palette XVGA (ADR-20) : $0=transparent, $8=darkgray (outline),
+; $F=white (fill). 16 lignes × 8 octets = 128 oct.
+cursor_bitmap_data:
+        .byte $80,$00,$00,$00,$00,$00,$00,$00   ; row  0
+        .byte $88,$00,$00,$00,$00,$00,$00,$00   ; row  1
+        .byte $8F,$80,$00,$00,$00,$00,$00,$00   ; row  2
+        .byte $8F,$F8,$00,$00,$00,$00,$00,$00   ; row  3
+        .byte $8F,$FF,$80,$00,$00,$00,$00,$00   ; row  4
+        .byte $8F,$FF,$F8,$00,$00,$00,$00,$00   ; row  5
+        .byte $8F,$FF,$FF,$80,$00,$00,$00,$00   ; row  6
+        .byte $8F,$FF,$FF,$F8,$00,$00,$00,$00   ; row  7
+        .byte $8F,$FF,$FF,$FF,$80,$00,$00,$00   ; row  8
+        .byte $8F,$FF,$FF,$FF,$F8,$00,$00,$00   ; row  9
+        .byte $8F,$FF,$FF,$88,$88,$00,$00,$00   ; row 10
+        .byte $8F,$F8,$FF,$80,$00,$00,$00,$00   ; row 11
+        .byte $8F,$80,$8F,$F8,$00,$00,$00,$00   ; row 12
+        .byte $88,$00,$8F,$F8,$00,$00,$00,$00   ; row 13
+        .byte $80,$00,$08,$FF,$80,$00,$00,$00   ; row 14
+        .byte $00,$00,$08,$88,$80,$00,$00,$00   ; row 15
 
 ; clampe MOUSE_X/Y → CUR_DRAW_X/Y dans [0,1016]×[0,760], sauve le fond,
 ; dessine le curseur. Met CURSOR_OLD/VALID à jour. Modifie A,X,Y.

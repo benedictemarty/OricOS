@@ -687,6 +687,17 @@ MOU2_DY          = $000368       ; R : delta Y signé (read-clear)
 MOU2_CT_IRQ_EN   = $01
 MOU2_BTN_LEFT    = $01
 
+; ─── Sprite HW curseur Oric 2 (ADR-33) — I/O bank 0 $0370-$037F ─────
+SPR_X_LO         = $000370
+SPR_X_HI         = $000371       ; bits [9:8]
+SPR_Y_LO         = $000372
+SPR_Y_HI         = $000373       ; bits [9:8]
+SPR_ENABLE       = $000374       ; $A5 = on
+SPR_DATA_IDX_LO  = $000375       ; reset index data byte
+SPR_DATA_IDX_HI  = $000376
+SPR_DATA         = $000377       ; data[IDX], auto-incrément
+SPR_ENABLE_ON    = $A5
+
 ; État souris (bank 1)
 MOUSE_X          = $015930       ; 2B position absolue
 MOUSE_Y          = $015932       ; 2B
