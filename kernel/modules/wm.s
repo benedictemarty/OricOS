@@ -3018,12 +3018,13 @@ _dr_done:
 ; juste MOUSE_X/Y aux registres SPR_X/Y. Modifie A.
 .export kernel_wm_draw_cursor
 kernel_wm_draw_cursor:
-        ; X 10-bit : SPR_X_LO = MOUSE_X[7:0], SPR_X_HI = MOUSE_X[9:8].
-        ; Writes en long (f:) pour ne pas dépendre du DBR — en contexte tâche
-        ; (ADR-32 §3 mode WM_TASKMODE) le DBR n'est pas garanti à 0, alors
-        ; qu'en IRQ le handler l'établit. Sans 'f:' le sta abs utilise DBR
-        ; → sprite invisible en mode taskmode (cause racine identifiée
-        ; 2026-06-01, dossier ADR-33 §5 commit 4).
+        ; ADR-33 : force M=8 — appelée depuis IRQ (M=8 garanti) MAIS aussi
+        ; depuis task_wm en mode WM_TASKMODE (M state non garanti). En M=16
+        ; lda/sta opèrent sur 16 bits, sta f:SPR_X_LO écrirait à SPR_X_LO+1
+        ; aussi, etc — sprite ne suit plus la souris en taskmode.
+        php
+        sep #$20
+        .a8
         lda MOUSE_X
         sta f:SPR_X_LO
         lda MOUSE_X+1
@@ -3034,6 +3035,7 @@ kernel_wm_draw_cursor:
         lda MOUSE_Y+1
         and #$03
         sta f:SPR_Y_HI
+        plp
         rts
 
 ; ── kernel_wm_cursor_blit (ADR-33) : alias kernel_wm_draw_cursor ──────

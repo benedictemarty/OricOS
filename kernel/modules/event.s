@@ -596,11 +596,29 @@ kernel_raw_wake:
         beq rwake_done
         lda RAW_RING_COUNT
         beq rwake_done
+        ; ADR-32 §3.3a / ADR-33 §10 : appelé depuis IRQ. kernel_tcb_ptr
+        ; écrit dans SCHED_PTR (ZP). Si la tâche interrompue était mid-call
+        ; tcb_ptr (scheduler pick_next_task), corruption silencieuse →
+        ; task_wm jamais élue. Symptôme : RAW_COUNT=1 stable + RAW_WAITER=0
+        ; + task_wm jamais ordonnancée quand ctl_demo tourne en parallèle.
+        ; Fix : save/restore SCHED_PTR autour de tcb_ptr/sta indirect.
+        lda SCHED_PTR
+        pha
+        lda SCHED_PTR+1
+        pha
+        lda SCHED_PTR+2
+        pha
         lda RAW_WAITER
         jsr kernel_tcb_ptr
         lda #TASK_STATE_READY
         ldy #TCB_STATE
         sta [SCHED_PTR],Y
+        pla
+        sta SCHED_PTR+2
+        pla
+        sta SCHED_PTR+1
+        pla
+        sta SCHED_PTR
         lda #$00
         sta RAW_WAITER
 rwake_done:
