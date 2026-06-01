@@ -3018,17 +3018,22 @@ _dr_done:
 ; juste MOUSE_X/Y aux registres SPR_X/Y. Modifie A.
 .export kernel_wm_draw_cursor
 kernel_wm_draw_cursor:
-        ; X 10-bit : SPR_X_LO = MOUSE_X[7:0], SPR_X_HI = MOUSE_X[9:8]
+        ; X 10-bit : SPR_X_LO = MOUSE_X[7:0], SPR_X_HI = MOUSE_X[9:8].
+        ; Writes en long (f:) pour ne pas dépendre du DBR — en contexte tâche
+        ; (ADR-32 §3 mode WM_TASKMODE) le DBR n'est pas garanti à 0, alors
+        ; qu'en IRQ le handler l'établit. Sans 'f:' le sta abs utilise DBR
+        ; → sprite invisible en mode taskmode (cause racine identifiée
+        ; 2026-06-01, dossier ADR-33 §5 commit 4).
         lda MOUSE_X
-        sta SPR_X_LO
+        sta f:SPR_X_LO
         lda MOUSE_X+1
         and #$03
-        sta SPR_X_HI
+        sta f:SPR_X_HI
         lda MOUSE_Y
-        sta SPR_Y_LO
+        sta f:SPR_Y_LO
         lda MOUSE_Y+1
         and #$03
-        sta SPR_Y_HI
+        sta f:SPR_Y_HI
         rts
 
 ; ── kernel_wm_cursor_blit (ADR-33) : alias kernel_wm_draw_cursor ──────
@@ -3042,39 +3047,66 @@ kernel_wm_cursor_blit:
 ; Appelé une fois par kernel_wm_init. Reset DATA_IDX, push 128 octets
 ; bitmap curseur, active sprite. Modifie A,X.
 kernel_wm_sprite_init:
-        stz SPR_DATA_IDX_LO
-        stz SPR_DATA_IDX_HI
-        ldx #$00
+        ; ADR-33 : force M=8 X=8 (mode runtime non garanti depuis boot).
+        sep #$30
+        .a8
+        .i8
+        lda #$00
+        sta f:SPR_DATA_IDX_LO
+        sta f:SPR_DATA_IDX_HI
+        ; ca65/ld65 ne propage PAS le bank byte au label cursor_bitmap_data,
+        ; ET cpu816_mem_read (Phosphoric) ignore le DBR (bus 16-bit B1.7 →
+        ; long mode non émulé pour abs,X). Solution : long indirect indexed
+        ; `lda [DP_PTR],y` avec bank byte explicite en ZP ($01).
+        lda #<cursor_bitmap_data
+        sta DP_PTR
+        lda #>cursor_bitmap_data
+        sta DP_PTR+1
+        lda #$01                     ; bank 1 (kernel)
+        sta DP_PTR+2
+        ldy #$00
 _kwsi_lp:
-        lda cursor_bitmap_data,x
-        sta SPR_DATA
-        inx
-        cpx #128
+        lda [DP_PTR],y
+        sta f:SPR_DATA
+        iny
+        cpy #128
         bcc _kwsi_lp
         lda #SPR_ENABLE_ON
-        sta SPR_ENABLE
+        sta f:SPR_ENABLE
         rts
 
 ; ── cursor_bitmap_data (ADR-33) : flèche 16×16 4bpp ────────────────────
 ; Palette XVGA (ADR-20) : $0=transparent, $8=darkgray (outline),
 ; $F=white (fill). 16 lignes × 8 octets = 128 oct.
 cursor_bitmap_data:
-        .byte $80,$00,$00,$00,$00,$00,$00,$00   ; row  0
-        .byte $88,$00,$00,$00,$00,$00,$00,$00   ; row  1
-        .byte $8F,$80,$00,$00,$00,$00,$00,$00   ; row  2
-        .byte $8F,$F8,$00,$00,$00,$00,$00,$00   ; row  3
-        .byte $8F,$FF,$80,$00,$00,$00,$00,$00   ; row  4
-        .byte $8F,$FF,$F8,$00,$00,$00,$00,$00   ; row  5
-        .byte $8F,$FF,$FF,$80,$00,$00,$00,$00   ; row  6
-        .byte $8F,$FF,$FF,$F8,$00,$00,$00,$00   ; row  7
-        .byte $8F,$FF,$FF,$FF,$80,$00,$00,$00   ; row  8
-        .byte $8F,$FF,$FF,$FF,$F8,$00,$00,$00   ; row  9
-        .byte $8F,$FF,$FF,$88,$88,$00,$00,$00   ; row 10
-        .byte $8F,$F8,$FF,$80,$00,$00,$00,$00   ; row 11
-        .byte $8F,$80,$8F,$F8,$00,$00,$00,$00   ; row 12
-        .byte $88,$00,$8F,$F8,$00,$00,$00,$00   ; row 13
-        .byte $80,$00,$08,$FF,$80,$00,$00,$00   ; row 14
-        .byte $00,$00,$08,$88,$80,$00,$00,$00   ; row 15
+        ; Curseur "pBasic" PC/GEOS, identique aux 3 UI styles (Open Look, CUA,
+        ; Motif/ISUI = GeoWorks Ensemble). Source :
+        ; bluewaysw/pcgeos Library/SpecUI/CommonUI/CUtils/cutilsVariable.def,
+        ; lignes 75-116 / 258-299 / 567-608.
+        ;
+        ; Format source : 16×16 1bpp + mask (PD_mask + PD_image, 32+32 oct).
+        ; Conversion vers 4bpp transparent OricOS :
+        ;   mask=0           → $0 (transparent)
+        ;   mask=1, image=0  → $F (blanc, palette XVGA idx 15)
+        ;   mask=1, image=1  → $8 (darkgray, palette idx 8 — $0 réservé transparent)
+        ;
+        ; Hotspot (0,0) = coin haut-gauche (pointe de la flèche).
+        .byte $88,$80,$00,$00,$00,$00,$00,$00   ; row  0
+        .byte $8F,$F8,$80,$00,$00,$00,$00,$00   ; row  1
+        .byte $8F,$FF,$F8,$80,$00,$00,$00,$00   ; row  2
+        .byte $08,$FF,$FF,$F8,$80,$00,$00,$00   ; row  3
+        .byte $08,$FF,$FF,$FF,$F8,$80,$00,$00   ; row  4
+        .byte $00,$8F,$FF,$FF,$FF,$F8,$80,$00   ; row  5
+        .byte $00,$8F,$FF,$FF,$FF,$FF,$F8,$00   ; row  6
+        .byte $00,$08,$FF,$FF,$FF,$FF,$F8,$00   ; row  7
+        .byte $00,$08,$FF,$FF,$FF,$88,$80,$00   ; row  8
+        .byte $00,$00,$8F,$FF,$FF,$F8,$00,$00   ; row  9
+        .byte $00,$00,$8F,$FF,$8F,$FF,$80,$00   ; row 10
+        .byte $00,$00,$08,$FF,$88,$FF,$F8,$00   ; row 11
+        .byte $00,$00,$08,$FF,$80,$8F,$FF,$80   ; row 12
+        .byte $00,$00,$00,$88,$00,$08,$FF,$F8   ; row 13
+        .byte $00,$00,$00,$00,$00,$00,$8F,$F8   ; row 14
+        .byte $00,$00,$00,$00,$00,$00,$08,$88   ; row 15
 
 ; clampe MOUSE_X/Y → CUR_DRAW_X/Y dans [0,1016]×[0,760], sauve le fond,
 ; dessine le curseur. Met CURSOR_OLD/VALID à jour. Modifie A,X,Y.
