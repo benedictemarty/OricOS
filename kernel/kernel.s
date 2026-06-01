@@ -52,7 +52,8 @@
 .endmacro
 
 ; ─── Constantes ─────────────────────────────────────────────────────
-TICK_COUNTER    = $015400
+TICK_COUNTER    = $015430       ; 1B counter (pushed $5400→$5430 pour CODE budget,
+                                ; gap $5400-$542F libre, $5431 padding, TASK_CUR à $5432)
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
 ; widgets) et écrasait ces données runtime → corruption. La plus basse donnée
@@ -1184,7 +1185,7 @@ T1_PERIOD_HI    = $10
 ; survenue : relocalisation SENTINEL en SP-3.o S.4c).
 ; Symboles ld65 auto-générés pour le segment CODE.
 .import __CODE_LOAD__, __CODE_SIZE__
-.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5400, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015400)"
+.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5430, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015430)"
 
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"

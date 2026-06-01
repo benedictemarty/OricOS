@@ -746,16 +746,42 @@ task_wm_skip_mstep:
 ;
 ; Clobbe : A. Préserve X, Y. Mode runtime non garanti → force M=8 X=8 + restore.
 task_wm_install_event_state:
-        ; Version minimale (fit CODE budget) : copie WHERE_X/Y → MOUSE_X/Y.
-        ; Suffit pour fixer l'étage dominant (_wm_resize_hit lit MOUSE_X/Y).
-        ; TODO v2 si budget permet : delta dérivé MOUSE_DX/DY + bouton event.
+        ; v2 (TICK_COUNTER pushed $5420 → CODE budget OK) : full event state
+        ; install. Position + delta dérivé + bouton avec edge-detect via WM_LAST_*.
         php
+        ; ── Bouton : PREV ← WM_LAST_BTN ; BTN ← EVT_MODS ; update LAST ──
+        sep #$20
+        .a8
+        lda f:WM_LAST_BTN
+        sta f:MOUSE_PREV_BTN
+        lda $D3                          ; EVT_MODS = bouton de l'event
+        sta f:MOUSE_BTN
+        sta f:WM_LAST_BTN
+        ; ── Position (16-bit) + delta dérivé ──
         rep #$20
         .a16
-        lda $D4                          ; WHERE_X (16-bit)
+        lda $D4                          ; WHERE_X
         sta f:MOUSE_X
+        sec
+        sbc f:WM_LAST_X                  ; A = delta X (16-bit signed)
+        sep #$20
+        .a8
+        sta f:MOUSE_DX                   ; low byte (sat8 implicite)
+        rep #$20
+        .a16
+        lda $D4
+        sta f:WM_LAST_X
         lda $D6                          ; WHERE_Y
         sta f:MOUSE_Y
+        sec
+        sbc f:WM_LAST_Y
+        sep #$20
+        .a8
+        sta f:MOUSE_DY
+        rep #$20
+        .a16
+        lda $D6
+        sta f:WM_LAST_Y
         sep #$20
         .a8
         plp
