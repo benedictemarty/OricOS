@@ -40,6 +40,13 @@ kernel_tk_font_init:
 ;        GFX_COLOR (4-bit). ARG4 packé = color<<20 | y<<10 | x. Modifie A.
 .export kernel_gfx_text16
 kernel_gfx_text16:
+        ; BUG_curseur_fige_gpu_bpl §4.4 : section critique GPU atomique (guard+text16).
+        ; text16 n'avait PAS de sei avant le fix — race possible avec IRQ mouse_step
+        ; qui set_bpl. La poll busy (gfx_t16_wait) inclut sei pour ne pas tenir I=0
+        ; trop longtemps... non, ici on garde sei sur toute la transaction (court
+        ; sur GPU sync v0.1). À reconsidérer en v0.2 async.
+        php
+        sei
         jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -104,6 +111,7 @@ gfx_t16_wait:
         inx
         bne gfx_t16_wait
 gfx_t16_done:
+        plp                     ; BUG_curseur_fige_gpu_bpl §4.4 : ferme la section critique
         rts
 
 ; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM

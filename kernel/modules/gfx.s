@@ -244,9 +244,11 @@ gfx_clear_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_fill_rect
 kernel_gfx_fill_rect:
-        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
+        ; BUG_curseur_fige_gpu_bpl §4.1 : php;sei AVANT bpl_guard pour fermer
+        ; le trou I=0 entre SET_BPL et FILL (course IRQ MOU2 mid-transaction).
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
-        sei
+        sei                     ; section critique élargie : guard + fill
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -366,9 +368,10 @@ gfx_blit_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_line
 kernel_gfx_line:
-        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
-        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        ; BUG_curseur_fige_gpu_bpl §4.4 : section critique élargie (guard+line).
+        php
         sei
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
@@ -426,9 +429,10 @@ gfx_line_done:
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_gfx_text
 kernel_gfx_text:
-        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
-        php                     ; OS-gpu-race : commande GPU atomique vs IRQ
+        ; BUG_curseur_fige_gpu_bpl §4.4 : section critique élargie (guard+text).
+        php
         sei
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         ; ARG1 = base
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
