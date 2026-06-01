@@ -757,16 +757,20 @@ task_wm_install_event_state:
         lda $D3                          ; EVT_MODS = bouton de l'event
         sta f:MOUSE_BTN
         sta f:WM_LAST_BTN
-        ; ── Position (16-bit) + delta dérivé ──
+        ; ── Position (16-bit) + delta 16-bit complet (Fix A) ──
+        ; On garde MOUSE_DX/DY 8-bit (truncation, legacy) ET on écrit aussi
+        ; MOUSE_DX16/DY16 16-bit signé COMPLET. _wm_do_drag/_wm_do_resize
+        ; lisent MOUSE_DX16/DY16 → fix bug saut > 127 px qui inversait signe.
         rep #$20
         .a16
         lda $D4                          ; WHERE_X
         sta f:MOUSE_X
         sec
-        sbc f:WM_LAST_X                  ; A = delta X (16-bit signed)
+        sbc f:WM_LAST_X                  ; A = delta X (16-bit signed complet)
+        sta f:MOUSE_DX16                 ; 16-bit full (Fix A)
         sep #$20
         .a8
-        sta f:MOUSE_DX                   ; low byte (sat8 implicite)
+        sta f:MOUSE_DX                   ; low byte (sat8 implicite, legacy)
         rep #$20
         .a16
         lda $D4
@@ -775,6 +779,7 @@ task_wm_install_event_state:
         sta f:MOUSE_Y
         sec
         sbc f:WM_LAST_Y
+        sta f:MOUSE_DY16                 ; 16-bit full (Fix A)
         sep #$20
         .a8
         sta f:MOUSE_DY

@@ -52,8 +52,8 @@
 .endmacro
 
 ; ─── Constantes ─────────────────────────────────────────────────────
-TICK_COUNTER    = $015430       ; 1B counter (pushed $5400→$5430 pour CODE budget,
-                                ; gap $5400-$542F libre, $5431 padding, TASK_CUR à $5432)
+TICK_COUNTER    = $015500       ; 1B counter (pushed $5430→$5500 pour CODE budget Fix B,
+                                ; gap $54F6-$557F libre — UI_STR_BUF démarre à $5580)
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
 ; widgets) et écrasait ces données runtime → corruption. La plus basse donnée
@@ -730,6 +730,13 @@ WM_DRAG_OLD_Y    = $01597F       ; 2B
 WM_DRAG_OLD_W    = $015981       ; 2B
 WM_DRAG_OLD_H    = $015983       ; 2B
 WM_TITLE_COL     = $015985       ; 1B : couleur titlebar courante (focus/non-focus)
+; BUG_drag_v2_fragments Fix A : delta 16-bit pour drag taskmode (un sat8/truncation
+; inversait le signe pour les sauts > 127 px). MOUSE_DX/DY 8-bit conservé pour
+; legacy + IRQ. install_event_state écrit ici le delta 16-bit signé COMPLET.
+; kernel_mouse_read sign-extend MOUSE_DX→MOUSE_DX16 pour cohérence en legacy.
+; _wm_do_drag / _wm_do_resize lisent MOUSE_DX16/DY16 (plus de _sext8_to16).
+MOUSE_DX16       = $015986       ; 2B : delta X signé 16-bit (cohérent taskmode + legacy)
+MOUSE_DY16       = $015988       ; 2B : delta Y signé 16-bit
 ; ── SP-3.f : table de flags de titres (4 fenêtres × 1B = 4B) ─────────
 ; Slot : $01 = titre présent (uploadé en SDRAM $012000+slot*$100), $00 = pas de titre.
 ; Les titres sont stockés en SDRAM : slot 0 → $012000, slot 1 → $012100,
@@ -1185,7 +1192,7 @@ T1_PERIOD_HI    = $10
 ; survenue : relocalisation SENTINEL en SP-3.o S.4c).
 ; Symboles ld65 auto-générés pour le segment CODE.
 .import __CODE_LOAD__, __CODE_SIZE__
-.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5430, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015430)"
+.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5500, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015500)"
 
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"

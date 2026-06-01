@@ -136,11 +136,28 @@ kernel_mouse_read:
         sep #$20
         lda MOU2_BUTTONS
         sta MOUSE_BTN
-        ; Lit (et clear) les deltas par événement → MOUSE_DX/DY.
+        ; Lit (et clear) les deltas par événement → MOUSE_DX/DY (8-bit signé)
+        ; + sign-extend → MOUSE_DX16/DY16 (Fix A : cohérence legacy + taskmode).
         lda MOU2_DX
         sta MOUSE_DX
+        sta MOUSE_DX16
+        bpl _kmr_dx_pos
+        lda #$FF
+        bra _kmr_dx_done
+_kmr_dx_pos:
+        lda #$00
+_kmr_dx_done:
+        sta MOUSE_DX16+1
         lda MOU2_DY
         sta MOUSE_DY
+        sta MOUSE_DY16
+        bpl _kmr_dy_pos
+        lda #$FF
+        bra _kmr_dy_done
+_kmr_dy_pos:
+        lda #$00
+_kmr_dy_done:
+        sta MOUSE_DY16+1
         lda #(MOU2_CT_IRQ_EN | $02)  ; clear event (deassert IRQ) + IRQ reste enable
         sta MOU2_CTRL
         rts
@@ -2933,15 +2950,13 @@ wm_drag_moved:
         jsr _wm_capture_focused_rect
         ; 2. efface l'ancien curseur (restaure le fond) avant repaint.
         jsr kernel_wm_cursor_restore
-        ; 3. déplace la fenêtre focus du delta de l'événement (MOUSE_DX/DY).
-        lda MOUSE_DX
-        jsr _sext8_to16          ; WM_ARG_DX = sign-extend(MOUSE_DX)
+        ; 3. déplace la fenêtre focus du delta 16-bit (Fix A : MOUSE_DX16/DY16).
+        rep #$20
+        lda MOUSE_DX16           ; 16-bit signé complet
         sta WM_ARG_DX
-        stx WM_ARG_DX+1
-        lda MOUSE_DY
-        jsr _sext8_to16
+        lda MOUSE_DY16
         sta WM_ARG_DY
-        stx WM_ARG_DY+1
+        sep #$20
         jsr kernel_wm_move_focused
         ; 4. redraw incrémental : efface l'ancien rect + redessine les fenêtres.
         jsr kernel_wm_redraw_drag
@@ -2966,15 +2981,13 @@ _wm_do_resize:
         ; Capture rect avant modif (dirty rect pour redraw incrémental)
         jsr _wm_capture_focused_rect
         jsr kernel_wm_cursor_restore
-        ; Sign-extend deltas (trashent X)
-        lda MOUSE_DX
-        jsr _sext8_to16
+        ; Fix A : delta 16-bit complet (MOUSE_DX16/DY16).
+        rep #$20
+        lda MOUSE_DX16
         sta WM_ARG_DX
-        stx WM_ARG_DX+1
-        lda MOUSE_DY
-        jsr _sext8_to16
+        lda MOUSE_DY16
         sta WM_ARG_DY
-        stx WM_ARG_DY+1
+        sep #$20
         ; Reload X = focus*10
         lda WM_FOCUS
         jsr kernel_wm_offset     ; X = focus*10

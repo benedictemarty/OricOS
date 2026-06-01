@@ -4,7 +4,9 @@ build/*.bin
 build/*.map
 build/*.lst
 build/*.oosobj
+build/*.lbl
 apps/*/build/
+tools/__pycache__/
 *.o
 
 # Stamp file SDK install (Makefile target) — local, jamais commité

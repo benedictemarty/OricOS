@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-02
+
+### Fixed — BUG_drag_v2_fragments Fix A : delta 16-bit drag taskmode (bug correction)
+- **`kernel.s`** : ajout `MOUSE_DX16/DY16` (2B+2B à `$015986`/`$015988`)
+  pour stocker le delta souris signé 16-bit COMPLET (sans troncature).
+  `MOUSE_DX/DY` 8-bit conservé pour compat legacy.
+- **`event.s`** `task_wm_install_event_state` : écrit `MOUSE_DX16/DY16`
+  16-bit complet ALONGSIDE `MOUSE_DX/DY` 8-bit tronqué (truncation préservée
+  pour le chemin legacy IRQ). Plus de perte de signe sur delta > 127 px.
+- **`wm.s`** `wm_step_do_drag` + `_wm_do_resize` : lisent `MOUSE_DX16/DY16`
+  directement (M=16) → plus de `_sext8_to16` qui inversait le signe pour
+  les sauts coalescés > ±127 px (cf. expert BUG_drag_v2_fragments §2).
+- **`wm.s`** `kernel_mouse_read` : sign-extend `MOU2_DX/DY` (8-bit) →
+  `MOUSE_DX16/DY16` (16-bit) pour cohérence avec taskmode en chemin legacy.
+- **`kernel.s`** : `TICK_COUNTER` poussé `$5430→$5500` (CODE budget Fix A).
+  Plancher data runtime = `$5500`. Gap `$54F6-$557F` libre.
+- **Why** : drag rapide en `WM_TASKMODE=$A5` coalesce N events MOVED en
+  1 entrée RAW → delta = saut net possiblement > 127 px → truncation 8-bit
+  + `_sext8_to16` inversait le signe → fenêtre va dans le MAUVAIS sens
+  (« faux drag inverse »). Fix A élimine cette source d'erreur de correction.
+- **Note** : Fix B (rect englobant `kernel_wm_redraw_drag`) initialement
+  tenté provoque régression de tests headless (29 FAIL/48) → reporté en
+  session dédiée pour debug. Bug B (erase partiel) toujours présent : peut
+  encore laisser fragments visuels sur sauts coalescés > largeur fenêtre,
+  mais la fenêtre va au moins au bon endroit.
+- **Tests** : `test_oricos_taskmode_full` + `test_oricos_ctl_taskmode_starve`
+  + suite complète Phosphoric → tous verts. Tests `test_oricos_boot` /
+  `test_oricos_helloc` updated (TICK_COUNTER `0x015430→0x015500`).
+
 ## [Unreleased] - 2026-05-31t
 
 ### Added — IRQ_CONFORMITE §3.3 A : invariant index 8-bit + audit + cible CI
