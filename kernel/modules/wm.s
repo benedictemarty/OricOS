@@ -1088,9 +1088,16 @@ kwmin_done:
 ; ARG2 = y<<12|x, ARG3 = h<<12|w. Modifie A. Préserve X, Y.
 .export kernel_gfx_fill_rect16
 kernel_gfx_fill_rect16:
-        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
+        ; BUG curseur figé GPU_BPL (2026-06-01) : php;sei DOIT précéder le
+        ; bpl_guard pour fermer le trou I=0 entre le SET_BPL et le FILL.
+        ; Sans ça, l'IRQ MOU2 s'insère entre les deux commandes GPU et
+        ; entrelace ses propres set_bpl → framebuffer rendu au mauvais stride
+        ; → sprite invisible (= « curseur figé »). Le sei imbriqué de
+        ; _gfx_xvga_bpl_guard / kernel_gfx_set_bpl reste correct (plp restaure
+        ; I=1 du sei externe). Réf : BUG_curseur_fige_gpu_bpl.md §4.1.
         php                     ; OS-gpu-race : commande GPU atomique vs IRQ
-        sei
+        sei                     ; section critique ÉLARGIE : couvre guard+fill
+        jsr _gfx_xvga_bpl_guard ; ADR-27 §0quater C-2 : force bpl=0 si cible XVGA
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
         lda GFX_BASE_MID
