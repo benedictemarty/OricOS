@@ -590,18 +590,23 @@ krw_got:
 
 ; ── kernel_raw_wake — réveille la tâche bloquée sur RAW (depuis l'IRQ, Étape 2) ──
 ; Symétrique de kernel_event_wake. Clobbe A, Y (restaurés par le handler IRQ).
+;
+; BUG §10 (NON RÉSOLU au 2026-06-01) : task_wm starve avec --ctl-demo
+; --wm-taskmode. RAW_WAITER=0 + STATE=BLOCKED observé. Causes RÉFUTÉES :
+; lost-wakeup (B)→(C) [sei tenu, pas d'IRQ possible], préemption T1 dans
+; block_switch [sous sei], coalescing qui saute raw_wake [jmp krpm_done
+; → raw_wake OK], corruption SCHED_PTR [save/restore en place, sans effet].
+; Piste ouverte : autre écrivain de tcb[8].STATE (do_switch handlers.s:283
+; écrit READY inconditionnel). À INSTRUMENTER (watchpoint tcb8.STATE,
+; côté Phosphoric memory_write24). Réf : BUG_task_wm_starve(1).md §2/§3.
 .export kernel_raw_wake
 kernel_raw_wake:
         lda RAW_WAITER
         beq rwake_done
         lda RAW_RING_COUNT
         beq rwake_done
-        ; ADR-32 §3.3a / ADR-33 §10 : appelé depuis IRQ. kernel_tcb_ptr
-        ; écrit dans SCHED_PTR (ZP). Si la tâche interrompue était mid-call
-        ; tcb_ptr (scheduler pick_next_task), corruption silencieuse →
-        ; task_wm jamais élue. Symptôme : RAW_COUNT=1 stable + RAW_WAITER=0
-        ; + task_wm jamais ordonnancée quand ctl_demo tourne en parallèle.
-        ; Fix : save/restore SCHED_PTR autour de tcb_ptr/sta indirect.
+        ; Save/restore SCHED_PTR conservé par défense en profondeur (cf. note
+        ; ci-dessus) — n'est pas la cause racine mais ne nuit pas.
         lda SCHED_PTR
         pha
         lda SCHED_PTR+1
