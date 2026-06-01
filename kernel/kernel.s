@@ -706,6 +706,13 @@ MOUSE_PREV_BTN   = $015935       ; 1B boutons frame précédente (edge-detect cl
 MOUSE_DX         = $015936       ; 1B delta X signé par événement (lu de MOU2_DX)
 MOUSE_DY         = $015937       ; 1B delta Y signé par événement
 WM_DRAG_ARMED    = $015938       ; 1B : 1 si le clic a atterri sur une fenêtre (drag autorisé)
+; BUG_drag_glitch_taskmode (2026-06-02) — état event-derived pour mouse_step en taskmode.
+; En WM_TASKMODE=$A5, task_wm copie event → MOUSE_X/Y/BTN/DX/DY AVANT mouse_step.
+; Delta dérivé par soustraction des positions consécutives (Option A du dossier).
+WM_LAST_X        = $015939       ; 2B : position event précédent (pour delta)
+WM_LAST_Y        = $01593B       ; 2B
+WM_LAST_BTN      = $01593D       ; 1B : bouton event précédent
+WM_LAST_INIT     = $01593E       ; 1B : $A5 si WM_LAST_* initialisé (premier event = setup)
 WM_TEST_RES      = $015940       ; sentinelle test SP-3.e (12 octets)
 ; ── SP-3.e v0.6 : backing-store curseur (évite le full-redraw par mouvement) ──
 CURSOR_SAVE      = $015950       ; 32B : pixels sauvés sous le curseur (8px×8 = 4B×8)

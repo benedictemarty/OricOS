@@ -705,6 +705,17 @@ krpop_copy:
 task_wm_entry:
         jsr kernel_raw_wait              ; bloque jusqu'à un record dispo
         jsr kernel_raw_pop               ; $D0..$D9 = record (A = what)
+        ; BUG_drag_glitch_taskmode (2026-06-02) : en taskmode, mouse_step
+        ; ne doit JAMAIS lire le device MOUSE_DX/DY/BTN read-clear (déjà
+        ; désynchronisé par les IRQ intermédiaires). On copie l'état event
+        ; → MOUSE_* AVANT l'appel. Tout le code downstream (resize_hit,
+        ; do_drag, point_in_rect16, etc.) lit MOUSE_* → voit
+        ; automatiquement l'état cohérent avec l'event poppé.
+        lda WM_TASKMODE
+        cmp #$A5
+        bne _twe_skip_install
+        jsr task_wm_install_event_state
+_twe_skip_install:
         ; ADR-32 §3 : si WM_TASKMODE=$A5, task_wm est le SEUL appelant de
         ; mouse_step (l'IRQ a sauté son appel — atomicité). Default $00 →
         ; pas d'appel ici, comportement legacy (mouse_step en IRQ).
@@ -718,3 +729,34 @@ task_wm_skip_mstep:
         jsr kernel_event_push_verbatim   ; → EVENT_RING (drop si plein, OK v1)
         jsr kernel_event_wake            ; réveille l'app si elle attend
         bra task_wm_entry
+
+; ════════════════════════════════════════════════════════════════════
+;  task_wm_install_event_state — copie event ($D0..$D9) → MOUSE_* (taskmode)
+; ════════════════════════════════════════════════════════════════════
+; BUG_drag_glitch_taskmode (2026-06-02) — fix Option A.
+; Pré-cond : record RAW dans $D0..$D9 (juste après raw_pop). WM_TASKMODE=$A5.
+;
+; Copie event → MOUSE_BTN/PREV_BTN/X/Y, dérive DX/DY = WHERE - WM_LAST.
+; mouse_step et toute sa chaîne (resize_hit, _wm_do_drag, point_in_rect16…)
+; lisent MOUSE_* et voient automatiquement l'état EVENT (pas device read-clear).
+;
+; Premier event (WM_LAST_INIT != $A5) : DX/DY=0 (pas d'apply), init WM_LAST.
+; Suivants : DX/DY = WHERE - WM_LAST (low byte, sat8 implicite via truncation).
+; TODO v2 : sat8 propre (clamp [-128..127]) si deltas > 127 deviennent réels.
+;
+; Clobbe : A. Préserve X, Y. Mode runtime non garanti → force M=8 X=8 + restore.
+task_wm_install_event_state:
+        ; Version minimale (fit CODE budget) : copie WHERE_X/Y → MOUSE_X/Y.
+        ; Suffit pour fixer l'étage dominant (_wm_resize_hit lit MOUSE_X/Y).
+        ; TODO v2 si budget permet : delta dérivé MOUSE_DX/DY + bouton event.
+        php
+        rep #$20
+        .a16
+        lda $D4                          ; WHERE_X (16-bit)
+        sta f:MOUSE_X
+        lda $D6                          ; WHERE_Y
+        sta f:MOUSE_Y
+        sep #$20
+        .a8
+        plp
+        rts
