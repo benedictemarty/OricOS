@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-02c
+
+### Fixed — Palier 1 relocation variables RAM ($5432-$54F3 → $9032-$90F3)
+
+Origine : `BUG_code_ecrase_variables.md` (2026-06-02). Tentative Fix B (rect
+englobant `kernel_wm_redraw_drag`, +111 octets) → 22 tests rouges + 7 fails
+pré-existants (`test_oricos_event_syscall`, `mainloop_*`, `ui_define`,
+`dlgbox`…). Diagnostic : les variables `TASK_*`, `KBD_*`, `BANK_*`, `LOG_*`,
+etc. (constantes absolues `=`) cohabitaient en $5432-$54F3 avec le bas de
+CODE — invisibles du linker, l'assert `<= $5500` était 206 octets trop
+haut. Les écritures runtime (`sta TASK_CUR`, etc.) écrasaient le code
+silencieusement dès que CODE débordait $5432. Corruption sélective →
+comportements erratiques.
+
+- **Palier 1** : remap `$0154xx` → `$0190xx` (page $54 → $90, zone libre
+  $8F4A-$E000 ~20 KiB). 28 déclarations dans `kernel/kernel.s`. Aucune ref
+  littérale ailleurs côté kernel ($0155xx — TICK_COUNTER, SCROLL_DRAG_ID —
+  hors zone, intacts).
+- Côté Phosphoric (commit séparé) : ~80 littéraux `0x0154xx` dans 8 tests
+  d'intégration + `src/main.c` remappés.
+- L'ancien plancher mou `$5500` (NMI_HANDLER) reste l'assert linker — la
+  zone $5432-$54FF est désormais inerte (plus aucune variable y vit).
+
+**Résultat** : 0 fail sur la suite Phosphoric complète (vs 7 fails baseline
+pré-existants, eux aussi des effets de la corruption silencieuse). Gain
+réel : 7+ tests débloqués.
+
+**Différé** : Fix B (rect englobant) lui-même mis en stash —
+`test_oricos_clock` reste fragile au décalage de symboles wm.s, à reprendre
+en optimisant la taille du calcul d'union (factorisation X/Y, viser ≤50 o).
+Option D (gate `WM_TASKMODE=$A5`) validée par le mot d'expert (rect
+englobant inutile en legacy : delta IRQ minuscule, OLD seul suffit).
+
 ## [Unreleased] - 2026-06-02b
 
 ### Added — CLAUDE.md §5bis-§5octies : gouvernance debug (R1-R9 + checklist)

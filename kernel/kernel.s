@@ -57,48 +57,48 @@ TICK_COUNTER    = $015500       ; 1B counter (pushed $5430→$5500 pour CODE bud
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
 ; widgets) et écrasait ces données runtime → corruption. La plus basse donnée
-; est désormais TICK_COUNTER ($015400), plafond effectif du CODE.
+; est désormais TICK_COUNTER ($019000), plafond effectif du CODE.
 SENTINEL_BASE   = $016300        ; 6 octets ("ORIOS\0" sentinelle boot)
 VERSION_BASE    = $016310        ; 5 octets (version kernel)
-TASK_CUR        = $015432       ; PID actuellement RUNNING (1..16)
-TASK_A_CTR      = $015440
-TASK_B_CTR      = $015444
-TASK_C_CTR      = $015448       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
-TASK_D_CTR      = $015449       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
-TASK_E_KEY      = $01544A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
-TASK_F_CTR      = $01544B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (test SYS_SLEEP_MS)
-TASK_WIN_HANDLE = $015451       ; SP-3.m G.2 : handle fenêtre retourné par SYS_WIN_CREATE (test)
-TASK_EVT_WHAT   = $015452       ; SP-3.n G.2 : what de l'événement lu par task_evt (test)
-TASK_EVT_MSG    = $015453       ; SP-3.n G.2 : message (keycode) lu par task_evt (test)
-TASK_ML_MSG     = $015454       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP (test)
-TASK_ML_DETAIL  = $015455       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
-TASK_UI_HANDLE  = $015456       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
-TASK_DLG_RES    = $015457       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_dlg (test)
-TASK_ALERT_RES  = $015459       ; SP-3.n G.6 : retour SYS_ALERT lu par task_alert (test)
-TASK_CHK_VAL    = $01545A       ; SP-3.o S.1 : valeur checkbox lue par task_chk (test)
-TASK_CHK_ID     = $01545B       ; SP-3.o S.1 : id du widget checkbox créé (test)
-TASK_SCR_ID     = $01545C       ; SP-3.o S.2 : id du scrollbar créé par task_scr (test)
-TASK_VIEW_ID    = $01545D       ; SP-3.o S.3 : id du GenView créé par task_view (test)
-TASK_RAD_ID0    = $01545E       ; SP-3.o S.4a : id du 1er radio créé par task_radio (test)
-TASK_RAD_ID1    = $01545F       ; SP-3.o S.4a : id du 2e radio créé par task_radio (test)
-TASK_TEXT_ID    = $015460       ; SP-3.o S.4b : id du champ texte créé par task_text (test)
-TASK_LIST_ID    = $015461       ; SP-3.o S.4c : id de la liste créée par task_list (test)
-TASK_GENUI_ID   = $015462       ; SP-3.o S.5 : id du 1er contrôle déclaré par task_genui (test)
-TASK_CPCT_HANDLE = $015463      ; ADR-27 B2.c : slot fenêtre créée par task_compact
-SLEEP_TICKS     = $015480       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
+TASK_CUR        = $019032       ; PID actuellement RUNNING (1..16)
+TASK_A_CTR      = $019040
+TASK_B_CTR      = $019044
+TASK_C_CTR      = $019048       ; OS-2.g v2.a g.3 : compteur 3e tâche (créée par task_create)
+TASK_D_CTR      = $019049       ; OS-2.g v2.a g.4 : compteur tâche éphémère (s'auto-termine)
+TASK_E_KEY      = $01904A       ; OS-2.g v2.b g.5 : touche lue par task_e (test blocage)
+TASK_F_CTR      = $01904B       ; OS-2.g v2.b sleep : compteur tâche dormeuse (test SYS_SLEEP_MS)
+TASK_WIN_HANDLE = $019051       ; SP-3.m G.2 : handle fenêtre retourné par SYS_WIN_CREATE (test)
+TASK_EVT_WHAT   = $019052       ; SP-3.n G.2 : what de l'événement lu par task_evt (test)
+TASK_EVT_MSG    = $019053       ; SP-3.n G.2 : message (keycode) lu par task_evt (test)
+TASK_ML_MSG     = $019054       ; SP-3.n G.3a : message rendu par SYS_MAIN_LOOP (test)
+TASK_ML_DETAIL  = $019055       ; SP-3.n G.3a : détail ($DA : id fenêtre / keycode) (test)
+TASK_UI_HANDLE  = $019056       ; SP-3.n G.3b : handle fenêtre créée par SYS_UI_DEFINE (test)
+TASK_DLG_RES    = $019057       ; SP-3.n G.5 : retour SYS_DO_DLGBOX lu par task_dlg (test)
+TASK_ALERT_RES  = $019059       ; SP-3.n G.6 : retour SYS_ALERT lu par task_alert (test)
+TASK_CHK_VAL    = $01905A       ; SP-3.o S.1 : valeur checkbox lue par task_chk (test)
+TASK_CHK_ID     = $01905B       ; SP-3.o S.1 : id du widget checkbox créé (test)
+TASK_SCR_ID     = $01905C       ; SP-3.o S.2 : id du scrollbar créé par task_scr (test)
+TASK_VIEW_ID    = $01905D       ; SP-3.o S.3 : id du GenView créé par task_view (test)
+TASK_RAD_ID0    = $01905E       ; SP-3.o S.4a : id du 1er radio créé par task_radio (test)
+TASK_RAD_ID1    = $01905F       ; SP-3.o S.4a : id du 2e radio créé par task_radio (test)
+TASK_TEXT_ID    = $019060       ; SP-3.o S.4b : id du champ texte créé par task_text (test)
+TASK_LIST_ID    = $019061       ; SP-3.o S.4c : id de la liste créée par task_list (test)
+TASK_GENUI_ID   = $019062       ; SP-3.o S.5 : id du 1er contrôle déclaré par task_genui (test)
+TASK_CPCT_HANDLE = $019063      ; ADR-27 B2.c : slot fenêtre créée par task_compact
+SLEEP_TICKS     = $019080       ; OS-2.g v2.b sleep : 16 octets, SLEEP_TICKS[pid] = ticks restants
                                 ; ($5481..$548F pour pid 1..15) ; >0 = tâche endormie (timer décrémente)
-KBD_WAITER      = $01544F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
+KBD_WAITER      = $01904F       ; OS-2.g v2.b g.5 : pid bloqué sur le clavier (0=aucun).
                                 ; Signal dégénéré (1 attente clavier) ; généralisable en
                                 ; masque de signaux par TCB (ADR-25) si besoin.
-IDLE_PID        = $01547D       ; OS-2.g v2.b idle : pid de la tâche idle (0=non créée).
+IDLE_PID        = $01907D       ; OS-2.g v2.b idle : pid de la tâche idle (0=non créée).
                                 ; find_next la saute (passe normale) et n'y retombe QUE si
                                 ; aucune autre tâche READY → ferme le trou « dernière tâche ».
-IDLE_CTR        = $01547E       ; compteur idle (test : ==0 tant que des tâches réelles tournent)
-STACK_NEXT_PAGE = $01544C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
-SCHED_ACTIVE    = $01544D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
+IDLE_CTR        = $01907E       ; compteur idle (test : ==0 tant que des tâches réelles tournent)
+STACK_NEXT_PAGE = $01904C       ; OS-2.g v2.a g.3 : prochaine page de pile bank 0 (bump)
+SCHED_ACTIVE    = $01904D       ; OS-2.g v2.a g.4 : $A5 = scheduler démarré (timer-driven).
                                 ; SYS_EXIT fait STP si inactif (app boot-context, ex. hello_c),
                                 ; sinon teardown+reschedule.
-FORBID_COUNT    = $01544E       ; OS-2.g v2.b g.6 (ADR-25 Exec-classique) : compteur Forbid.
+FORBID_COUNT    = $01904E       ; OS-2.g v2.b g.6 (ADR-25 Exec-classique) : compteur Forbid.
                                 ; ≠0 = tâche en syscall → le timer NE préempte PAS (atomicité,
                                 ; corrige la réentrance ZP #2). yield/exit font permit avant switch.
 TICK_GOAL       = $0A           ; 10 ticks → STP
@@ -143,29 +143,29 @@ TCB_2_STATE     = TCB_2 + TCB_STATE
 
 ; ─── Bank allocator pool système (Sprint 2.b/2.h) ──────────────────
 ; Pool système : banks 4-127 (= $04..$7F, 124 banks) pour code/data apps.
-BANK_NEXT       = $015450       ; prochain bank libre via bump (uint8)
-BANK_DEMO       = $015460       ; 3 octets : résultats de l'alloc démo
+BANK_NEXT       = $019050       ; prochain bank libre via bump (uint8)
+BANK_DEMO       = $019060       ; 3 octets : résultats de l'alloc démo
 BANK_POOL_BASE  = $04            ; premier bank du pool
 BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 
 ; Sprint 2.h : free list LIFO 16 entries. alloc pop d'abord, sinon bump.
-BANK_FREE_LIST  = $0154A0       ; 16 bytes stack (banks libérés)
-BANK_FREE_TOP   = $0154B0       ; 1 byte (count 0..16)
+BANK_FREE_LIST  = $0190A0       ; 16 bytes stack (banks libérés)
+BANK_FREE_TOP   = $0190B0       ; 1 byte (count 0..16)
 
 ; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19 + ADR-20) ─────
 ; Pool live : banks 132-159 (= $84..$9F, 28 banks) en BRAM ECP5.
 ; Banks 128-131 ($80..$83) réservés au framebuffer principal XVGA
 ; 1024×768×4bpp (4 banks consécutifs, ADR-20 ; BPL=512 → 1024 px/ligne).
 ; Pool live = backing-stores fenêtres GUI actives + buffers GPU.
-BANK_LIVE_NEXT       = $015458   ; prochain bank live via bump (uint8)
-BANK_LIVE_DEMO       = $015468   ; 4 octets : résultats alloc/free demo
+BANK_LIVE_NEXT       = $019058   ; prochain bank live via bump (uint8)
+BANK_LIVE_DEMO       = $019068   ; 4 octets : résultats alloc/free demo
 BANK_LIVE_POOL_BASE  = $84       ; bank 132 (= $84, 1er bank libre après FB)
 BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 132-159
-BANK_LIVE_FREE_LIST  = $0154C0   ; 16 bytes stack
-BANK_LIVE_FREE_TOP   = $0154D0   ; 1 byte (count 0..16)
+BANK_LIVE_FREE_LIST  = $0190C0   ; 16 bytes stack
+BANK_LIVE_FREE_TOP   = $0190D0   ; 1 byte (count 0..16)
 
 ; ─── Modèle erreur kernel (Sprint 2.i / OS-2.i.v2) ──────────────────
-PANIC_CODE      = $015495       ; 1 byte : dernier code panic (0 = OK)
+PANIC_CODE      = $019095       ; 1 byte : dernier code panic (0 = OK)
 
 ; Codes d'erreur/panic nommés (8-bit). 0 = OK.
 ERR_NONE            = $00
@@ -182,14 +182,14 @@ LOG_PANIC           = $04
 ; Log ring buffer (OS-2.i.v2) — bank 1, gap $5400-$54FF (hors CODE/segments).
 ; 8 entrées × 2 octets (level, code) = 16B. Circulaire : si plein, l'entrée
 ; la plus ancienne est écrasée (head suit tail). Inspectable post-mortem.
-LOG_RING        = $0154E0       ; 16 octets (8 entrées × {level, code})
-LOG_HEAD        = $0154F0       ; index lecture (entrée la plus ancienne)
-LOG_TAIL        = $0154F1       ; index écriture
-LOG_COUNT       = $0154F2       ; nb entrées (0..8)
+LOG_RING        = $0190E0       ; 16 octets (8 entrées × {level, code})
+LOG_HEAD        = $0190F0       ; index lecture (entrée la plus ancienne)
+LOG_TAIL        = $0190F1       ; index écriture
+LOG_COUNT       = $0190F2       ; nb entrées (0..8)
 LOG_SIZE        = 8
 LOG_MASK        = LOG_SIZE - 1
 DP_LOG_TMP      = $13           ; DP+$13 : scratch code log
-LOG_TEST_RES    = $0154F3       ; sentinelle test OS-2.i.v2 : 3 octets (count, lvl, code)
+LOG_TEST_RES    = $0190F3       ; sentinelle test OS-2.i.v2 : 3 octets (count, lvl, code)
 
 ; ─── Format bundle apps (Sprint 2.k, ADR-08 v0.1) ───────────────────
 ; Header bundle "OOS\x01" : 8 octets fixes :
@@ -232,13 +232,13 @@ BNL_SEC_SZ_HI      = 3
 BNL_SEC_OFF_LO     = 4
 BNL_SEC_OFF_HI     = 5
 
-BUNDLE_VALIDATE_RES = $01549C   ; 1 byte : résultat dernier validate
+BUNDLE_VALIDATE_RES = $01909C   ; 1 byte : résultat dernier validate
 
 ; Sprint 2.l : résultats find_code + app_exec
-BUNDLE_FOUND_NSEC   = $015496   ; 1 byte : nsec scan tmp
-BUNDLE_FOUND_SIZE   = $015498   ; 2 bytes : size de la section trouvée
-BUNDLE_FOUND_OFFSET = $01549A   ; 2 bytes : offset de la section
-BUNDLE_APP_BANK     = $01549F   ; 1 byte : bank alloué pour app
+BUNDLE_FOUND_NSEC   = $019096   ; 1 byte : nsec scan tmp
+BUNDLE_FOUND_SIZE   = $019098   ; 2 bytes : size de la section trouvée
+BUNDLE_FOUND_OFFSET = $01909A   ; 2 bytes : offset de la section
+BUNDLE_APP_BANK     = $01909F   ; 1 byte : bank alloué pour app
 
 ; ─── Driver console (Sprint 2.c/2.e) — Oric 1 screen RAM ───────────
 ; Mode TEXT 40x28 : $BB80-$BFE7 (40*28 = 1120 octets = $460).
@@ -252,8 +252,8 @@ SCREEN_ROWS     = $1C            ; 28
 SCREEN_LAST_ROW = $00BFB8       ; SCREEN_BASE + 27*40
 
 ; Variables console (bank 1)
-CURSOR_ADDR     = $015490       ; 16-bit, addr écran courante
-CURSOR_X        = $015492       ; 8-bit, colonne courante (0..39)
+CURSOR_ADDR     = $019090       ; 16-bit, addr écran courante
+CURSOR_X        = $019092       ; 8-bit, colonne courante (0..39)
 
 ; ════════════════════════════════════════════════════════════════════
 ;  REGISTRE D'ALLOCATION ZERO PAGE (DP = $0000, bank 0)
@@ -465,7 +465,7 @@ PCR_LATCH_ADDR  = $EE
 PCR_WRITE_DATA  = $EA
 PCR_READ_DATA   = $AE
 PCR_INACTIVE    = $AA
-KBD_MATRIX      = $015470       ; 8 octets bank 1 (legacy scan Oric 1, inutilisé OS-2.d)
+KBD_MATRIX      = $019070       ; 8 octets bank 1 (legacy scan Oric 1, inutilisé OS-2.d)
 
 ; ─── Contrôleur clavier Oric 2 KBD2 (ADR-22, OS-2.d) ────────────────
 ; Modèle hybride paravirtualisé : l'hôte OricOS lit une FIFO ASCII via
@@ -486,8 +486,8 @@ KBD_RING_TAIL   = $015871       ; index écriture (push)
 KBD_RING_COUNT  = $015872       ; nb octets en file (0..16)
 KBD_RING_SIZE   = 16
 KBD_RING_MASK   = KBD_RING_SIZE - 1
-KBD_GETKEY_RES  = $015476       ; sentinelle test : résultat SYS_GET_KEY démo
-SCROLL_TEST_RES = $015477       ; sentinelle test OS-2.e.2 : 4 octets (scroll+CR)
+KBD_GETKEY_RES  = $019076       ; sentinelle test : résultat SYS_GET_KEY démo
+SCROLL_TEST_RES = $019077       ; sentinelle test OS-2.e.2 : 4 octets (scroll+CR)
 
 ; ─── File d'événements unifiée (SP-3.n G.1, ADR-26 draft) ──────────
 ; Couche événementielle façon GeoWorks/GEOS : les drivers IRQ (KBD2, MOU2)
