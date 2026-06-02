@@ -135,6 +135,126 @@ some_label:                          ; ⬅ pas de fall-through M=16
 
 ---
 
+## 5bis. Invariant — `WM_TASKMODE` : l'EVENT est la source de vérité, jamais le device
+
+**En `WM_TASKMODE=$A5`, `kernel_wm_mouse_step` et toute sa chaîne (hit-test, drag, resize,
+bouton) lisent l'ÉVÉNEMENT poppé de RAW_RING (`$D0..$D9`), JAMAIS l'état device
+(`MOUSE_X/Y`, `MOUSE_DX/DY`, `MOUSE_BTN`/`PREV_BTN`).**
+
+Pourquoi : en taskmode, mouse_step est différé. Entre l'IRQ qui lit MOU2 et le moment où
+task_wm traite l'event, d'autres IRQ écrasent l'état device (positions, deltas read-clear,
+bouton). Lire le device hors du contexte IRQ qui l'a produit = corruption (curseur figé,
+fenêtre étirée, fragments).
+
+Le code a déjà le bon modèle (`wm.s` ~3749 : `lda $D4 → WM_ARG_X`, where_x de l'event) et le
+mauvais (`wm.s` ~2179 : `lda MOUSE_X`). **Tout nouveau code de traitement souris suit le
+modèle 3749.** `task_wm_install_event_state` copie event→MOUSE_* AVANT mouse_step ; tant que
+cette copie est complète et exacte, lire `MOUSE_*` redevient sûr — mais la règle de revue
+reste : vérifier que la valeur lue vient de l'event, pas d'un device non-réinstallé.
+
+Corollaire (état mutable à un seul producteur) : **TCB.STATE**, **GFX_BPL**, les slots ZP
+partagés (`WM_ARG_*`, `GFX_*`) suivent la même loi — un état écrit par deux contextes
+(IRQ + tâche) sans protocole = bug. Single-writer ou transaction atomique sous `sei`.
+
+---
+
+## 5ter. Largeur des grandeurs DÉRIVÉES d'un cumul (≠ device instantané)
+
+**Une grandeur dérivée d'une position/compteur cumulé (ex. `delta = WHERE − LAST`) a une
+dynamique plus large que la même grandeur lue du device. Sa largeur de stockage doit suivre :
+16 bits, pas 8.**
+
+Pourquoi : un delta device par IRQ est ≤ ±127 (8 bits OK). Mais un delta *dérivé* d'events
+coalescés peut dépasser ±127 → un stockage 8-bit le tronque, et un `_sext8_to16` derrière
+**inverse le signe** (saut de +200 → −56).
+
+Recette : quand un fix fait d'un event/cumul la source d'une grandeur auparavant lue du
+device, **auditer la largeur de TOUS ses consommateurs** (ex. drag ET resize). Méfiance
+absolue sur tout commentaire « sat8 implicite » — il n'y a pas de saturation implicite en
+asm, seulement de la troncature.
+
+---
+
+## 5quater. Discipline M/X sur les RMW mémoire
+
+**Côté émulateur (Phosphoric) : toute instruction RMW mémoire (ASL/LSR/ROL/ROR/INC/DEC, modes
+dp/dp,X/abs/abs,X) DOIT être M-aware** — 16-bit quand M=0, via `cpu816_mem_read16/write16` +
+`update_nz_M`, comme les variantes accumulateur. Une RMW mem 8-bit-fixe sous M=16 corrompt
+silencieusement (`asl $0080` → `$0000` au lieu de `$0100`).
+
+**Côté kernel : tout `asl/lsr/rol/ror/inc/dec` sur MÉMOIRE sous `rep #$20`/`#$30` est un point
+de vigilance**, à combiner avec la convention `.smart` ci-dessus. Site connu : `sched.s` scan
+bitmap (`asl SCHED_TMP` M=16). Tout nouveau RMW-mem en mode 16-bit exige un test de conformance
+CPU avant d'être considéré correct.
+
+---
+
+## 5quinquies. Règles de process debug (non négociables)
+
+- **R1 — Pas de fix sans preuve de la cause.** Une hypothèse plausible n'est pas une cause.
+  Avant tout fix : une trace, une mesure, ou une lecture de code qui EXCLUT les alternatives.
+- **R2 — Lire pour CONTRAINDRE, pas pour confirmer.** Avant d'hypothéser une race : *qui tient
+  I (sei/cli) ? qui écrit cet état, depuis combien de contextes ? la fenêtre supposée
+  existe-t-elle physiquement ?*
+- **R3 — Mesurer, jamais estimer en se faisant passer pour mesurer.** Si la donnée manque, dire
+  « je ne peux pas l'affirmer » et l'obtenir (build, `kernel.map`, watchpoint). Distinguer
+  **taille de fichier paddé** (`fill=yes`, `ls -l`) vs **contenu réel** (`kernel.map` fait foi).
+- **R4 — Test différentiel d'abord.** Isoler la variable discriminante par différence (legacy
+  vs taskmode, avec/sans ctl_demo, pid 7 vs 8) AVANT de lire le code.
+- **R5 — Échec d'allocation kernel = BRUYANT.** `kernel_task_create`/`kernel_alloc_bank` dont
+  le retour 0 n'est pas testé est interdit pour une ressource système :
+  ```asm
+          jsr kernel_task_create
+          bne :+
+          lda #PANIC_NO_SLOT
+          jsr kernel_panic
+  :
+  ```
+- **R6 — Après le 2ᵉ bug d'une même FAMILLE : ériger l'invariant, auditer proactivement.** Ne
+  pas débuguer le 3ᵉ comme un incident isolé ; poser l'invariant, grep tous les sites, corriger
+  d'un coup.
+
+---
+
+## 5sexies. Tests — conformance et fragilité
+
+- **R7 — Conformance CPU indépendante obligatoire pour tout opcode touché.** Un test
+  d'intégration ne peut PAS attraper une idée fausse partagée par l'OS et l'émulateur. Tout
+  opcode CPU ajouté/modifié dans Phosphoric exige un test unitaire à vecteurs known-good
+  externes (Klaus Dormann étendu 65C816 : RMW mem M=8/M=16, M/X, MVN/MVP, post-XCE, vecteurs).
+- **R8 — Tests cycle-précis : marge, pas couperet.** Un test de timing ne doit pas transformer
+  « +5 cycles d'un fix correct » en échec rouge. Si un fix correct change le budget, rebaser le
+  budget en le justifiant dans le commit — jamais désactiver le test, jamais contourner le fix.
+- **R9 — Versionner les harness de repro AVEC le code** (golden-model, pas workspace privé) :
+  un repro non versionné = personne ne peut le rejouer = retour à l'analyse statique (source des
+  erreurs R3).
+
+---
+
+## 5septies. Frontière kernel ↔ émulateur
+
+**Quand un bug apparaît, déterminer AVANT tout fix s'il est côté kernel ou côté émulateur.**
+Le kernel peut être correct et l'émulateur faux. Test décisif : *le comportement attendu est-il
+celui d'un 65C816 réel ?* Si oui et que l'émulateur diverge → fix émulateur ; un fix kernel
+serait une rustine masquant le vrai bug. Critère d'acceptation type : « le bug disparaît SANS
+modifier le kernel » prouve que c'était l'émulateur.
+
+---
+
+## 5octies. Checklist avant tout commit de fix
+
+1. [ ] Test différentiel fait, variable discriminante isolée (R4).
+2. [ ] Cause PROUVÉE (trace/mesure/lecture excluant les alternatives), pas hypothèse (R1, R2).
+3. [ ] Kernel vs émulateur tranché (R3 mesure, §5septies).
+4. [ ] Si état mutable : single-writer / event-source vérifié (§5bis).
+5. [ ] Si grandeur dérivée : largeur 16-bit auditée chez TOUS les consommateurs (§5ter).
+6. [ ] Si RMW-mem en M=16 : M-aware + test conformance (§5quater, R7).
+7. [ ] Si nouvelle famille : invariant posé, sites audités (R6).
+8. [ ] `make audit-smart` + `make` + suite golden-model verte ; budgets cycles rebasés-justifiés (R8).
+9. [ ] Échecs d'alloc bruyants (R5). Harness de repro versionné (R9).
+
+---
+
 ## 6. Validation
 
 À chaque modification :

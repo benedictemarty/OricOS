@@ -745,6 +745,24 @@ task_wm_skip_mstep:
 ; TODO v2 : sat8 propre (clamp [-128..127]) si deltas > 127 deviennent réels.
 ;
 ; Clobbe : A. Préserve X, Y. Mode runtime non garanti → force M=8 X=8 + restore.
+
+; ── _install_sat8 : sature A 16-bit signé vers [-128, +127] dans low byte. ──
+; Pré : M=16. Sortie : A 16-bit, low byte = sat8(input), high byte non garanti.
+; Préserve X, Y. Modifie seulement A et flags. Coût : 4-8 cycles selon branche.
+_install_sat8:
+        .a16
+        bmi _is8_neg
+        cmp #$0080
+        bcc _is8_done            ; A < 128 → in range, garde low byte
+        lda #$007F               ; A >= 128 → clamp à +127
+        rts
+_is8_neg:
+        cmp #$FF80
+        bcs _is8_done            ; A >= $FF80 (= -128 signed) → in range
+        lda #$0080               ; A < -128 → clamp à -128 ($80 low)
+_is8_done:
+        rts
+
 task_wm_install_event_state:
         ; v2 (TICK_COUNTER pushed $5420 → CODE budget OK) : full event state
         ; install. Position + delta dérivé + bouton avec edge-detect via WM_LAST_*.
@@ -757,20 +775,24 @@ task_wm_install_event_state:
         lda $D3                          ; EVT_MODS = bouton de l'event
         sta f:MOUSE_BTN
         sta f:WM_LAST_BTN
-        ; ── Position (16-bit) + delta 16-bit complet (Fix A) ──
-        ; On garde MOUSE_DX/DY 8-bit (truncation, legacy) ET on écrit aussi
-        ; MOUSE_DX16/DY16 16-bit signé COMPLET. _wm_do_drag/_wm_do_resize
-        ; lisent MOUSE_DX16/DY16 → fix bug saut > 127 px qui inversait signe.
+        ; ── Position (16-bit) + delta 16-bit complet (Fix A) + sat8 propre ──
+        ; MOUSE_DX16/DY16 : 16-bit signé complet → consommé par _wm_do_drag/
+        ; _wm_do_resize (corrige bug saut > 127 px qui inversait le signe).
+        ; MOUSE_DX/DY : sat8 PROPRE clamp [-128, +127] (et non plus troncature
+        ; trompeuse « sat8 implicite ») → reflète correctement « delta non nul ? »
+        ; pour les consommateurs IRQ legacy 8-bit (skip-zero test wm_step_do_drag).
+        ; §5ter : sans sat8, delta = +256 → low byte 0 → faux skip.
         rep #$20
         .a16
         lda $D4                          ; WHERE_X
         sta f:MOUSE_X
         sec
-        sbc f:WM_LAST_X                  ; A = delta X (16-bit signed complet)
-        sta f:MOUSE_DX16                 ; 16-bit full (Fix A)
+        sbc f:WM_LAST_X                  ; A = delta X 16-bit signé complet
+        sta f:MOUSE_DX16
+        jsr _install_sat8                ; A (16-bit) → A (8-bit dans low) sat8
         sep #$20
         .a8
-        sta f:MOUSE_DX                   ; low byte (sat8 implicite, legacy)
+        sta f:MOUSE_DX                   ; sat8 propre (non plus truncation)
         rep #$20
         .a16
         lda $D4
@@ -779,7 +801,8 @@ task_wm_install_event_state:
         sta f:MOUSE_Y
         sec
         sbc f:WM_LAST_Y
-        sta f:MOUSE_DY16                 ; 16-bit full (Fix A)
+        sta f:MOUSE_DY16
+        jsr _install_sat8
         sep #$20
         .a8
         sta f:MOUSE_DY

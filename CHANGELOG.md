@@ -8,6 +8,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-02b
+
+### Added — CLAUDE.md §5bis-§5octies : gouvernance debug (R1-R9 + checklist)
+- 7 nouvelles sections de gouvernance dans `CLAUDE.md` :
+  - **§5bis** : invariant event-source en `WM_TASKMODE`. Mouse_step et chaîne
+    lisent l'EVENT (`$D0..$D9`), pas le device read-clear. Corollaire
+    single-writer pour TCB.STATE, GFX_BPL, slots ZP partagés.
+  - **§5ter** : largeur 16-bit obligatoire pour grandeurs DÉRIVÉES d'un cumul
+    (delta = WHERE − LAST). Méfiance « sat8 implicite » (truncation, pas
+    saturation). Audit largeur chez TOUS les consommateurs.
+  - **§5quater** : discipline M/X sur RMW mémoire (émulateur + kernel).
+  - **§5quinquies** : 6 règles process debug (R1-R6) — pas de fix sans
+    preuve de cause ; lire pour contraindre ; mesurer, pas estimer ;
+    test différentiel d'abord ; échec alloc bruyant ; après 2ᵉ bug famille
+    → ériger l'invariant.
+  - **§5sexies** : tests R7-R9 — conformance CPU indépendante obligatoire
+    pour tout opcode ; tests cycle-précis = marge, pas couperet (rebaser
+    + justifier, jamais désactiver) ; versionner harness repro.
+  - **§5septies** : frontière kernel ↔ émulateur (avant fix, trancher
+    quel côté).
+  - **§5octies** : checklist 9 points avant tout commit de fix.
+
+### Fixed — §5ter / audit grep MOUSE_DX/DY : sat8 propre dans install_event_state
+- **Bug** (découvert par audit grep proactif §5ter) : `install_event_state`
+  écrivait `MOUSE_DX/DY` 8-bit par troncature low byte du delta 16-bit
+  (commentaire trompeur « sat8 implicite »). Un delta multiple de 256
+  (`+256`/`−256`) tronquait à `$00` → faux skip-zéro dans
+  `wm_step_do_drag`/`_wm_do_resize` (skip-zero test 8-bit) → la fenêtre
+  ne suivait pas un drag « pile 256 px ».
+- **`event.s`** : nouveau helper `_install_sat8` (clamp signé [-128, +127]
+  en M=16). Appelé dans `task_wm_install_event_state` pour X et Y avant
+  d'écrire `MOUSE_DX/DY`. `MOUSE_DX16/DY16` 16-bit complet conservé pour
+  les consommateurs Fix A (drag/resize lisent ça).
+- **Pourquoi cette approche** : alternative naïve (test 16-bit dans
+  `wm_step_do_drag` lui-même) provoquait régression IRQ inexpliquée
+  +19000 cycles dans `test_oricos_wm_cost` (14987 → 34128, baseline 18000).
+  La sat8 à la source garde le hot path IRQ 8-bit inchangé.
+- **Tests** : suite Phosphoric verte, baseline IRQ 14987 ≤ 18000 préservée.
+
+### Note — Audit grep §5ter
+- `_sext8_to16` (wm.s:3297) n'a plus aucun appelant après Fix A → dead
+  code à supprimer dans une passe de cleanup ultérieure.
+
 ## [Unreleased] - 2026-06-02
 
 ### Fixed — BUG_drag_v2_fragments Fix A : delta 16-bit drag taskmode (bug correction)
