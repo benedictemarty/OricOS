@@ -447,7 +447,19 @@ _raw_fill_ww:
 ; actif (TC_WM_FLAG=$A5). Drop silencieux si plein. Clobbe A, X. Préserve Y.
 .export kernel_raw_push_mouse
 kernel_raw_push_mouse:
-        pha                      ; sauve type
+        pha                      ; sauve type sur stack
+        ; Fix B (BUG_drag_v2_fragments) : en WM_TASKMODE=$A5, désactive le
+        ; coalescing MOVED. Préserve chaque event individuel → delta event
+        ; petit (≤ MOU2 IRQ rate) → wm_step_do_drag erase OLD rect couvre le
+        ; déplacement, plus de fragments. Risque : RAW_RING (16 slots) overflow
+        ; sous burst mouse — acceptable v1 (drop = pas de regression visible,
+        ; mouse_step lit l'event poppé event-source). EVENT_RING côté app
+        ; conserve son coalescing dans kernel_event_push_mouse.
+        lda WM_TASKMODE          ; clobbe A (sauvegardé sur stack)
+        cmp #$A5
+        beq krpm_enqueue         ; taskmode : tjs enqueue (pas de coalesce)
+        pla                      ; restore type pour le test MOVED
+        pha                      ; re-sauve pour la suite (modèle original)
         ; Coalescing MOUSE_MOVED (cf. kernel_event_push_mouse).
         cmp #EV_MOUSE_MOVED
         bne krpm_enqueue

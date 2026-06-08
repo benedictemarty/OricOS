@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-09
+
+### Fixed — Fix B BUG_drag_v2_fragments (désactivation coalescing MOVED en taskmode)
+
+Cause racine : `kernel_raw_push_mouse` coalesce des MOUSE_MOVED successifs
+dans RAW_RING. En `WM_TASKMODE=$A5`, `task_wm_install_event_state` dérive
+le delta `WHERE - WM_LAST` à partir du record poppé — sous coalescing,
+WHERE est la position finale de N events, le delta dépasse la largeur
+fenêtre, et `kernel_wm_redraw_drag` ne couvre pas la trajectoire avec
+son erase OLD seul.
+
+Patch (`kernel/modules/event.s` `kernel_raw_push_mouse`) : gate
+`WM_TASKMODE=$A5` au-dessus du bloc de coalescing — taskmode pousse
+chaque event individuel, `task_wm` les drain un à un, delta petit, erase
+OLD couvre. EVENT_RING (côté app) garde son coalescing dans
+`kernel_event_push_mouse` (n'affecte pas l'UI app).
+
+Coût : +10 octets CODE ($5259→$5263). IRQ_CONFORMITE §5 inchangé
+(14987 cyc). Tous tests Phosphoric verts.
+
+Risque accepté : RAW_RING (16 slots) peut overflow sous burst mouse →
+drop silencieux. Acceptable v1 : pas de régression visible (mouse_step
+event-source).
+
+### Investigation (livrée mais sans changement de code OricOS)
+- Fragilité **test_oricos_clock** position-dépendante isolée et documentée :
+  shift CODE ≥ 50 octets fait crasher la tâche clock après iteration 1
+  du loop print, TCB state → DEAD. Reproduit avec `.res N, $EA` neutre
+  (pas mon code → pad pur). Cause racine non tranchée (kernel vs émulateur).
+  Bloquant pour Fix B v1 (rect englobant +65 octets) → pivot vers v2 ici
+  (-coalescing, +10 octets). À investiguer en cycle dédié.
+- Outil debug : commande `cpu` ajoutée à `Phosphoric/tools/oricrobot.c`
+  pour dumper l'état CPU (PBR/PC/DBR/D/S/C/X/Y/P/E) — pratique pour
+  tracer le hang clock, conservée.
+
 ## [Unreleased] - 2026-06-02c
 
 ### Fixed — Palier 1 relocation variables RAM ($5432-$54F3 → $9032-$90F3)
