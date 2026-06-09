@@ -3493,9 +3493,11 @@ swc_done:
 ; le backing curseur (CURSOR_SAVE) est périmé. La prochaine opération curseur
 ; sauvegarde du contenu frais. Évite la corruption curseur stationnaire post-flush.
 sys_win_flush:
+        sei                      ; Opt-A : ferme réentrance IRQ↔syscall (cf. sys_gfx_fill_rect)
         jsr kernel_wm_compose
         lda #$00
         sta CURSOR_VALID         ; invalide backing curseur (framebuffer modifié sous curseur)
+        cli                      ; Opt-A : restore I=0
         lda #$00
         rts
 
@@ -5287,6 +5289,13 @@ sys_gfx_clear:
 ; Save/restore $90-$93 (GFX_BPL/ARG4 kernel scratch) car ces slots ZP
 ; overlap les imag-regs llvm-mos __rc7..__rc10 utilisés par les apps.
 sys_gfx_fill_rect:
+        ; Opt-A (Bug B fin de course, 2026-06-09) : ferme la fenêtre de
+        ; réentrance IRQ↔syscall sur les ZP scratch gfx/wm. cop_handler
+        ; fait `cli` (ADR-03), l'IRQ peut alors préempter ce syscall et
+        ; clobbber WM_DP_TMP/GFX_*/SCHED_*. Confirmé par test A/B
+        ; (cf. docs/CR/CR_reentrance_irq_syscall_confirmed.md). Coût
+        ; minime : ~300 cyc d'IRQ latency max (< 1.5 % du budget frame).
+        sei
         lda $90
         pha
         lda $91
@@ -5316,6 +5325,7 @@ sys_gfx_fill_rect:
         sta $91
         pla
         sta $90
+        cli                          ; Opt-A : restore I=0 (cop_handler avait cli)
         lda #$00
         rts
 

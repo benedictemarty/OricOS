@@ -77,7 +77,9 @@ kernel_cop_handler:
         ; Le rti final restaure le P (donc I) de l'appelant.
         ; ⚠️ v1 : rend les syscalls interruptibles. Sûr tant qu'une seule
         ; tâche émet des syscalls (pas de réentrance sur la ZP scratch kernel).
-        ; À revisiter avec le vrai blocage de tâche (OS-2.g v2).
+        ; Exception (Opt-A 2026-06-09) : sys_gfx_fill_rect et sys_win_flush
+        ; ajoutent `sei`/`cli` localement pour fermer la fenêtre de réentrance
+        ; IRQ↔syscall sur les ZP scratch gfx/wm (cf. docs/CR/).
         cli
         jsr kernel_forbid      ; g.6 : atomicité tâche↔tâche pendant le syscall
                                ; (le timer ne préempte pas tant que FORBID≠0)
