@@ -8,6 +8,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-09b
+
+### Fixed — Réentrance IRQ↔syscall ZP scratch (Opt-A : sei ciblé)
+
+Investigation suite mot expert : la discipline ADR-03 (cop_handler `cli` →
+syscalls interruptibles) ouvrait une fenêtre de réentrance IRQ top-half ↔
+syscall sur les ZP scratch kernel. FORBID ne protège que tâche↔tâche.
+
+Symptôme isolé via test position-shift (~50 octets) — pas un budget cycles,
+un vrai hang (tâche clock crashe mi-iter 2). A/B clean :
+- baseline : PASS
+- +120 pad sans protection : FAIL (`tick=1 cyc=900001`)
+- +120 pad + `sei`/`cli` sur sys_gfx_fill_rect + sys_win_flush : PASS
+
+**Patch livré** (`kernel/modules/wm.s`) :
+- `sys_gfx_fill_rect` : `sei` en tête, `cli` avant `rts`.
+- `sys_win_flush` : `sei` en tête, `cli` avant `rts`.
+- `handlers.s` cop_handler : `cli` conservé (ADR-03 préservé), note ajoutée
+  précisant l'exception Opt-A.
+
+Coût : ~300 cyc IRQ latency max par appel. IRQ_CONFORMITE §5 préservé
+(14987 cyc, identique baseline). Suite Phosphoric 24/24 verte.
+
+### Investigation collatérale (pivot Opt-C → Opt-A)
+
+Tentative initiale Opt-C radicale (retirer `cli` de cop_handler, ajouter
+`cli` aux 6 syscalls bloquants : read_char, get_next_event, main_loop,
+do_dlgbox, alert, sleep_ms) : couvrait Bug B mais causait régressions
+- IRQ_CONFORMITE §5 : 14987 → 34095 cyc (cause exacte non identifiée v1)
+- test_oricos_win_app FAIL : WM_COUNT reste 3 au lieu de 2
+
+Reverté. Opt-C complète ouverte pour ADR-32 §10 (audit systématique
++ ZP top-half dédiée).
+
+Référence : `docs/CR/CR_reentrance_irq_syscall_confirmed.md` (analyse
+complète + §9 pivot Opt-C→A).
+
 ## [Unreleased] - 2026-06-09
 
 ### Fixed — Fix B BUG_drag_v2_fragments (désactivation coalescing MOVED en taskmode)
