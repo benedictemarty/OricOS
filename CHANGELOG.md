@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11b
+
+### Fixed — audit R6 : WM_OWNER sentinelle $FF (bug latent close_owner)
+
+Sprint de consolidation (« go »). Scan systématique des 282 constantes
+bank 1 contre l'image kernel (97 octets image non nuls — la zone
+variables est superposée au segment CHARSET). 1 bug latent réel :
+**WM_OWNER** — slots jamais créés = octets image plausibles comme pids
+($02/$04/$08…) ; au sys_exit d'une tâche au pid correspondant,
+close_owner fermait une fenêtre INEXISTANTE (WM_COUNT corrompu). En
+prime : sentinelle $00 ambiguë (pid 0 existe) et pas de nettoyage owner
+dans kernel_wm_close (bouton ×) → slot fermé non réutilisé re-fermable.
+Fix : WM_OWNER_NONE=$FF + init wm_init[0..7] + clear au close + clear
+close_owner en $FF. Garde test_oricos_wm_owner_sentinel rouge-checkée
+(ROUGE vu : $1C/$00/$00/$3E/$00/$08 → VERT). Les autres suspects de
+l'audit sont des scratch écrits-avant-lus ou des structures bornées par
+compteur initialisé (sûres par protocole).
+
+Fausse piste écartée avec preuve (R1) : TB_CLK_SDRAM ne collisionne pas
+avec les labels d'icônes (upload horloge ADDR_HI=$00 → SDRAM $001200) ;
+le bug labels d'icônes ($FF dès ICON_TABLE, préexistant) est borné dans
+le dossier, à fixer séparément.
+
 ## [Unreleased] - 2026-06-11
 
 ### Fixed — traces de drag (single-writer du geste) + init WM_DRAG_ARMED

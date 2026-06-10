@@ -996,6 +996,10 @@ BTN_MAX_OFFSET   = 22            ; □ : 12px à gauche du ×
 BTN_MIN_OFFSET   = 34            ; _ : 24px à gauche du ×
 TB_WIN_SDRAM     = $011100       ; adresse SDRAM du scratch "WinN\0" (5 bytes)
 TB_CLK_SDRAM     = $011200       ; adresse SDRAM du scratch horloge (5 bytes)
+                                 ; NB audit R6 2026-06-11 : PAS de collision avec les
+                                 ; labels d'icônes ($011200, bank SDRAM $01) — l'upload
+                                 ; horloge écrit avec ADDR_HI=$00 → SDRAM $001200. Seuls
+                                 ; les octets bas/mid de cette constante sont consommés.
 
 ; Taskbar layout (ADR-20 XVGA 1024×768)
 TB_Y_SEP         = 755           ; y du séparateur blanc (1 px)
@@ -1162,6 +1166,9 @@ WM_MAX           = 8
 WM_ZORDER        = $015BC4       ; WM_MAX × 1B = 8B ($5BC4-$5BCB)
 WM_ZORDER_N      = $015BCC       ; 1B : nb entrées actives (= WM_COUNT en pratique)
 WM_OWNER         = $015BCD       ; SP-3.m G.1 : WM_MAX × 1B = pid propriétaire par slot
+WM_OWNER_NONE    = $FF           ; sentinelle « pas d'owner » — PAS $00 : pid 0 existe
+                                 ; (audit R6 2026-06-11 : slots jamais créés contenaient
+                                 ; des octets image CHARSET plausibles comme pids)
                                 ; (0 = aucun) ; renseigné par kernel_wm_add = TASK_CUR créateur.
 WCMP_SLOT        = $015BD5       ; SP-3.m G.4bis : compositor — slot itérateur (1B)
 WCMP_XB          = $015BD6       ; compositor — x>>1 (2B)

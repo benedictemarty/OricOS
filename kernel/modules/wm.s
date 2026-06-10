@@ -250,6 +250,20 @@ kernel_wm_init:
         ; SP-3.j : init WM_MODAL à $FF (aucune fenêtre modale)
         lda #$FF
         sta WM_MODAL
+        ; Audit R6 (2026-06-11) : init WM_OWNER[0..7] = WM_OWNER_NONE ($FF).
+        ; Les slots jamais créés gardaient les octets image (plage CHARSET)
+        ; dont $02/$04/$08 — pids plausibles : au sys_exit de cette tâche,
+        ; close_owner matchait le slot fantôme et fermait une fenêtre
+        ; inexistante (WM_COUNT corrompu). $00 interdit comme sentinelle :
+        ; pid 0 existe.
+        sta f:WM_OWNER+0
+        sta f:WM_OWNER+1
+        sta f:WM_OWNER+2
+        sta f:WM_OWNER+3
+        sta f:WM_OWNER+4
+        sta f:WM_OWNER+5
+        sta f:WM_OWNER+6
+        sta f:WM_OWNER+7
         ; SP-3.k : init ICON_COUNT=0, ICON_SELECTED=$FF, table libre
         lda #$00
         sta f:ICON_COUNT
@@ -613,7 +627,7 @@ wco_loop:
         bcc wco_loop
         rts                     ; aucune fenêtre pour ce pid
 wco_found:
-        lda #$00
+        lda #WM_OWNER_NONE      ; audit R6 : $FF, pas $00 (pid 0 existe)
         sta f:WM_OWNER,X        ; efface l'owner du slot
         txa                     ; A = slot id
         jsr kernel_wm_close     ; ferme (flags/titre/count/zorder/focus)
@@ -650,6 +664,12 @@ wm_close_used:
         tax
         lda #$00
         sta WM_TITLES,X
+        ; Audit R6 : libère l'owner du slot ($FF). Sans ça, une fermeture
+        ; directe (bouton ×) laissait WM_OWNER[slot] = pid périmé : si le
+        ; slot n'était pas réutilisé avant le sys_exit de la tâche,
+        ; close_owner re-fermait un slot libre (WM_COUNT corrompu).
+        lda #WM_OWNER_NONE
+        sta f:WM_OWNER,X
         ; ── ADR-27 C2 : libère les banques contiguës du backing store si
         ; le slot en avait (WM_BACKING_BANK != 0). X = slot id encore valide.
         lda f:WM_BACKING_BANK,X
