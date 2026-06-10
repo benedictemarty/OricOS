@@ -240,6 +240,13 @@ kernel_wm_init:
         ; SP-3.i : init WM_RESIZE_ARMED / WM_RESIZE_EDGE à 0
         sta WM_RESIZE_ARMED
         sta WM_RESIZE_EDGE
+        ; C2 fix traces : init WM_DRAG_ARMED à 0. INDISPENSABLE : le bloc
+        ; de variables WM vit dans la plage du segment CHARSET ($5800-$5FFF,
+        ; fonte consommée au boot puis zone réutilisée) → contenu image NON
+        ; NUL (octets de glyphes, $08 à $5938). Jusqu'ici personne ne lisait
+        ; WM_DRAG_ARMED avant le 1er clic (qui l'écrit) ; le gate geste du
+        ; compose-loop le lit dès le boot → geste fantôme sans cette init.
+        sta WM_DRAG_ARMED
         ; SP-3.j : init WM_MODAL à $FF (aucune fenêtre modale)
         lda #$FF
         sta WM_MODAL
@@ -1349,13 +1356,38 @@ wcmp_visible:
         lda f:WM_NO_BACKING_FLAGS,X
         cmp #WM_NO_BACKING_MAGIC
         beq _wcmp_skip_no_backing
-        ; Pas no-backing → recalcule X = slot*10 pour la suite.
+        ; ── ADR-27 C2 fix traces (2026-06-11) : pendant un GESTE (drag/
+        ; resize), la fenêtre focus appartient à task_wm — SINGLE-WRITER.
+        ; Le compose-loop de l'app la SKIP (sinon il BLIT le backing à des
+        ; positions périmées, en course avec redraw_drag → blocs blancs
+        ; fantômes que le culling dirty-rect n'efface jamais : « plein de
+        ; traces » vus en validation interactive). redraw_drag blit la
+        ; draguée lui-même (kernel_wm_compose_slot, sous le chrome). ──
+        lda WM_DRAG_ARMED
+        ora WM_RESIZE_ARMED
+        beq _wcmp_no_gesture
         lda WCMP_XB
-        jsr kernel_wm_offset            ; X = slot*WM_ENTSZ
-        bra wcmp_do_backing
+        cmp WM_FOCUS
+        beq _wcmp_skip_no_backing       ; draguée → skip (task_wm peint)
+_wcmp_no_gesture:
+        lda WCMP_XB
+        jsr kernel_wm_compose_slot      ; A = slot → BLIT backing→framebuffer
+        jmp wcmp_next
 _wcmp_skip_no_backing:
         jmp wcmp_next
-wcmp_do_backing:
+
+; ── kernel_wm_compose_slot : A = slot id → BLIT le backing store de CE
+;    slot vers le framebuffer XVGA (base multi-banques C2, stride compact
+;    B2.b, post-and-continue par capacités). Cœur extrait de la boucle
+;    compose — réutilisé par redraw_drag pour la fenêtre draguée
+;    (single-writer pendant le geste). NE restaure PAS bpl (cf. wcmp_done
+;    / la garde C-2 des helpers XVGA couvre les dessins suivants).
+;    Pré-cond : slot USED|VISIBLE, pas NO_BACKING. Clobbe A, X, Y,
+;    WCMP_XB/WCMP_MIDHI/WCMP_SLOT_ID, GFX_*. ─────────────────────────────
+.export kernel_wm_compose_slot
+kernel_wm_compose_slot:
+        sta WCMP_XB                     ; slot id
+        jsr kernel_wm_offset            ; X = slot*WM_ENTSZ
         ; src = backing store : multi-banques contiguës (WM_BACKING_BANK[slot])
         ; ou legacy ($06+slot):$0000 — via kernel_wm_backing_base_hi (ADR-27 C2).
         lda #$00
@@ -1430,6 +1462,8 @@ wcmp_do_blit:
 wcmp_blit_sync:
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
 wcmp_blit_done:
+        rts                             ; fin de kernel_wm_compose_slot
+
 wcmp_next:
         lda WCMP_SLOT
         inc a
@@ -1547,7 +1581,9 @@ _wm_draw_one:
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #(WM_F_USED | WM_F_VISIBLE)
         cmp #(WM_F_USED | WM_F_VISIBLE)
-        bne _wdo_done
+        beq _wdo_visible        ; (portée : _wdo_done éloigné par C2 fix traces)
+        jmp _wdo_done
+_wdo_visible:
         ; ── C2b dirty-rect : pendant redraw_drag, seules les fenêtres
         ; touchées par le rect sale (PIR_RECT_* = union ancien ∪ courant,
         ; posé par redraw_drag) sont rejouées — les autres ont leurs
@@ -1562,6 +1598,23 @@ _wm_draw_one:
         bcs _wdo_no_cull
         jmp _wdo_done           ; intacte → skip
 _wdo_no_cull:
+        ; ── ADR-27 C2 fix traces : pendant le geste, task_wm est le SEUL
+        ; peintre de la draguée — son CONTENU (backing store) est blitté
+        ; ICI, sous le chrome (le compose-loop de l'app la skip). Position
+        ; lue dans la même passe que le move → cohérente, zéro course. ──
+        lda f:WM_RD_DIRTY
+        cmp #$A5
+        bne _wdo_no_blit
+        lda WIN_SLOT
+        cmp WM_FOCUS
+        bne _wdo_no_blit
+        tax
+        lda f:WM_NO_BACKING_FLAGS,X
+        cmp #WM_NO_BACKING_MAGIC
+        beq _wdo_no_blit         ; slots système chrome-direct : pas de backing
+        lda WIN_SLOT
+        jsr kernel_wm_compose_slot
+_wdo_no_blit:
         ; Couleur titlebar selon focus (v0.8)
         lda WIN_SLOT
         cmp WM_FOCUS

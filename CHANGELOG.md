@@ -8,6 +8,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11
+
+### Fixed — traces de drag (single-writer du geste) + init WM_DRAG_ARMED
+
+Retour interactif Bénédicte (« plein de traces », tallwin) : pendant un
+drag, DEUX peintres concurrents écrivaient la fenêtre draguée — le
+compose-loop de l'app (kernel_wm_compose en boucle) blittait le backing
+à des positions périmées pendant que task_wm (redraw_drag) effaçait et
+repeignait ; les copies périmées tombaient hors de l'union dirty-rect →
+jamais effacées. Fix single-writer : (1) cœur du BLIT extrait en
+`kernel_wm_compose_slot` (A=slot) ; (2) pendant un geste (drag/resize
+armé), la boucle compose SKIP la fenêtre focus ; (3) `_wm_draw_one`
+blit lui-même le backing de la draguée sous son chrome (position lue
+dans la même passe que le move — zéro course). Mesuré : 0 résidu sur
+fast-drag 10 moves (vs ~34 blocs avant), chrome visible pendant le drag.
+
+Au passage, rouge de suite → cause prouvée (xxd image kernel) : le bloc
+de variables WM vit DANS la plage du segment CHARSET ($5800-$5FFF, fonte
+consommée au boot puis zone réutilisée) → contenu image NON nul ($08 à
+$015938). `WM_DRAG_ARMED` n'était jamais initialisé (personne ne le
+lisait avant le 1er clic) ; le gate geste du compose est le 1er lecteur
+à froid → init à 0 dans kernel_wm_init. Item d'audit R6 ouvert : toutes
+les variables superposées à un segment chargé (TCB $5C00, bitmap $5B00…)
+doivent être écrites avant première lecture — « BSS = zéro » est FAUX
+sur cette plage. Dossier : `docs/notes/BUG_record_replay_fragilite.md`
+(workspace) — bugs résiduels A (liste périmée tallwin) et B (chrome non
+rejoué post-drag long) tracés avec repros versionnés, à traiter en
+sprint de consolidation.
+
 ## [Unreleased] - 2026-06-10t
 
 ### Added — ADR-27 C2 : backing store MULTI-BANQUES contiguës
