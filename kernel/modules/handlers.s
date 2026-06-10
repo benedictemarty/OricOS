@@ -382,3 +382,12 @@ kernel_charset:
 .export kernel_charset_xvga
 kernel_charset_xvga:
         .incbin "../data/charset-xvga.bin"
+
+; SP-GUI (fontes multiples) : variante GRASSE (smear, gen-font-bold.py).
+; Segment FONTBOLD à l'adresse FIXE $D000 (CHARSET_XVGA_BOLD_SRC) — pas
+; dans CHARSET (qui heurterait SENTINEL $6300 écrit avant l'upload).
+; Uploadée par kernel_tk_font_init vers TK_FONT_BOLD_ADDR (SDRAM).
+        .segment "FONTBOLD"
+.export kernel_charset_xvga_bold
+kernel_charset_xvga_bold:
+        .incbin "../data/charset-xvga-bold.bin"

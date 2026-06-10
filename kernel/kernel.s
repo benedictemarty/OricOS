@@ -436,6 +436,9 @@ CHARSET_XVGA_SRC = $015C00       ; source IBM CGA VGA8 (bank 1, après Atmos)
                                  ; retourne la bank ($01). Le symbole de
                                  ; segment kernel_charset_xvga est 16-bit
                                  ; (linker ld65) → #^ = 0 → upload garbage.
+; SP-GUI (fontes multiples) : variante GRASSE. Source = segment FONTBOLD
+; ($01D000, constante 24-bit pour #^). Uploadée au boot vers SDRAM.
+CHARSET_XVGA_BOLD_SRC = $01D000
 CHARSET_SIZE    = $0400          ; 1024 octets (128 chars × 8 lignes)
 
 STACK_A_TOP     = $01FF         ; bank 0, task A stack top
@@ -1195,6 +1198,9 @@ GFX_BPL_HI       = $91
 
 ; ── SP-3.d : toolkit (label/frame/button) — adresses SDRAM ─────────────
 TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)
+TK_FONT_BOLD_ADDR = $010400      ; SP-GUI : fonte GRASSE en SDRAM (1024 o, $010400-$0107FF, sous TK_LP_STR0 $011000)
+TK_STYLE         = $015A8B       ; 1B : style de rendu courant — $00 regular, $A5 bold
+TK_STYLE_BOLD    = $A5
 GPU_OP_TEXT16    = $07           ; texte coords 16-bit (ADR-21, SP-3.d)
 GPU_OP_EXEC_LIST = $09           ; GPU-ISA v3 (ADR-34 C) : display-list en SDRAM
 GPU_OP_EXEC_LIST_XY = $0A        ; GPU-ISA v4 (ADR-34 C2b) : replay translaté —

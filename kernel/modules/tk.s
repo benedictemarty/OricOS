@@ -33,6 +33,28 @@ kernel_tk_font_init:
         lda #$04                 ; LEN = $0400 = 1024
         sta VRAM_OP_LEN_HI
         jsr kernel_vram_write_block
+        ; SP-GUI (fontes multiples) : upload la variante GRASSE vers
+        ; TK_FONT_BOLD_ADDR (SDRAM). Source = CHARSET_XVGA_BOLD_SRC ($01D000).
+        lda #<CHARSET_XVGA_BOLD_SRC
+        sta DP_PCPTR
+        lda #>CHARSET_XVGA_BOLD_SRC
+        sta DP_PCPTR+1
+        lda #^CHARSET_XVGA_BOLD_SRC
+        sta DP_PCPTR+2
+        lda #<TK_FONT_BOLD_ADDR
+        sta VRAM_OP_ADDR_LO
+        lda #>TK_FONT_BOLD_ADDR
+        sta VRAM_OP_ADDR_MID
+        lda #^TK_FONT_BOLD_ADDR
+        sta VRAM_OP_ADDR_HI
+        lda #$00
+        sta VRAM_OP_LEN_LO
+        lda #$04                 ; LEN = $0400 = 1024
+        sta VRAM_OP_LEN_HI
+        jsr kernel_vram_write_block
+        ; style par défaut = regular
+        lda #$00
+        sta TK_STYLE
         rts
 
 ; ── kernel_gfx_text16 : GPU TEXT coords 16-bit (ADR-21, SP-3.d) ────────
@@ -152,9 +174,50 @@ FONT_WIDTHS:
 ; « texte non étalé »). Le kernel vit en bank 1 → adresse far explicite.
 FONT_WIDTHS_FAR = FONT_WIDTHS + $010000
 
+; SP-GUI (fontes multiples) : table de largeurs de la variante GRASSE.
+.export FONT_WIDTHS_BOLD
+FONT_WIDTHS_BOLD:
+        .incbin "../data/font_widths_bold.bin"
+FONT_WIDTHS_BOLD_FAR = FONT_WIDTHS_BOLD + $010000
+
+; ── _tk_glyph_width : X = char & $7F → A = largeur rendue, table choisie
+;    selon TK_STYLE (regular / bold). M=8. Préserve X, Y. ───────────────
+_tk_glyph_width:
+        lda f:TK_STYLE
+        cmp #TK_STYLE_BOLD
+        beq _tgw_bold
+        lda f:FONT_WIDTHS_FAR,X
+        rts
+_tgw_bold:
+        lda f:FONT_WIDTHS_BOLD_FAR,X
+        rts
+
+; ── _tk_set_gfx_font : pose GFX_FONT_LO/MID/HI = fonte courante (regular
+;    ou bold selon TK_STYLE). M=8. Clobbe A. ──────────────────────────
+_tk_set_gfx_font:
+        lda f:TK_STYLE
+        cmp #TK_STYLE_BOLD
+        beq _tsgf_bold
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #^TK_FONT_ADDR
+        sta GFX_FONT_HI
+        rts
+_tsgf_bold:
+        lda #<TK_FONT_BOLD_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_BOLD_ADDR
+        sta GFX_FONT_MID
+        lda #^TK_FONT_BOLD_ADDR
+        sta GFX_FONT_HI
+        rts
+
 ; ── kernel_tk_text_width : largeur rendue (proportionnel) d'une chaîne ──
 ; In : [DP_PCPTR] = chaîne null-term (24-bit). Out : WM_ARG_W (16-bit).
-; Max TK_PROP_MAX chars (garde-fou). Clobbe A, X, Y. Préserve DP_PCPTR.
+; Honore TK_STYLE (regular/bold). Max TK_PROP_MAX chars (garde-fou).
+; Clobbe A, X, Y. Préserve DP_PCPTR.
 TK_PROP_MAX = 64
 .export kernel_tk_text_width
 kernel_tk_text_width:
@@ -168,7 +231,7 @@ ktw_loop:
         beq ktw_done
         and #$7F                 ; table = 128 entrées
         tax
-        lda f:FONT_WIDTHS_FAR,X
+        jsr _tk_glyph_width      ; A = largeur (regular/bold selon TK_STYLE)
         rep #$20
         and #$00FF
         clc
@@ -264,12 +327,7 @@ tklp_render:
         sta GFX_BASE_MID
         lda #$10
         sta GFX_BASE_HI          ; framebuffer XVGA $100000
-        lda #<TK_FONT_ADDR
-        sta GFX_FONT_LO
-        lda #>TK_FONT_ADDR
-        sta GFX_FONT_MID
-        lda #^TK_FONT_ADDR
-        sta GFX_FONT_HI
+        jsr _tk_set_gfx_font     ; SP-GUI : fonte regular/bold selon TK_STYLE
         lda f:TK_LP_STRB+2
         sta GFX_STR_HI           ; bank SDRAM du buffer espacé courant
         ldy #$00
@@ -290,11 +348,11 @@ tklp_loop:
         sta GFX_STR_MID
         jsr kernel_gfx_text16    ; rend 1 char à WM_ARG_X/Y (lit, ne clobbe pas)
         ply
-        ; avance : WM_ARG_X += FONT_WIDTHS[char]
+        ; avance : WM_ARG_X += largeur (regular/bold selon TK_STYLE)
         lda [DP_PCPTR],Y
         and #$7F
         tax
-        lda f:FONT_WIDTHS_FAR,X
+        jsr _tk_glyph_width
         rep #$20
         and #$00FF
         clc
@@ -429,12 +487,25 @@ _tkll_emit:
         sta VRAM_DATA_IO
         lda #$10
         sta VRAM_DATA_IO
+        ; SP-GUI : fonte regular/bold selon TK_STYLE (émise dans l'entrée).
+        lda f:TK_STYLE
+        cmp #TK_STYLE_BOLD
+        beq _tkll_fbold
         lda #<TK_FONT_ADDR
-        sta VRAM_DATA_IO         ; arg2 = fonte
+        sta VRAM_DATA_IO         ; arg2 = fonte regular
         lda #>TK_FONT_ADDR
         sta VRAM_DATA_IO
         lda #^TK_FONT_ADDR
         sta VRAM_DATA_IO
+        bra _tkll_font_done
+_tkll_fbold:
+        lda #<TK_FONT_BOLD_ADDR
+        sta VRAM_DATA_IO         ; arg2 = fonte bold
+        lda #>TK_FONT_BOLD_ADDR
+        sta VRAM_DATA_IO
+        lda #^TK_FONT_BOLD_ADDR
+        sta VRAM_DATA_IO
+_tkll_font_done:
         tya                      ; arg3 = TK_LP_STRB + 2*Y (chaîne de 1)
         asl a
         clc
@@ -477,11 +548,11 @@ _tkll_emit:
         asl a
         ora DP_TMP
         sta VRAM_DATA_IO         ; HI = color<<4 | y[9:6]
-        ; ── avance proportionnelle : WM_ARG_X += FONT_WIDTHS[char] ──
+        ; ── avance proportionnelle : WM_ARG_X += largeur (regular/bold) ──
         lda [DP_PCPTR],Y
         and #$7F
         tax
-        lda f:FONT_WIDTHS_FAR,X
+        jsr _tk_glyph_width
         rep #$20
         and #$00FF
         clc
@@ -1898,7 +1969,11 @@ _mdl_title_cmp_done:
         pla
         sta DP_PCPTR             ; (DP_PCPTR+2 reste $01)
         jsr _menu_title_style    ; SP-3.p M.1 : inversion si MENU_I == MENU_OPEN
+        lda #TK_STYLE_BOLD       ; SP-GUI : titres de menus en GRAS (GeoWorks)
+        sta TK_STYLE
         jsr kernel_tk_label_prop ; SP-GUI : titres de menus proportionnels
+        lda #$00
+        sta TK_STYLE
         lda MENU_I
         inc a
         sta MENU_I

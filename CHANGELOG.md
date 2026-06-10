@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10s
+
+### Added — fontes multiples : variante GRASSE + titres en gras (SP-GUI)
+
+Deuxième fonte (smear bold de la fonte XVGA, gen-font-bold.py →
+charset-xvga-bold.bin + font_widths_bold.bin), uploadée au boot vers
+SDRAM TK_FONT_BOLD_ADDR ($010400), source en segment FONTBOLD ($01D000
+fixe — pas dans CHARSET qui heurterait SENTINEL $6300). Sélecteur de
+style TK_STYLE ($00 regular / $A5 bold) honoré par kernel_tk_label_prop
+et kernel_tk_text_width (helpers _tk_glyph_width / _tk_set_gfx_font
+choisissent fonte + table de largeurs ; émission bold dans les
+display-lists C2b). Titres de fenêtres et de la barre de menu rendus en
+GRAS (style GeoWorks). Garde rouge→vert : test_oricos_bold_title (densité
+de pixels du titre ≥ 180, regular ≈ 152). Le double upload de fonte au
+boot ajoute ~40k cyc de latence (boot-stable ~140k → ~180k) → 5 tests
+menu/dialogue rebasés (R8 : clics après ~220k). kernel_menu_draw en
+GUICODE.
+
 ## [Unreleased] - 2026-06-10r
 
 ### Fixed — titre des fenêtres modales (retour interactif « pas de titre pour win2 »)

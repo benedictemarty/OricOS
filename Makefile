@@ -130,7 +130,12 @@ $(BUILD):
 data/font_widths.bin: data/charset-xvga.bin tools/gen-font-widths.py
 	python3 tools/gen-font-widths.py
 
-$(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) data/font_widths.bin | $(BUILD)
+# SP-GUI (fontes multiples) : variante GRASSE (smear) + sa table de largeurs.
+# Consommées par handlers.s/tk.s (.incbin charset-xvga-bold.bin + widths bold).
+data/charset-xvga-bold.bin data/font_widths_bold.bin: data/charset-xvga.bin tools/gen-font-bold.py
+	python3 tools/gen-font-bold.py
+
+$(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) data/font_widths.bin data/charset-xvga-bold.bin data/font_widths_bold.bin | $(BUILD)
 	$(AS) $(ASFLAGS) -l $(KERNEL_LST) -o $@ $<
 
 $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)

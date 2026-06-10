@@ -211,6 +211,8 @@ kernel_wm_init:
         lda #$FF
         sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
         sta MENU_HOVER           ; SP-GUI M.2 : aucun item survolé
+        lda #$00
+        sta TK_STYLE             ; SP-GUI : style regular par défaut
         ; ADR-34 C2b : flags coalescing/dirty-rect du geste
         lda #$00
         sta f:WM_RD_SKIPPED
@@ -1718,7 +1720,11 @@ _wm_draw_title_and_close:
         sep #$20
         lda #$0F
         sta GFX_COLOR            ; white
+        lda #TK_STYLE_BOLD       ; SP-GUI : titre de fenêtre en GRAS (GeoWorks)
+        sta TK_STYLE
         jsr kernel_tk_label_prop
+        lda #$00
+        sta TK_STYLE             ; retour regular pour le reste du chrome
 
 _wm_dtc_close:
         ; ── Bouton fermer "X" (v0.2) ──────────────────────────────────
