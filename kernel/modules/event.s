@@ -627,14 +627,19 @@ krw_got:
 ; ── kernel_raw_wake — réveille la tâche bloquée sur RAW (depuis l'IRQ, Étape 2) ──
 ; Symétrique de kernel_event_wake. Clobbe A, Y (restaurés par le handler IRQ).
 ;
-; BUG §10 (NON RÉSOLU au 2026-06-01) : task_wm starve avec --ctl-demo
-; --wm-taskmode. RAW_WAITER=0 + STATE=BLOCKED observé. Causes RÉFUTÉES :
-; lost-wakeup (B)→(C) [sei tenu, pas d'IRQ possible], préemption T1 dans
-; block_switch [sous sei], coalescing qui saute raw_wake [jmp krpm_done
-; → raw_wake OK], corruption SCHED_PTR [save/restore en place, sans effet].
-; Piste ouverte : autre écrivain de tcb[8].STATE (do_switch handlers.s:283
-; écrit READY inconditionnel). À INSTRUMENTER (watchpoint tcb8.STATE,
-; côté Phosphoric memory_write24). Réf : BUG_task_wm_starve(1).md §2/§3.
+; BUG §10 task_wm starve — RÉSOLU (cause prouvée 2026-06-10, P0-a revue).
+; C'était un bug ÉMULATEUR (§5septies) : ASL mem 8-bit-fixe sous M=16
+; (Phosphoric, fixé 08a9bf le 2026-06-01 — dossier jamais refermé).
+; Mécanisme prouvé par re-simulation du bug CPU sur kernel d'époque
+; (10/10 STALE, sites loggés) : le scan bitmap de kernel_task_create
+; (`asl SCHED_TMP` M=16) ne propageait pas le masque au HIGH byte → le
+; bit de pid 8 (premier bit haut, $0100) n'était jamais posé → la
+; création SUIVANTE (app ctl_demo) trouvait le slot 8 « libre » et
+; ÉCRASAIT le TCB de task_wm. D'où la double condition exacte
+; (--ctl-demo ET --wm-taskmode) et l'état RAW_WAITER=0 + BLOCKED.
+; kernel_bitmap_clear avait le même défaut (pids ≥ 8 jamais libérés).
+; Gardes : test_oricos_ctl_taskmode_starve (make tests) + Klaus étendu
+; RMW M=16 (R7). Clôture : docs/notes/BUG_task_wm_starve_CLOS.md.
 .export kernel_raw_wake
 kernel_raw_wake:
         lda RAW_WAITER

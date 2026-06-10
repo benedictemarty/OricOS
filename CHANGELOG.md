@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10i
+
+### Clos — bug task_wm_starve (note event.s refermée, cause prouvée)
+
+Bug émulateur (ASL mem 8-bit-fixe en M=16, Phosphoric 08a9bf 2026-06-01),
+prouvé par re-simulation sur kernel d'époque : le scan bitmap de
+task_create ne posait jamais le bit du pid 8 (high byte) → la création
+ctl_demo écrasait le TCB de task_wm. Aucun changement de code kernel —
+note event.s mise à jour, dossier de clôture versionné
+(docs/notes/BUG_task_wm_starve_CLOS.md, workspace). Verrou ADR-28 levé.
+
 ## [Unreleased] - 2026-06-10h
 
 ### Added — SP-3.p M.1 : highlight GeoWorks du titre de menu ouvert
