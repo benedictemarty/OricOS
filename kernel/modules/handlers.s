@@ -3,45 +3,49 @@
 ; Module : handlers.s — inclus depuis kernel.s
 ;
 ; ════════════════════════════════════════════════════════════════════
-;  INVARIANT « index 8-bit aux points préemptibles » (IRQ_CONFORMITE §3.3 A)
+;  FRAME IRQ 16-BIT (ADR-32 §10.9, fix 2026-06-10 — « option B » de
+;  l'audit IRQ_CONFORMITE §3.3 A, réalisée)
 ; ════════════════════════════════════════════════════════════════════
 ;
-;  Le `kernel_irq_handler` ci-dessous fait `sep #$30` AVANT `pha/phx/phy`.
-;  Conséquence : si la tâche interrompue était en X=0 (index 16-bit), les
-;  octets HAUTS de X et Y sont mis à zéro par le `sep #$30` AVANT la
-;  sauvegarde 8-bit. Au `rti`, P restore le X bit du caller (→ X=0 16-bit
-;  à nouveau) mais les VALEURS hautes de X/Y restent à 0 — silencieusement.
+;  HISTORIQUE. L'ancien `kernel_irq_handler` faisait `sep #$30` AVANT
+;  `pha/phx/phy` (8-bit). Conséquences pour tout contexte interrompu en
+;  16-bit :
+;    - X=0 : octets hauts de X/Y mis à zéro silencieusement (documenté
+;      dès 2026-05-31, mitigé par l'invariant « X=1 aux points
+;      préemptibles »).
+;    - M=0 : octet haut de A (registre B) REMPLACÉ par la valeur que le
+;      code IRQ y laissait — CE CAS N'ÉTAIT PAS COUVERT par l'invariant.
+;      C'était la cause racine du bug clock Opt-A (kernel_print_char
+;      interrompu entre `lda CURSOR_ADDR` et `sta CURSOR_ADDR` en M=16 :
+;      C=$BC98 → $5C98 au RTI → prints hors écran). Preuve : trace
+;      registres + test Phosphoric `test-oricos-irq-frame-m16` (ROUGE
+;      3/5 sur le handler 8-bit, VERT depuis ce fix).
 ;
-;  Pour éviter cette corruption silencieuse, INVARIANT v1 :
+;  FIX (frame 16-bit). `rep #$30` AVANT pha/phx/phy : la frame fait
+;  TOUJOURS 6 octets (A/X/Y × 2), quel que soit l'état M/X de
+;  l'interrompu. Pulls symétriques sous `rep #$30` (sorties no-T1 et
+;  restore_and_return). Le RTI restaure le P (donc le M/X) du contexte
+;  interrompu.
 ;
-;    « Toute tâche et tout handler de syscall est en X=1 (index 8-bit)
-;      aux points préemptibles. Tout passage en X=0 (rep #$10/#$30) doit
-;      être une région tightement bornée, soit (a) appelée à un moment où
-;      le timer T1 n'est pas armé (boot), soit (b) telle que Y.hi reste
-;      naturellement à 0 (≤ 255 iter), soit (c) protégée par sei/cli. »
+;  FORGEURS DE FRAME (à maintenir au MÊME format 10 octets
+;  [Y16][X16][A16][P][PCL][PCH][PBR]) :
+;    sched.s   kernel_task_create   (frame initiale page:$F2..$FB, S=$F1)
+;    boot.s    frame fake task B    ($02F2..$02FB, S=$02F1)
+;    wm.s      sys_yield, sys_sleep_ms, sys_read_char (sread),
+;              sys_get_next_event (sgne), sys_main_loop (sml)
+;    event.s   kernel_event_wait (kew), raw_wait (krw)
+;  Tout NOUVEAU chemin bloquant qui forge une resume frame DOIT pousser
+;  A/X/Y en 16-bit (rep #$30) — un push 8-bit décale S de 3 octets et
+;  le rti part dans le décor (vu : sys_sleep_ms oublié au premier jet,
+;  crash PC=$0000 après ~6 ticks).
 ;
-;  Audit des sites kernel utilisant rep #$10/#$30 (2026-05-31) :
+;  L'ancien invariant « X=1 aux points préemptibles » n'est PLUS requis
+;  pour la préservation à travers l'IRQ (couverte par construction).
+;  Les régions rep #$10/#$30 longues restent à examiner pour d'autres
+;  raisons (latence IRQ, réentrance ZP) — cf. audit-rep-x (baseline
+;  Makefile) qui continue de tracer les nouveaux sites.
 ;
-;    Site                          | Risque       | Mitigation actuelle
-;    ──────────────────────────────|──────────────|──────────────────────────
-;    console.s install_charset     | aucun (MVN)  | MVN HW, pas de Y loop
-;    console.s clear_screen        | théorique    | (a) boot only, T1 inactif
-;    console.s scroll_up           | RÉEL ≤1080   | (b) ⚠ post-boot — à
-;                                  |              |     wrapper sei/cli v2
-;    vram.s vram_write_block       | théorique    | (b) LEN typiquement ≤ 256
-;    vram.s vram_read_block        | théorique    | (b) LEN typiquement ≤ 256
-;    tk.s   _tk_upload_str         | aucun        | (b) borné à 255 octets
-;    fat.s  sd_read_block (sd_copy)| RÉEL 512     | (c) ⚠ à wrapper sei/cli v2
-;    fat.s  kernel_app_load ae_copy| RÉEL ≤64KiB  | (c) ⚠ à wrapper sei/cli v2
-;
-;  v1 status : 3 sites RÉELS identifiés ; aucun n'a déclenché de bug
-;  observable dans la suite Phosphoric verte (probablement parce que
-;  la fenêtre de course est étroite vs la période T1 et la fréquence
-;  d'appel post-boot). À durcir avec sei/cli wrappers en v2 quand un
-;  bug se manifeste, OU faire option B (IRQ handler save/restore en
-;  16-bit, frame format change — multi-fichiers atomique).
-;
-;  Référence : IRQ_CONFORMITE.md §3.3 (livré par bmarty 2026-05-31).
+;  Référence : IRQ_CONFORMITE.md §3.3 + docs/adr/0032 §10.9.
 ; ════════════════════════════════════════════════════════════════════
 
         .segment "NMI_HANDLER"
@@ -165,12 +169,18 @@ syscall_table:
 
 .export kernel_irq_handler
 kernel_irq_handler:
-        sep #$30                ; M=1, X=1 (sécurité)
-
-        ; ── Save A/X/Y de la tâche courante sur sa stack ───────────
+        ; ── ADR-32 §10.9 : frame 16-bit — préserve A/X/Y INTÉGRAUX ──
+        ; L'ancien `sep #$30` + pushes 8-bit perdait l'octet haut de A
+        ; (registre B) et de X/Y pour tout contexte interrompu en M=16 ou
+        ; X=16 (bug clock mesuré : kernel_print_char C=$BC98→$5C98 au RTI).
+        ; Le passage 16-bit (M=X=0) AVANT les pushes : la frame fait toujours 6 octets
+        ; (A/X/Y × 2), quel que soit l'état M/X de l'interrompu. Le RTI
+        ; final restaure son P (donc son M/X) intact.
+        rep #$30
         pha
         phx
         phy
+        sep #$30                ; le corps du handler travaille en 8-bit
 
         ; ── SP-3.e v0.2 : souris MOU2 event-driven (ADR-24) ────────
         ; Si event souris en attente : lit + traite (clic→focus, drag).
@@ -232,11 +242,16 @@ irq_no_mou:
         and #$40                ; bit6 = T1
         bne irq_t1
         ; Pas de T1 : restaure la MÊME tâche (aucun tick/context switch).
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit
         ply
         plx
         pla
         rti
 irq_t1:
+        ; Convention .smart (CLAUDE.md OricOS) : label atteint par bne en
+        ; M=8/X=8 mais précédé textuellement d'un passage 16-bit + flow-break.
+        .a8
+        .i8
         ; ── Ack VIA T1 IRQ (lecture T1C-L clear T1 IFR) ────────────
         lda VIA_T1CL
 
@@ -301,6 +316,7 @@ restore_and_return:
         ; ── Pull Y/X/A depuis la nouvelle stack ────────────────────
         ; Cible commune : fin de do_switch, et jmp depuis sys_exit (g.4)
         ; après tcs (la pile a déjà basculé sur la nouvelle tâche).
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit (A/X/Y × 2 octets)
         ply
         plx
         pla

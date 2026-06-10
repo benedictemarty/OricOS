@@ -121,7 +121,7 @@ tcc_slot:
         ; Plus de bump : page = pid + 1 pour pid ≥ 3 (saute la page $03 = I/O).
         ; Réutilisable lorsque le slot TCB est libéré (fix fuite page de pile).
         ; pids 1/2 réservés au boot (task A page $01, task B page $02 — frame
-        ; pré-forgée à $02F5+ en boot.s) → conservés via STACK_NEXT_PAGE init.
+        ; pré-forgée à $02F2+ en boot.s) → conservés via STACK_NEXT_PAGE init.
         ; Hypothèse : kernel_task_create n'est jamais appelé pour pid 1/2
         ; (créés directement par boot.s). Vérifié au runtime via cpx #$03/bcc.
         cpx #$03
@@ -166,15 +166,18 @@ tcc_page_done:
         lda TC_ENTRY_HI
         ldy #TCB_PC_HI
         sta [SCHED_PTR],Y
-        ; saved_S = page:$F4 (la frame occupe $F5..$FB ; ply reprend à $F5)
-        lda #$F4
+        ; ADR-32 §10.9 : frame 16-bit — saved_S = page:$F1, frame $F2..$FB
+        ; (le ply 16-bit de restore_and_return reprend à $F2).
+        lda #$F1
         ldy #TCB_S_LO
         sta [SCHED_PTR],Y
         lda TC_PAGE
         ldy #TCB_S_HI
         sta [SCHED_PTR],Y
-        ; ── 4. forge la frame à page:$F5..$FB (bank 0, adressage long) ──
-        lda #$F5
+        ; ── 4. forge la frame à page:$F2..$FB (bank 0, adressage long) ──
+        ; Format 16-bit (ADR-32 §10.9) : Y/X/A sur 2 octets chacun, pulls
+        ; faits sous rep 16-bit (M=X=0) par restore_and_return.
+        lda #$F2
         sta TC_FPTR
         lda TC_PAGE
         sta TC_FPTR+1
@@ -182,23 +185,29 @@ tcc_page_done:
         sta TC_FPTR+2           ; bank 0 (frame en bank 0, indép. du DBR)
         ldy #$00
         lda #$00
-        sta [TC_FPTR],Y         ; +0 Y_init = 0
+        sta [TC_FPTR],Y         ; +0 Y_init.lo = 0
         iny
-        sta [TC_FPTR],Y         ; +1 X_init = 0
+        sta [TC_FPTR],Y         ; +1 Y_init.hi = 0
         iny
-        sta [TC_FPTR],Y         ; +2 A_init = 0
+        sta [TC_FPTR],Y         ; +2 X_init.lo = 0
         iny
-        lda #$30                ; +3 P_init = M=1 X=1 (mode N), I=0 (IRQ on)
+        sta [TC_FPTR],Y         ; +3 X_init.hi = 0
+        iny
+        sta [TC_FPTR],Y         ; +4 A_init.lo = 0
+        iny
+        sta [TC_FPTR],Y         ; +5 A_init.hi = 0
+        iny
+        lda #$30                ; +6 P_init = M=1 X=1 (mode N), I=0 (IRQ on)
         sta [TC_FPTR],Y
         iny
         lda TC_ENTRY_LO
-        sta [TC_FPTR],Y         ; +4 PCL
+        sta [TC_FPTR],Y         ; +7 PCL
         iny
         lda TC_ENTRY_HI
-        sta [TC_FPTR],Y         ; +5 PCH
+        sta [TC_FPTR],Y         ; +8 PCH
         iny
         lda TC_CODE_BANK
-        sta [TC_FPTR],Y         ; +6 PB = bank de code
+        sta [TC_FPTR],Y         ; +9 PB = bank de code
         lda TC_PID              ; retour A = pid
         rts
 

@@ -3382,7 +3382,7 @@ sread_loop:
         ; ring vide ET sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
         lda TASK_CUR
         sta KBD_WAITER
-        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → reprise à sread_resume
+        ; forge la resume frame 16-bit [Y16][X16][A16][P][PCL][PCH][PBR] (ADR-32 §10.9) → reprise à sread_resume
         lda #$01
         pha                     ; PBR
         lda #>sread_resume
@@ -3391,10 +3391,12 @@ sread_loop:
         pha                     ; PCL
         lda #$30                ; P : mode N M=X=1, I=0
         pha
-        lda #$00
-        pha                     ; A
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit (A/X/Y x 2 octets)
+        lda #$0000
+        pha                     ; A (16-bit)
         pha                     ; X
         pha                     ; Y
+        sep #$30
         lda #$00
         sta FORBID_COUNT        ; tâche suivante préemptible (on quitte le syscall le temps du bloc)
         jmp kernel_block_switch ; sauve SP→tcb[CUR].S (BLOCKED), bascule
@@ -3544,7 +3546,7 @@ sgne_loop:
         ; file vide sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
         lda TASK_CUR
         sta EVENT_WAITER
-        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → sgne_resume
+        ; forge la resume frame 16-bit [Y16][X16][A16][P][PCL][PCH][PBR] (ADR-32 §10.9) → sgne_resume
         lda #$01
         pha                     ; PBR
         lda #>sgne_resume
@@ -3553,10 +3555,12 @@ sgne_loop:
         pha                     ; PCL
         lda #$30                ; P : mode N M=X=1, I=0
         pha
-        lda #$00
-        pha                     ; A
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit (A/X/Y x 2 octets)
+        lda #$0000
+        pha                     ; A (16-bit)
         pha                     ; X
         pha                     ; Y
+        sep #$30
         lda #$00
         sta FORBID_COUNT        ; tâche suivante préemptible pendant le bloc
         jmp kernel_block_switch
@@ -3617,10 +3621,12 @@ sml_block:
         pha                     ; PCL
         lda #$30                ; P : mode N M=X=1, I=0
         pha
-        lda #$00
-        pha                     ; A
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit (A/X/Y x 2 octets)
+        lda #$0000
+        pha                     ; A (16-bit)
         pha                     ; X
         pha                     ; Y
+        sep #$30
         lda #$00
         sta FORBID_COUNT
         jmp kernel_block_switch
@@ -5217,20 +5223,26 @@ ktt_next:
 ; On entre via `jsr (syscall_table,X)` depuis le dispatcher COP. La pile est :
 ;   [ret_jsr lo][ret_jsr hi][P][PCL][PCH][PBR]  (frame COP en dessous)
 ; On jette le retour du jsr, puis on reconstruit la frame attendue par
-; do_switch : [Y][X][A][P][PCL][PCH][PBR]. Le jmp do_switch sauve alors le SP
-; (= point de reprise juste après le COP) dans tcb[CUR].S et bascule. Au réveil,
-; ply/plx/pla/rti restaure et reprend après le COP. Même format que la frame
-; forgée par kernel_task_create.
+; do_switch : [Y16][X16][A16][P][PCL][PCH][PBR] (frame 16-bit, ADR-32 §10.9).
+; Le jmp do_switch sauve alors le SP (= point de reprise juste après le COP)
+; dans tcb[CUR].S et bascule. Au réveil, restore_and_return (rep #$30 +
+; ply/plx/pla/rti) restaure et reprend après le COP. Même format que la
+; frame forgée par kernel_task_create.
 sys_yield:
         sei                     ; section critique : pas de préemption pendant la chirurgie de pile
         jsr kernel_permit       ; g.6 : fin du syscall (FORBID→0) ; la reprise = contexte app
         pla                     ; jette le retour du jsr (lo)
         pla                     ; jette le retour du jsr (hi) → SP au sommet de la frame COP
-        lda #$00
-        pha                     ; A_init (valeur de retour yield = don't care)
-        lda DP_SYS_ARG_X
-        pha                     ; X_init = X de l'appelant (préservé, ABI)
-        phy                     ; Y_init = Y de l'appelant
+        ; ADR-32 §10.9 : pushes 16-bit. On est en M=8/X=8 (dispatcher COP) :
+        ; les octets hauts de X/Y sont 0 par construction silicium, le
+        ; passage 16-bit les expose tels quels dans les pushes.
+        ldx DP_SYS_ARG_X        ; X de l'appelant (préservé, ABI)
+        rep #$30
+        lda #$0000
+        pha                     ; A_init 16-bit (valeur de retour yield = don't care)
+        phx                     ; X_init = X de l'appelant (hi=0)
+        phy                     ; Y_init = Y de l'appelant (hi=0)
+        sep #$30
         jmp do_switch           ; sauve SP→tcb[CUR].S, élit next, bascule (rti)
 
 ; $06 — SYS_GET_KEY : non-bloquant → A = keycode ou $00 (OS-2.d) ─────
@@ -5379,11 +5391,15 @@ ssm_block:
         jsr kernel_permit       ; fin du syscall côté FORBID (reprise = contexte app)
         pla                     ; jette le retour du jsr (lo)
         pla                     ; jette le retour du jsr (hi) → sommet frame COP
-        lda #$00
-        pha                     ; A_init (don't care)
-        lda DP_SYS_ARG_X
-        pha                     ; X_init (préserve l'arg)
-        phy                     ; Y_init
+        ; ADR-32 §10.9 : pushes 16-bit (A/X/Y x 2 octets), même format que
+        ; sys_yield — pulls sous rep 16-bit par restore_and_return.
+        ldx DP_SYS_ARG_X        ; X_init = arg de l'appelant (préservé, ABI)
+        rep #$30
+        lda #$0000
+        pha                     ; A_init 16-bit (don't care)
+        phx                     ; X_init (hi=0)
+        phy                     ; Y_init (hi=0)
+        sep #$30
         jmp kernel_block_switch ; BLOCKED + bascule ; le timer réveille à 0
 
 ; ════════════════════════════════════════════════════════════════════

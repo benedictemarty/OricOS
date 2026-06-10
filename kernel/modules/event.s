@@ -63,7 +63,7 @@ kew_loop:
         ; file vide sous sei → enregistre l'attente + bloque (pas de lost-wakeup)
         lda TASK_CUR
         sta EVENT_WAITER
-        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → kew_resume
+        ; forge la resume frame 16-bit [Y16][X16][A16][P][PCL][PCH][PBR] (ADR-32 §10.9) → kew_resume
         lda #$01
         pha                     ; PBR
         lda #>kew_resume
@@ -72,10 +72,12 @@ kew_loop:
         pha                     ; PCL
         lda #$30                ; P : mode N M=X=1, I=0
         pha
-        lda #$00
-        pha                     ; A
+        rep #$30                ; ADR-32 §10.9 : frame 16-bit (A/X/Y x 2 octets)
+        lda #$0000
+        pha                     ; A (16-bit)
         pha                     ; X
         pha                     ; Y
+        sep #$30
         lda #$00
         sta FORBID_COUNT
         jmp kernel_block_switch
@@ -576,7 +578,7 @@ krw_loop:
         bne krw_got
         lda TASK_CUR
         sta RAW_WAITER
-        ; forge la resume frame [Y][X][A][P][PCL][PCH][PBR] → krw_resume
+        ; forge la resume frame 16-bit [Y16][X16][A16][P][PCL][PCH][PBR] (ADR-32 §10.9) → krw_resume
         lda #$01
         pha                      ; PBR
         lda #>krw_resume
@@ -585,10 +587,12 @@ krw_loop:
         pha                      ; PCL
         lda #$30                 ; P : mode N M=X=1, I=0
         pha
-        lda #$00
-        pha                      ; A
+        rep #$30                 ; ADR-32 §10.9 : frame 16-bit (A/X/Y x 2 octets)
+        lda #$0000
+        pha                      ; A (16-bit)
         pha                      ; X
         pha                      ; Y
+        sep #$30
         lda #$00
         sta FORBID_COUNT
         jmp kernel_block_switch

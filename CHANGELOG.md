@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10b
+
+### Fixed — frame IRQ 16-bit (ADR-32 §10.10, option A validée par Bénédicte)
+
+`kernel_irq_handler` : `rep #$30` avant `pha/phx/phy` (et pulls symétriques
+aux 2 sorties) — A/X/Y intégralement préservés quel que soit l'état M/X du
+contexte interrompu. Ferme la classe du bug clock (B clobbé) ET l'ancienne
+corruption silencieuse X/Y.hi documentée §3.3 A. Les 7 forgeurs de resume
+frame passent au format 10 octets [Y16][X16][A16][P][PCL][PCH][PBR] :
+kernel_task_create ($F2..$FB, S=$F1), frame fake task B (boot.s), sys_yield,
+sys_sleep_ms, sys_read_char, sys_get_next_event, sys_main_loop,
+kernel_event_wait, raw_wait. Incident de chantier tracé : sys_sleep_ms
+(pattern partiel) oublié au premier jet ⇒ PC=$0000 après ~6 ticks — la
+liste exhaustive des forgeurs est désormais en tête de handlers.s.
+`.a8/.i8` au label irq_t1 (convention .smart). audit-rep-x baseline 8→18.
+Invariant « X=1 aux points préemptibles » caduc pour la préservation IRQ.
+Validation : irq-frame-m16 ROUGE→VERT, ground-truth pad+100 no-SEI clock
+PASS, suite Phosphoric verte. Retrait Opt-A différé (classe souris-drag).
+
 ## [Unreleased] - 2026-06-10
 
 ### Investigation close — cause racine bug clock Opt-A : frame IRQ 8-bit vs M=16 (ADR-32 §10.9)

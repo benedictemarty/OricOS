@@ -534,19 +534,23 @@ kernel_entry:
         sta TASK_CUR
 
         ; ── Pré-init stack task B avec frame d'interrupt fake ──────
-        ; Layout (mode N : hw push 4 bytes, handler push 3 bytes) :
-        ;   $02F5 : Y init = 0       (3e ply du handler)
-        ;   $02F6 : X init = 0       (2e plx du handler)
-        ;   $02F7 : A init = 0       (1er pla du handler)
+        ; Layout ADR-32 §10.9 (frame 16-bit : hw push 4 bytes, handler
+        ; push 6 bytes — Y/X/A sur 2 octets, pulls sous rep 16-bit) :
+        ;   $02F2/$02F3 : Y init = 0  (ply 16-bit de restore_and_return)
+        ;   $02F4/$02F5 : X init = 0  (plx 16-bit)
+        ;   $02F6/$02F7 : A init = 0  (pla 16-bit)
         ;   $02F8 : P init = $30 (mode N M=1 X=1, I=0 → IRQ enabled)
         ;   $02F9 : PCL of task_b_entry
         ;   $02FA : PCH of task_b_entry
         ;   $02FB : PB = $01 (bank 1)
-        ; S "sauvegardé" pour B = $02F4 (handler reprend par ply à $02F5).
+        ; S "sauvegardé" pour B = $02F1 (restore reprend par ply à $02F2).
         lda #$00
-        sta $0002F5             ; Y_init
-        sta $0002F6             ; X_init
-        sta $0002F7             ; A_init
+        sta $0002F2             ; Y_init.lo
+        sta $0002F3             ; Y_init.hi
+        sta $0002F4             ; X_init.lo
+        sta $0002F5             ; X_init.hi
+        sta $0002F6             ; A_init.lo
+        sta $0002F7             ; A_init.hi
         lda #$30                ; M=1, X=1 (mode N), I=0 (IRQ enabled)
         sta $0002F8             ; P_init
         lda #<task_b_entry
@@ -556,9 +560,9 @@ kernel_entry:
         lda #$01
         sta $0002FB             ; PB
 
-        ; TCB_2.saved_S = $02F4 (frame fake task B).
+        ; TCB_2.saved_S = $02F1 (frame fake task B, format 16-bit).
         rep #$20
-        lda #$02F4
+        lda #$02F1
         sta TCB_2_S
         sep #$20
 
