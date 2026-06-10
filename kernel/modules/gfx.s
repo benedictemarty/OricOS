@@ -4,6 +4,23 @@
 ;
         .segment "CODE"
 
+; ── kernel_wm_backing_base_hi (ADR-27 C2) : A = slot → A = banque SDRAM de
+;    base du backing store. WM_BACKING_BANK[slot] si alloué (multi-banques
+;    contiguës), sinon legacy $06+slot (1 banque statique). Préserve X, Y.
+;    M=8. ───────────────────────────────────────────────────────────────
+.export kernel_wm_backing_base_hi
+kernel_wm_backing_base_hi:
+        phx
+        tax
+        lda f:WM_BACKING_BANK,X
+        bne _wbbh_done           ; != 0 → allocation multi-banques
+        txa
+        clc
+        adc #$06                 ; legacy $06 + slot
+_wbbh_done:
+        plx
+        rts
+
 ; ── kernel_gfx_window_base : GFX_BASE ← backing store de la fenêtre du caller ──
 ; SP-3.m G.4. Cherche le slot possédé par TASK_CUR (WM_OWNER) et pose GFX_BASE
 ; = ($06+slot):$0000 (backing store SDRAM implicite par slot, cf. G.2). Les apps
@@ -26,8 +43,7 @@ gwb_found:
         sta GFX_BASE_LO
         sta GFX_BASE_MID
         txa                     ; A = slot
-        clc
-        adc #$06                ; bank SDRAM du backing store = $06 + slot
+        jsr kernel_wm_backing_base_hi  ; ADR-27 C2 : multi-banques ou $06+slot
         sta GFX_BASE_HI
         ; ADR-27 Étape B2 : pose la stride GPU selon le flag compact du slot.
         ; X = slot encore valide (préservé depuis gwb_loop).

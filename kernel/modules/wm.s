@@ -632,7 +632,9 @@ wm_close_go:
         jsr kernel_wm_offset     ; X = id*10
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
-        beq wm_close_done        ; déjà libre → no-op
+        bne wm_close_used        ; (portée : wm_close_done éloigné par C2)
+        jmp wm_close_done        ; déjà libre → no-op
+wm_close_used:
         ; Clear slot : flags = 0
         lda #$00
         sta WM_TABLE+WM_OFF_FLAGS,X
@@ -641,6 +643,23 @@ wm_close_go:
         tax
         lda #$00
         sta WM_TITLES,X
+        ; ── ADR-27 C2 : libère les banques contiguës du backing store si
+        ; le slot en avait (WM_BACKING_BANK != 0). X = slot id encore valide.
+        lda f:WM_BACKING_BANK,X
+        beq wm_close_no_backing
+        phx                      ; sauve slot
+        pha                      ; sauve base bank
+        lda f:WM_BACKING_NB,X    ; X (=slot) intact
+        tax                      ; X = nb
+        pla                      ; A = base bank
+        jsr kernel_free_banks_contig   ; A=base, X=nb
+        plx                      ; restaure slot
+        lda #$00
+        sta f:WM_BACKING_BANK,X  ; remet le slot en legacy
+        sta f:WM_BACKING_NB,X
+wm_close_no_backing:
+        lda DP_TMP
+        tax                      ; X re-établi = slot
         ; SP-3.j : si la fenêtre fermée était modale → clear WM_MODAL
         lda DP_TMP
         cmp WM_MODAL
@@ -1337,14 +1356,14 @@ wcmp_visible:
 _wcmp_skip_no_backing:
         jmp wcmp_next
 wcmp_do_backing:
-        ; src = backing store = ($06+slot):$0000
+        ; src = backing store : multi-banques contiguës (WM_BACKING_BANK[slot])
+        ; ou legacy ($06+slot):$0000 — via kernel_wm_backing_base_hi (ADR-27 C2).
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
         lda WCMP_XB                     ; slot id
         sta f:WCMP_SLOT_ID              ; ADR-27 B2.b : mémorise slot avant écrasement
-        clc
-        adc #$06
+        jsr kernel_wm_backing_base_hi
         sta GFX_BASE_HI
         ; dst = $100000 + y*512 + (x>>1) (ADR-20 : framebuffer XVGA base $100000) → GFX_ARG2
         rep #$20
@@ -3907,11 +3926,41 @@ sys_win_create:
         jsr kernel_wm_add       ; A = slot id (handle) ou $FF
         cmp #$FF
         beq swc_done            ; échec → pas de focus
-        ; SP-3.m G.6 : la fenêtre nouvellement créée prend le focus (comportement
-        ; GUI standard) → son propriétaire reçoit le clavier (chaîne G.3).
-        pha                     ; sauve le handle (valeur de retour)
+        sta f:SWC_SLOT          ; mémorise le handle (= slot) — pas de jonglage pile
+        ; ── ADR-27 C2 : backing store MULTI-BANQUES si la fenêtre dépasse
+        ; 128 lignes (stride 512 → byte_w·h > 64 KiB). nbanks = ceil(h/128)
+        ; = (h+127) >> 7. Si nbanks ≤ 1 → legacy ($06+slot, table à 0).
+        rep #$20
+        lda WM_ARG_H
+        clc
+        adc #127                ; ceil
+        lsr a                   ; >> 7
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sep #$20                ; A.lo = nbanks (≤ 6)
+        sta f:SWC_NBANKS
+        cmp #$02
+        bcc swc_focus           ; nbanks ≤ 1 → legacy (table déjà 0)
+        ; alloc nbanks contiguës ; échec (0) → legacy (sur-lecture tolérée, loggée)
+        lda f:SWC_NBANKS
+        jsr kernel_alloc_banks_contig   ; A = base bank, ou 0 (Z=1) si échec
+        beq swc_focus           ; échec → legacy
+        pha                     ; sauve base bank
+        lda f:SWC_SLOT
+        tax                     ; X = slot
+        pla                     ; A = base bank
+        sta f:WM_BACKING_BANK,X ; base bank pour ce slot
+        lda f:SWC_NBANKS
+        sta f:WM_BACKING_NB,X   ; nb de banques (pour free à la fermeture)
+swc_focus:
+        ; SP-3.m G.6 : la fenêtre prend le focus (chaîne clavier G.3).
+        lda f:SWC_SLOT
         jsr kernel_wm_set_focus ; A = id
-        pla                     ; restaure A = handle
+        lda f:SWC_SLOT          ; A = handle (valeur de retour)
 swc_done:
         rts
 

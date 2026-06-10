@@ -629,6 +629,15 @@ _skip_task_win:
         lda #$00
         jsr kernel_task_create
 _skip_task_wdraw:
+        ; ADR-27 C2 : task_tallwin (gated TC_TALLWIN_FLAG) — fenêtre 200px haute.
+        lda TC_TALLWIN_FLAG
+        cmp #$A5
+        bne _skip_task_tallwin
+        ldx #<task_tallwin_entry
+        ldy #>task_tallwin_entry
+        lda #$00
+        jsr kernel_task_create
+_skip_task_tallwin:
         ; SP-3.n G.2 : task_evt (gated TC_EVT_FLAG) — bloque sur SYS_GET_NEXT_EVENT.
         lda TC_EVT_FLAG
         cmp #$A5
@@ -1170,6 +1179,37 @@ b3_guest_loop:
         sta BANK_LIVE_NEXT
         lda #$00
         sta BANK_LIVE_FREE_TOP
+
+        ; ── ADR-27 C2 : init carte des banques contiguës + table backing ──
+        jsr kernel_init_backing_map
+        ; Démo auto-nettoyant : alloc 2 ($20), alloc 3 ($22), free le 2-banque,
+        ; re-alloc 2 (réutilise $20 par first-fit), alloc 1 ($25) ; sentinelles
+        ; à CONTIG_DEMO. Puis libère TOUT (pool propre pour le vrai usage).
+        lda #$02
+        jsr kernel_alloc_banks_contig
+        sta CONTIG_DEMO+0        ; attendu $20
+        lda #$03
+        jsr kernel_alloc_banks_contig
+        sta CONTIG_DEMO+1        ; attendu $22
+        lda #$20                 ; libère le bloc de 2 banques ($20-$21)
+        ldx #$02
+        jsr kernel_free_banks_contig
+        lda #$02
+        jsr kernel_alloc_banks_contig
+        sta CONTIG_DEMO+2        ; attendu $20 (réutilisé)
+        lda #$01
+        jsr kernel_alloc_banks_contig
+        sta CONTIG_DEMO+3        ; attendu $25
+        ; cleanup : libère $20(2) + $22(3) + $25(1) → carte de nouveau vide.
+        lda #$20
+        ldx #$02
+        jsr kernel_free_banks_contig
+        lda #$22
+        ldx #$03
+        jsr kernel_free_banks_contig
+        lda #$25
+        ldx #$01
+        jsr kernel_free_banks_contig
 
         ; Démo live : alloc 3, free 1, alloc 1 → résultats à BANK_LIVE_DEMO.
         jsr kernel_alloc_live_bank

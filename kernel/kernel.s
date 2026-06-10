@@ -244,6 +244,33 @@ BANK_LIVE_POOL_END   = $A0       ; bank 160 (exclusif), banks 132-159
 BANK_LIVE_FREE_LIST  = $0190C0   ; 16 bytes stack
 BANK_LIVE_FREE_TOP   = $0190D0   ; 1 byte (count 0..16)
 
+; ─── ADR-27 C2 : allocateur de banques CONTIGUËS (backing stores hauts) ──
+; Pool dédié banks $20-$5F (SDRAM $200000-$5FFFFF, 4 MiB = 64 banques),
+; libre de tout (fonts $00-$01, listes $03, backing statiques $06-$0D,
+; framebuffer XVGA $10-$15, live pool $84-$9F). Carte byte-array : 1 octet
+; par banque ($00=libre, $A5=occupé) — first-fit contigu trivial (scan de
+; N octets consécutifs nuls). Sert les fenêtres dont le backing store
+; (byte_w × h) dépasse 64 KiB (> 128 lignes en pleine largeur).
+BACKING_POOL_BASE = $20          ; 1re banque du pool (bank 32)
+BACKING_POOL_N    = 64           ; nb de banques ($20-$5F)
+BACKING_USED      = $A5          ; marqueur d'octet occupé
+; Table base-banque du backing store par slot (0 = legacy $06+slot, 1 banque).
+WM_BACKING_BANK   = $016913      ; 8 octets ($016913-$01691A)
+WM_BACKING_NB     = $01691B      ; 8 octets : nb de banques allouées par slot (pour free)
+BACKING_MAP       = $016923      ; 64 octets : carte d'occupation ($016923-$016962)
+CONTIG_CNT        = $016963      ; 1B : nb de banques demandé (scratch alloc)
+CONTIG_RUN        = $016964      ; 1B : longueur de la run libre courante
+CONTIG_I          = $016965      ; 1B : index de scan (0..63)
+CONTIG_BASE       = $016966      ; 1B : index de base de la run trouvée
+CONTIG_DEMO       = $016967      ; 4B : sentinelles du démo boot (test alloc contigu)
+SWC_SLOT          = $01696B      ; 1B : slot courant (sys_win_create C2, scratch)
+SWC_NBANKS        = $01696C      ; 1B : nb de banques calculé (sys_win_create C2)
+.assert WM_NO_BACKING_FLAGS + 8 <= WM_BACKING_BANK, error, "overlap NO_BACKING/BACKING_BANK"
+.assert WM_BACKING_BANK + 8 <= WM_BACKING_NB,       error, "overlap BACKING_BANK/BACKING_NB"
+.assert WM_BACKING_NB + 8 <= BACKING_MAP,           error, "overlap BACKING_NB/BACKING_MAP"
+.assert BACKING_MAP + BACKING_POOL_N <= CONTIG_CNT, error, "overlap BACKING_MAP/CONTIG"
+.assert SWC_NBANKS + 1 <= $016A00,                  error, "overlap SWC/BUTTON_LABELS"
+
 ; ─── Modèle erreur kernel (Sprint 2.i / OS-2.i.v2) ──────────────────
 PANIC_CODE      = $019095       ; 1 byte : dernier code panic (0 = OK)
 
@@ -1007,6 +1034,7 @@ TC_CTLAPP_FLAG   = $01EE40        ; SP-3.o S.6 : $A5 → spawn bundle_ctl (app C
 TC_CLOCKAPP_FLAG = $01EE50        ; Sprint 4 : $A5 → spawn bundle_clock (app C clock)
 TC_CPCT_FLAG     = $01EEA0        ; ADR-27 B2.c v2 : $A5 → crée task_compact (flip + C-2 garde XVGA)
 TC_FILESELECT_FLAG = $01EEB0      ; $A5 → spawn bundle_fileselect (file selector dialog)
+TC_TALLWIN_FLAG  = $01EEC0        ; ADR-27 C2 : $A5 → crée task_tallwin (fenêtre 200px → 2 banques)
 TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
                                   ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)

@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10t
+
+### Added — ADR-27 C2 : backing store MULTI-BANQUES contiguës
+
+Les fenêtres > 128 px de haut (backing store byte_w·h > 64 KiB à stride
+512) obtiennent des banques contiguës d'un pool dédié ($20-$5F, 4 MiB),
+au lieu de déborder dans la banque voisine (Finding B latent). Allocateur
+first-fit byte-array (kernel_alloc_banks_contig/free/init_backing_map) +
+table WM_BACKING_BANK[slot]/NB[slot] (0=legacy $06+slot). Helper
+kernel_wm_backing_base_hi consulté par kernel_gfx_window_base (dessin app)
+et kernel_wm_compose (BLIT) ; GPU transparent (SDRAM plate). sys_win_create
+alloue ceil(h/128) banques ; wm_close libère. Démo/flag task_tallwin
+(TC_TALLWIN_FLAG / --tallwin). §0bis (hazard bpl↔IRQ) et Finding B
+fermés par construction depuis la bascule taskmode (ADR-28 §8 : l'IRQ ne
+rend plus). Piège : jonglage de pile dans sys_win_create corrompait
+l'allocation → réécrit en scratch bank 1 (SWC_SLOT/SWC_NBANKS).
+
 ## [Unreleased] - 2026-06-10s
 
 ### Added — fontes multiples : variante GRASSE + titres en gras (SP-GUI)

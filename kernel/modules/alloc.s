@@ -63,6 +63,124 @@ free_drop:
         rts                     ; silently drop si plein
 
 ; ════════════════════════════════════════════════════════════════════
+;  ADR-27 C2 : allocateur de banques CONTIGUËS (backing stores hauts)
+; ════════════════════════════════════════════════════════════════════
+;
+; Pool dédié BACKING_POOL_BASE..($+N), carte byte-array BACKING_MAP (1 octet
+; par banque, $00=libre / $A5=occupé). First-fit contigu : scan de CNT octets
+; consécutifs nuls. Sert les fenêtres dont le backing store dépasse 64 KiB
+; (> 128 lignes en pleine largeur) — l'allocateur LIFO système ne garantit
+; pas la contiguïté. Pré-cond : mode N M=X=1, DBR=0. Hors IRQ (sys_win_create).
+;
+;   kernel_alloc_banks_contig : A = nb de banques → A = banque de base, ou 0.
+;   kernel_free_banks_contig   : A = banque de base, X = nb. Préserve rien.
+;
+; ════════════════════════════════════════════════════════════════════
+        .segment "GUICODE"
+.export kernel_init_backing_map
+kernel_init_backing_map:
+        ; Zéroise la carte (toutes banques libres). Appelé au boot.
+        ldx #$00
+        lda #$00
+_kibm_loop:
+        sta f:BACKING_MAP,X
+        inx
+        cpx #BACKING_POOL_N
+        bcc _kibm_loop
+        ; WM_BACKING_BANK[slot] = 0 (legacy) pour les 8 slots.
+        ldx #$00
+_kibm_slot:
+        sta f:WM_BACKING_BANK,X
+        sta f:WM_BACKING_NB,X
+        inx
+        cpx #$08
+        bcc _kibm_slot
+        rts
+
+.export kernel_alloc_banks_contig
+kernel_alloc_banks_contig:
+        sta f:CONTIG_CNT
+        bne _kabc_go
+        rts                      ; count 0 → A=0 (échec)
+_kabc_go:
+        lda #$00
+        sta f:CONTIG_RUN
+        sta f:CONTIG_I
+_kabc_scan:
+        lda f:CONTIG_I
+        cmp #BACKING_POOL_N
+        bcs _kabc_fail           ; fin du pool sans run suffisante
+        tax
+        lda f:BACKING_MAP,X
+        bne _kabc_used           ; occupé → reset run
+        ; banque libre : étend la run
+        lda f:CONTIG_RUN
+        inc a
+        sta f:CONTIG_RUN
+        cmp f:CONTIG_CNT
+        bcc _kabc_next           ; pas encore CNT consécutives
+        ; run atteinte : base index = I - CNT + 1
+        lda f:CONTIG_I
+        sec
+        sbc f:CONTIG_CNT
+        clc
+        adc #$01
+        sta f:CONTIG_BASE
+        tax                      ; X = base index (carte)
+        lda f:CONTIG_CNT
+        tay                      ; Y = compteur descendant
+        lda #BACKING_USED
+_kabc_mark:
+        sta f:BACKING_MAP,X
+        inx
+        dey
+        bne _kabc_mark
+        ; retourne banque physique = BACKING_POOL_BASE + base index
+        lda f:CONTIG_BASE
+        clc
+        adc #BACKING_POOL_BASE
+        rts
+_kabc_used:
+        lda #$00
+        sta f:CONTIG_RUN         ; rupture → reset run
+_kabc_next:
+        lda f:CONTIG_I
+        inc a
+        sta f:CONTIG_I
+        bra _kabc_scan
+_kabc_fail:
+        ; OS-2.i.v2 : journalise l'épuisement (pas de run contiguë assez longue).
+        lda #ERR_BANK_EXHAUSTED
+        ldx #LOG_ERROR
+        jsr kernel_log_write
+        lda #$00
+        rts
+
+.export kernel_free_banks_contig
+kernel_free_banks_contig:
+        ; A = banque physique de base, X = nb de banques.
+        pha                      ; sauve banque de base
+        txa
+        tay                      ; Y = nb (compteur descendant)
+        pla                      ; A = banque de base
+        sec
+        sbc #BACKING_POOL_BASE   ; A = index dans la carte
+        tax                      ; X = index courant
+        cpy #$00
+        beq _kfbc_done           ; nb=0 → rien
+        lda #$00
+_kfbc_loop:
+        cpx #BACKING_POOL_N
+        bcs _kfbc_done           ; garde-fou : index hors pool
+        sta f:BACKING_MAP,X      ; libère (octet = 0)
+        inx
+        dey
+        bne _kfbc_loop
+_kfbc_done:
+        rts
+
+        .segment "CODE"
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_alloc_live_bank / kernel_free_live_bank (Sprint VRAM-3, ADR-19)
 ; ════════════════════════════════════════════════════════════════════
 ;
@@ -762,6 +880,54 @@ task_wdraw_loop:
         cop #$AA
         bra task_wdraw_loop
 
+        .segment "GUICODE"
+; ─── task_tallwin_entry : test ADR-27 C2 (backing store multi-banques) ──
+; Crée une fenêtre 200×200 à (100,100) — 200 lignes > 128 → backing store
+; de 2 banques contiguës (allouées par sys_win_create). Remplit TOUT le
+; backing (blanc $0F) : les lignes > 128 vivent dans la 2e banque. Compose.
+; Pixel framebuffer au-delà de la ligne 128 du backing (ex. (110, 250) =
+; backing row 150) doit être blanc → preuve que la 2e banque est lue.
+; En legacy 1-banque, ces lignes débordent et le pixel n'est PAS blanc.
+.export task_tallwin_entry
+task_tallwin_entry:
+        lda #100                ; x = 100
+        sta $D0
+        lda #$00
+        sta $D1
+        lda #100                ; y = 100
+        sta $D2
+        lda #$00
+        sta $D3
+        lda #200                ; w = 200
+        sta $D4
+        lda #$00
+        sta $D5
+        lda #200                ; h = 200 (> 128 → 2 banques)
+        sta $D6
+        lda #$00
+        sta $D7
+        lda #$13                ; SYS_WIN_CREATE
+        cop #$AA
+        sta TASK_WIN_HANDLE     ; réutilise la sentinelle handle (test)
+        ; FILL_RECT backing store (0,0, 200,200) blanc. ABI sys_gfx_fill_rect :
+        ; $D0=x, $D1=y, $D2=w, $D3=h, $D4=color (8-bit chacun).
+        lda #$00
+        sta $D0                 ; x = 0
+        sta $D1                 ; y = 0
+        lda #200
+        sta $D2                 ; w = 200
+        sta $D3                 ; h = 200 (lignes 129-199 → 2e banque)
+        lda #$0F
+        sta $D4                 ; couleur blanc
+        lda #$0E                ; SYS_GFX_FILL_RECT
+        cop #$AA
+task_tallwin_loop:
+        jsr kernel_wm_compose
+        lda #$05                ; SYS_YIELD
+        cop #$AA
+        bra task_tallwin_loop
+
+        .segment "CODE"
 ; ─── task_compact_entry : test ADR-27 B2.c (flip compact slot) ───────
 ; Crée une fenêtre 64×64 à (50,50), active WM_COMPACT_FLAGS[handle]=$A5,
 ; dessine bg bleu + rect rouge (10,10)-(30,30) en backing-store compact,
