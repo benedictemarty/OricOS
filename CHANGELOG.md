@@ -8,6 +8,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10e
+
+### Fixed — TICK_COUNTER relocalisé $5500 → $019093 (ADR-32 §10.13)
+
+TICK_COUNTER partageait son adresse avec le start du segment NMI_HANDLER :
+chaque tick T1 écrasait l'opcode `rti` du handler NMI — tout NMI réel
+(bouton/watchdog ULX3S à terme) aurait exécuté la valeur du compteur comme
+opcode. Relocalisé en zone data runtime ($019093, entre CURSOR_X et
+BANK_FREE_LIST) avec asserts de non-overlap ; le garde linker « CODE ≤
+$5500 » reste (plancher = segment NMI_HANDLER). Validation rouge→vert :
+test-oricos-nmi-safe (Phosphoric) — byte handler $0D→$40, 4 NMI réels
+absorbés, app au bout.
+
+### Clos sans changement — TCB_BITMAP « slot 4 » (fausse alerte)
+
+Relecture (boot $0007, task_create bit 1 = pid 1, bitmap_clear 1<<pid) +
+mesure kernel sain : convention bit=pid, bit 0 = sentinelle. Les valeurs
+observées étaient correctes — l'anomalie venait d'un décodage slot/pid
+erroné dans le diagnostic du 2026-06-10 (§10.9.c).
+
 ## [Unreleased] - 2026-06-10d
 
 ### Fixed — push EVENT_RING atomique (ADR-32 §10.12, fenêtre EVT_TMP/T1)

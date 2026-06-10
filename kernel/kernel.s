@@ -52,12 +52,16 @@
 .endmacro
 
 ; ─── Constantes ─────────────────────────────────────────────────────
-TICK_COUNTER    = $015500       ; 1B counter (pushed $5430→$5500 pour CODE budget Fix B,
-                                ; gap $54F6-$557F libre — UI_STR_BUF démarre à $5580)
+; ADR-32 §10.13 (2026-06-10) : TICK_COUNTER relocalisé $5500 → $9093.
+; $015500 était AUSSI le start du segment NMI_HANDLER : chaque tick
+; écrasait l'opcode `rti` du handler NMI (tout NMI réel aurait exécuté la
+; valeur du compteur comme opcode). Gardé par test_oricos_nmi_safe
+; (Phosphoric, make tests). Nouvelle adresse : zone data runtime $90xx,
+; entre CURSOR_X ($9092) et BANK_FREE_LIST ($90A0).
+TICK_COUNTER    = $019093       ; 1B counter (tick T1, incrémenté par l'IRQ)
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
-; widgets) et écrasait ces données runtime → corruption. La plus basse donnée
-; est désormais TICK_COUNTER ($019000), plafond effectif du CODE.
+; widgets) et écrasait ces données runtime → corruption.
 SENTINEL_BASE   = $016300        ; 6 octets ("ORIOS\0" sentinelle boot)
 VERSION_BASE    = $016310        ; 5 octets (version kernel)
 TASK_CUR        = $019032       ; PID actuellement RUNNING (1..16)
@@ -1193,15 +1197,18 @@ T1_PERIOD_HI    = $10
 ; les tailles réelles (WM_MAX, TCB_*, KBD_RING_SIZE) : grossir une structure
 ; au-delà de sa zone échoue à la compilation.
 
-; ── Garde linker : CODE ne doit pas déborder TICK_COUNTER ($5400) ──────
+; ── Garde linker : CODE ne doit pas déborder le segment NMI_HANDLER ────
 ; Audit 65C816 §3.1 : les `.assert` ci-dessous couvrent les chevauchements
-; entre variables nommées, mais PAS la croissance de CODE au-delà du plancher
-; data runtime. ld65 n'erreure que si CODE percute NMI_HANDLER ($5500) — la
-; zone $5400-$54FF est sinon écrasable SILENCIEUSEMENT (corruption déjà
-; survenue : relocalisation SENTINEL en SP-3.o S.4c).
+; entre variables nommées, mais PAS la croissance de CODE au-delà de $5500.
+; ld65 le détecte aussi (NMI_HANDLER start=$5500) mais en warning peu
+; lisible — l'assert rend l'échec explicite. (TICK_COUNTER relocalisé en
+; $019093 par ADR-32 §10.13 — il n'est plus le plancher.)
 ; Symboles ld65 auto-générés pour le segment CODE.
 .import __CODE_LOAD__, __CODE_SIZE__
-.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5500, error, "CODE deborde le plancher data runtime (TICK_COUNTER = $015500)"
+.assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5500, error, "CODE deborde le segment NMI_HANDLER ($5500)"
+; ADR-32 §10.13 : TICK_COUNTER vit entre CURSOR_X et BANK_FREE_LIST.
+.assert CURSOR_X + 1     <= TICK_COUNTER,    error, "overlap CURSOR_X/TICK_COUNTER"
+.assert TICK_COUNTER + 1 <= BANK_FREE_LIST,  error, "overlap TICK_COUNTER/BANK_FREE_LIST"
 
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"
