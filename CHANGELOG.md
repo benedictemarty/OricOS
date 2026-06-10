@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10o
+
+### Fixed — clignotement au resize (retour interactif post-bascule)
+
+Deux causes mesurées : (1) l'effacement bleu de TOUT l'ancien rect à
+chaque move de resize (la liste est invalidée à chaque w/h, le trou
+erase→re-record→replay rendait l'effacement visible — le drag, lui,
+rejoue translaté sans re-record) → kernel_wm_redraw_drag n'efface plus
+que les bandes EXPOSÉES (droite/basse au rétrécissement, rien à
+l'agrandissement) ; (2) le CLEAR desktop du full redraw de clic (98k
+cyc GPU) traversait le pipeline au milieu du geste et peignait l'écran
+en bleu ~3 ms → flag one-shot WM_RD_NOCLEAR : les redraws de clic
+« focus pur » (arm drag/resize, taskbar focus/restore) skippent le
+clear, les chemins avec exposition (close/minimize/menu/callback) le
+gardent. Garde : test_resize_grow_no_flicker (rouge 1071 flashes avant
+fix, 0 après).
+
 ## [Unreleased] - 2026-06-10n
 
 ### Changed — BASCULE : WM_TASKMODE devient le mode par défaut (ADR-28 §8)

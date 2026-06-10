@@ -214,6 +214,7 @@ kernel_wm_init:
         lda #$00
         sta f:WM_RD_SKIPPED
         sta f:WM_RD_DIRTY
+        sta f:WM_RD_NOCLEAR
         ; SP-3.f : vide la table des flags de titres (WM_MAX=8 × 1B = $00)
         lda #$00
         sta WM_TITLES+0
@@ -1443,6 +1444,17 @@ kernel_wm_redraw:
 wmr_stride_skip:
         plp
 wmr_stride_ok:
+        ; ── Anti-flash (retour interactif 2026-06-10) : un redraw de clic
+        ; « focus pur » (rien d'exposé) skip le CLEAR plein écran — le
+        ; clear (98k cyc GPU) traversait le pipeline au milieu du geste
+        ; suivant et peignait tout l'écran en bleu ~3 ms. One-shot. ──
+        lda f:WM_RD_NOCLEAR
+        cmp #$A5
+        bne _wmr_do_clear
+        lda #$00
+        sta f:WM_RD_NOCLEAR
+        bra _wmr_after_clear
+_wmr_do_clear:
         ; Clear desktop (bleu 1) : gfx_clear(base=$100000, size=$060000, color=1).
         ; Base $100000 (1 MiB) : hors des démos GPU legacy ($004000-$00C000).
         lda #$00
@@ -1459,6 +1471,7 @@ wmr_stride_ok:
         lda #$01
         sta GFX_COLOR           ; desktop bleu
         jsr kernel_gfx_clear
+_wmr_after_clear:
         ; SP-3.k : dessine les icônes du desktop (sous les fenêtres).
         jsr kernel_icon_draw_all
         ; fall-through : dessine les fenêtres.
@@ -1914,6 +1927,89 @@ _kru_bottom_cur:
         sta PIR_RECT_H           ; h = bottom - y
         sep #$20
 _krd_union_done:
+        ; ── Anti-clignotement RESIZE (retour interactif 2026-06-10 :
+        ; « le rendu est clignotant lorsque l'on étend une fenêtre ») :
+        ; en resize, x/y sont FIXES — effacer tout l'ancien rect faisait
+        ; flasher le corps en bleu à chaque move, pendant le trou
+        ; erase→re-record→replay (la liste est invalidée à chaque
+        ; changement de w/h, contrairement au drag translaté). On
+        ; n'efface que les bandes EXPOSÉES : rétrécissement → bande
+        ; droite et/ou basse ; agrandissement pur → RIEN (la fenêtre
+        ; repeint par-dessus elle-même). Drag → effacement plein
+        ; (l'ancienne position est réellement libérée). ──────────────
+        lda WM_RESIZE_ARMED
+        bne _krd_strips          ; (portée : _krd_erase_full > 127 o)
+        jmp _krd_erase_full
+_krd_strips:
+        lda WM_FOCUS
+        cmp #$FF
+        bne _krd_strips_go
+        jmp _krd_erase_full      ; défensif
+_krd_strips_go:
+        jsr kernel_wm_offset     ; X = focus*10 (fill16 préserve X)
+        ; ── bande droite : new.w < old.w ? ──
+        rep #$20
+        lda WM_TABLE+WM_OFF_W,X
+        cmp WM_DRAG_OLD_W
+        bcs _krd_rstrip_skip
+        lda WM_DRAG_OLD_X        ; (x + new.w, y, old.w − new.w, old.h)
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sta WM_ARG_X
+        lda WM_DRAG_OLD_Y
+        sta WM_ARG_Y
+        lda WM_DRAG_OLD_W
+        sec
+        sbc WM_TABLE+WM_OFF_W,X
+        sta WM_ARG_W
+        lda WM_DRAG_OLD_H
+        sta WM_ARG_H
+        sep #$20
+        .a8
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$01                 ; desktop bleu
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        rep #$20
+_krd_rstrip_skip:
+        .a16                     ; (atteint par bcs depuis la région M=16)
+        ; ── bande basse : new.h < old.h ? ──
+        lda WM_TABLE+WM_OFF_H,X
+        cmp WM_DRAG_OLD_H
+        bcs _krd_bstrip_skip
+        lda WM_DRAG_OLD_X        ; (x, y + new.h, old.w, old.h − new.h)
+        sta WM_ARG_X
+        lda WM_DRAG_OLD_Y
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        sta WM_ARG_Y
+        lda WM_DRAG_OLD_W
+        sta WM_ARG_W
+        lda WM_DRAG_OLD_H
+        sec
+        sbc WM_TABLE+WM_OFF_H,X
+        sta WM_ARG_H
+        sep #$20
+        .a8
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$01
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        rep #$20
+_krd_bstrip_skip:
+        .a16                     ; (atteint par bcs depuis la région M=16)
+        sep #$20
+        .a8
+        bra _krd_after_erase
+_krd_erase_full:
         rep #$20
         lda WM_DRAG_OLD_X
         sta WM_ARG_X
@@ -1932,6 +2028,7 @@ _krd_union_done:
         lda #$01                 ; desktop bleu
         sta GFX_COLOR
         jsr kernel_gfx_fill_rect16
+_krd_after_erase:
         jsr kernel_icon_draw_all ; icônes redessinées lors du drag (sinon disparaissent)
         jmp _wm_draw_windows
 
@@ -2385,9 +2482,12 @@ _tbh_restore_maxed:
         lda #WM_STATE_MAXED
         sta WM_STATES,X
 _tbh_focus:
-        ; Focus + redraw + taskbar.
+        ; Focus + redraw + taskbar. (Focus/restore : la fenêtre repeint
+        ; PAR-DESSUS — rien d'exposé → pas de clear plein écran.)
         lda TB_I                 ; slot
         jsr kernel_wm_set_focus
+        lda #$A5
+        sta f:WM_RD_NOCLEAR
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
         lda #$01                 ; consommé
@@ -2589,6 +2689,8 @@ wm_step_modal_ok:
         sta WM_RESIZE_ARMED
         lda #$00
         sta WM_DRAG_ARMED
+        lda #$A5
+        sta f:WM_RD_NOCLEAR      ; focus pur : rien d'exposé → pas de clear
         jsr kernel_wm_redraw
         jsr kernel_wm_draw_cursor
         rts
@@ -2604,6 +2706,10 @@ wm_step_arm_drag:
         bne wm_step_on_control
         lda #$01                 ; clic intérieur (pas un contrôle) → arme le drag
         sta WM_DRAG_ARMED
+        lda #$A5
+        sta f:WM_RD_NOCLEAR      ; focus pur : rien d'exposé → pas de clear
+        ; (la branche contrôle garde le clear : un callback peut fermer
+        ;  une fenêtre → exposition)
         bra wm_step_arm_done
 wm_step_on_control:
         lda #$00

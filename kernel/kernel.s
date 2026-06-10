@@ -95,6 +95,11 @@ WM_RD_SKIPPED    = $0191EC      ; 1B : $A5 = dernière frame de geste SKIPPÉE
 WM_RD_DIRTY      = $0191ED      ; 1B : $A5 = chaîne de dessin en mode dirty-rect
                                 ;   (redraw_drag) → fenêtres/menu/taskbar non
                                 ;   touchés par (ancien ∪ nouveau rect) skippés
+WM_RD_NOCLEAR    = $0191EE      ; 1B : $A5 (one-shot) = full redraw SANS le clear
+                                ;   desktop — clic « focus pur », rien d'exposé,
+                                ;   tout repeint par-dessus (anti-flash bleu :
+                                ;   le clear 98k cyc GPU traversait le pipeline
+                                ;   au milieu du geste suivant)
 WL_REC           = $01909E      ; 1B : $A5 = mode record (fill16/text16 émettent)
 WL_PTR           = $0190B1      ; 3B : curseur d'émission SDRAM (l'IRQ peut
                                 ;      clobber VRAM_ADDR → re-posé par émission)
@@ -1328,7 +1333,7 @@ T1_PERIOD_HI    = $10
 .assert WL_ARENA_BUMP + 2 <= WL_DX,          error, "overlap WL_ARENA_BUMP/WL_DX"
 .assert WL_DX + 2 <= WL_DY,                  error, "overlap WL_DX/WL_DY"
 .assert WL_DY + 2 <= WM_RD_SKIPPED,          error, "overlap WL_DY/WM_RD_SKIPPED"
-.assert WM_RD_DIRTY + 1 <= $019200,          error, "WM_RD_DIRTY chevauche GUICODE"
+.assert WM_RD_NOCLEAR + 1 <= $019200,        error, "WM_RD_NOCLEAR chevauche GUICODE"
 .assert TK_LP_PEND + 2 <= TK_STR_RING_IDX,   error, "overlap TK_LP_PEND/TK_STR_RING_IDX"
 .assert TK_STR_RING_IDX + 1 <= TK_LP_STRB,   error, "overlap TK_STR_RING_IDX/TK_LP_STRB"
 .assert TK_LP_LISTB + 3 <= LOG_RING,         error, "overlap TK_LP_LISTB/LOG_RING"
