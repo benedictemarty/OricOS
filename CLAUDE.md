@@ -252,6 +252,40 @@ modifier le kernel » prouve que c'était l'émulateur.
 7. [ ] Si nouvelle famille : invariant posé, sites audités (R6).
 8. [ ] `make audit-smart` + `make` + suite golden-model verte ; budgets cycles rebasés-justifiés (R8).
 9. [ ] Échecs d'alloc bruyants (R5). Harness de repro versionné (R9).
+10. [ ] Si état partagé IRQ↔tâche : protocole P1/P2/P3 respecté (§5nonies).
+
+---
+
+## 5nonies. INVARIANT ZP/IRQ — protocoles P1/P2/P3 (ADR-32 ratifiée 2026-06-10)
+
+**Tout état partagé entre contexte IRQ top-half et contexte tâche obéit à
+l'un des trois protocoles, sans exception :**
+
+- **P1 — Enveloppe IRQ.** Un chemin IRQ qui clobbe des scratch ZP les
+  sauvegarde/restaure intégralement. Existant : le bloc souris de
+  `kernel_irq_handler` enveloppe la plage **$08-$93** vers `IRQ_ZP_SAVE`
+  ($019100) — un syscall body préempté reprend avec ses scratch intacts.
+  Tout nouveau sous-arbre IRQ écrivant de la ZP scratch passe sous
+  l'enveloppe existante ou ajoute la sienne.
+- **P2 — Section critique côté tâche.** Toute structure à RMW partagée
+  (rings EVENT/RAW/KBD, compteurs, slots) s'accède côté tâche sous
+  `php`/`sei` … `plp` — pattern `event_pop`/`raw_pop`/`kbd_ring_pop`/
+  pushers tâche (`push_menu`, `push_verbatim`). Tout NOUVEAU pusher ou
+  consommateur appelable hors IRQ suit la même règle.
+- **P3 — Registres intégraux.** La frame IRQ sauvegarde A/X/Y en
+  **16-bit** (`rep #$30` avant pha/phx/phy). Tout forgeur de resume frame
+  suit le format 10 octets `[Y16][X16][A16][P][PCL][PCH][PBR]` — liste
+  exhaustive en tête de `handlers.s`. Un push 8-bit décale S de 3 et le
+  `rti` part dans le décor.
+
+**Gardes mécaniques** (dans `make tests`, chacune vue ROUGE sur son
+défaut avant son fix) : `test-oricos-irq-frame-m16` (P3),
+`test-position-shift` v2.2 (P1), `test-oricos-evt-push-atomic` (P2),
+`test-oricos-nmi-safe` (layout code/data $5500).
+
+Rappel : `forbid`/`permit` (ADR-25) ne masque PAS les IRQ — sa portée est
+tâche↔tâche uniquement. Les protocoles ci-dessus sont LA réponse au trou
+IRQ↔tâche. Dossier complet : `docs/adr/0032-zp-race-irq-task.md`.
 
 ---
 

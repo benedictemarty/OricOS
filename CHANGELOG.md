@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10f
+
+### Docs — invariant ZP/IRQ P1/P2/P3 dans CLAUDE.md §5nonies (ADR-32 ratifiée)
+
+L'invariant ratifié (ADR-32 §10.14/§11) entre dans le document directeur :
+P1 enveloppe IRQ (IRQ_ZP_SAVE $08-$93), P2 php/sei…plp côté tâche sur les
+structures RMW partagées, P3 frame IRQ 16-bit + format de frame 10 octets.
+Item 10 ajouté à la checklist de commit (§5octies). Aucun changement de
+code — le kernel implémente déjà les 3 protocoles (2026-06-10b/c/d/e).
+
 ## [Unreleased] - 2026-06-10e
 
 ### Fixed — TICK_COUNTER relocalisé $5500 → $019093 (ADR-32 §10.13)
