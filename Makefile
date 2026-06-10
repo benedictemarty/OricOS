@@ -125,7 +125,12 @@ $(APPS):
 $(BUILD):
 	@mkdir -p $(BUILD)
 
-$(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) | $(BUILD)
+# SP-3.p F.1 : table de largeurs de fonte (proportionnel), générée depuis
+# le charset XVGA. Consommée par tk.s (.incbin data/font_widths.bin).
+data/font_widths.bin: data/charset-xvga.bin tools/gen-font-widths.py
+	python3 tools/gen-font-widths.py
+
+$(KERNEL_O): $(KERNEL_SRC) $(KERNEL_DEPS) $(APP_BUNDLES) data/font_widths.bin | $(BUILD)
 	$(AS) $(ASFLAGS) -l $(KERNEL_LST) -o $@ $<
 
 $(KERNEL_BIN): $(KERNEL_O) $(KERNEL_CFG)

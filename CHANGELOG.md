@@ -8,6 +8,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10g
+
+### Added — SP-3.p F.1 : fontes proportionnelles (suite GUI, réf GeoWorks)
+
+- `tools/gen-font-widths.py` → `data/font_widths.bin` (128 largeurs depuis
+  charset-xvga : colonne max + 1 px d'espacement, espace = 4). Règle Makefile.
+- tk.s : `kernel_tk_text_width` (mesure 16-bit d'une chaîne, base du centrage
+  à venir) + `kernel_tk_label_prop` (rendu char-à-char via TEXT16, buffer
+  « espacé » [c,0,…] TK_STR_SCRATCH, avance FONT_WIDTHS) + type widget
+  `WG_TYPE_LABELP` ($0B).
+- Segment `GUICODE` ($9200-$EDFF, ~23 Ko) : CODE était plein (~94 o de marge
+  sous le segment NMI $5500) — le nouveau code GUI vit là.
+- Piège tracé : un label de segment se résout SANS bank → `f:label` lisait
+  $00:92xx (widths = 0, texte superposé). Fix : `FONT_WIDTHS_FAR = +$010000`.
+
+### Added — SP-3.p D.1 : textes de dialogues (DB_TEXT + message SYS_ALERT)
+
+- `DB_TEXT` ($04) dans la command table SYS_DO_DLGBOX : relx16 rely16 ptr16
+  (chaîne dans le bank de la table), stagée vers `DLG_TEXT_BUF` ($016A80),
+  widget LABELP managé (suit le drag, clip ADR-31 par largeur mesurée).
+- SYS_ALERT : message optionnel via $D0-$D2 (0 = aucun), rendu proportionnel,
+  tronqué à la largeur utile (156 px). task_alert/task_dlg de test enrichis
+  (« Are you sure? » / « Save changes? »).
+- **Fix bug UX préexistant** : `ddb_show` ne faisait AUCUN redraw — les
+  widgets des dialogues (boutons compris) n'étaient jamais peints avant un
+  redraw externe (révélé par l'assertion pixel ; le hit-test, lui, marchait).
+  Même précédent que sud_done (G.7).
+- SDK : defines `DB_*`, `oricos_alert` zérote $D0-$D2 (résidus → texte
+  poubelle), `oricos_alert_msg(type, msg)` ajouté.
+
 ## [Unreleased] - 2026-06-10f
 
 ### Docs — invariant ZP/IRQ P1/P2/P3 dans CLAUDE.md §5nonies (ADR-32 ratifiée)

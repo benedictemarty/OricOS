@@ -254,22 +254,38 @@ task_dlg_entry:
         cop #$AA
         bra task_dlg_entry      ; filet
 
-; Command table DoDlgBox démo : dialogue (200,150,160,80) + OK + Cancel.
+; Command table DoDlgBox démo : dialogue (200,150,160,80) + texte + OK + Cancel.
+; SP-3.p D.1 : DB_TEXT exerce le rendu proportionnel end-to-end (test
+; test_oricos_dlgbox vérifie la présence de pixels texte dans la fenêtre).
 db_demo:
         .byte DB_POSITION
         .word 200               ; x
         .word 150               ; y
         .word 160               ; w
         .word 80                ; h
+        .byte DB_TEXT
+        .word 12                ; rel x
+        .word 16                ; rel y
+        .word db_demo_msg       ; chaîne (bank de la table = 1)
         .byte DB_OK
         .byte DB_CANCEL
         .byte DB_END
+db_demo_msg:
+        .byte "Save changes?", $00
 
 ; ─── task_alert_entry : alerte pré-câblée OK-Cancel (SP-3.n G.6) ──────────────
 ; SYS_ALERT ($1A) type ALERT_OKCANCEL (X=1) → fenêtre modale fixe + OK/Cancel.
 ; Bloque jusqu'au clic ; stocke le retour (1=OK/0=Cancel) puis SYS_EXIT.
 .export task_alert_entry
 task_alert_entry:
+        ; SP-3.p D.1 : message optionnel via $D0-$D2 (0 = aucun). Le task de
+        ; test en pose un vrai — exerce le rendu proportionnel de l'alerte.
+        lda #<alert_demo_msg
+        sta $D0
+        lda #>alert_demo_msg
+        sta $D1
+        lda #$01                ; bank 1 (chaîne kernel)
+        sta $D2
         ldx #ALERT_OKCANCEL     ; type d'alerte (arg X)
         lda #$1A                ; SYS_ALERT
         cop #$AA
@@ -277,6 +293,8 @@ task_alert_entry:
         lda #$04                ; SYS_EXIT
         cop #$AA
         bra task_alert_entry    ; filet
+alert_demo_msg:
+        .byte "Are you sure?", $00
 
 ; ─── task_chk_entry : crée une checkbox + round-trip API valeur (SP-3.o S.1) ──
 ; Ajoute une checkbox à la fenêtre 0, puis SYS_CTL_SET_VALUE(id,1) +

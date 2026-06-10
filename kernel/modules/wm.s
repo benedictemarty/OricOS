@@ -4673,9 +4673,11 @@ sud_ret:
 
 ; $19 — SYS_DO_DLGBOX : dialogue modal défini par une command table (G.5) ──
 ; Modèle GEOS : l'app passe un pointer 24-bit ($D0-$D2) vers une table DB_*
-; (DB_POSITION x16 y16 w16 h16 / DB_OK / DB_CANCEL / DB_END). Le kernel crée une
-; fenêtre modale + les boutons, puis exécute une BOUCLE MODALE (UI-modal : la
-; saisie va au dialogue, WM_MODAL ; la tâche appelante bloque et rend le CPU via
+; (DB_POSITION x16 y16 w16 h16 / DB_OK / DB_CANCEL / DB_TEXT relx16 rely16
+; ptr16 / DB_END — ptr16 = chaîne null-term dans le bank de la table, rendue
+; en PROPORTIONNEL, SP-3.p D.1). Le kernel crée une fenêtre modale + les
+; widgets, puis exécute une BOUCLE MODALE (UI-modal : la saisie va au
+; dialogue, WM_MODAL ; la tâche appelante bloque et rend le CPU via
 ; kernel_event_wait). Retour : A = 1 (OK) ou 0 (Cancel). Boutons auto-positionnés.
 sys_do_dlgbox:
         lda #$FF
@@ -4701,6 +4703,12 @@ ddb_p3:
         bne ddb_p4
         jmp ddb_addcancel
 ddb_p4:
+        cmp #DB_TEXT
+        bne ddb_p5
+        iny
+        jsr _ddb_do_addtext     ; SP-3.p D.1 (GUICODE) — consomme 6 octets, avance Y
+        jmp ddb_parse
+ddb_p5:
         jmp ddb_show            ; tag inconnu → stop
 ddb_pos:
         iny
@@ -4763,6 +4771,12 @@ ddb_addcancel:
         jsr _ddb_add_button
         jmp ddb_parse
 ddb_show:
+        ; SP-3.p D.1 : repeint le desktop AVANT la boucle modale — sans ça les
+        ; widgets du dialogue (boutons, texte) ne sont peints qu'au prochain
+        ; redraw externe : dialogue invisible (bug UX préexistant révélé par
+        ; l'assertion pixel de test_oricos_dlgbox). Même précédent que
+        ; sud_done (G.7) pour SYS_UI_DEFINE.
+        jsr kernel_wm_redraw
         ; ── boucle modale : attend un clic sur un bouton terminant ──
 ddb_loop:
         jsr kernel_event_wait   ; bloque jusqu'à un événement (rend le CPU)
@@ -4823,6 +4837,9 @@ sys_alert:
         jsr kernel_wm_add       ; A = handle
         sta DLG_WIN
         jsr kernel_wm_set_modal
+        ; SP-3.p D.1 : message optionnel ($D0-$D2 = ptr 24-bit, 0 = aucun),
+        ; rendu proportionnel, tronqué à la largeur utile de l'alerte.
+        jsr _alert_add_msg
         ; bouton gauche (terminant → retour 1) : label "Yes" si YESNO, sinon "OK"
         lda DP_SYS_ARG_X
         cmp #ALERT_YESNO
@@ -4904,6 +4921,155 @@ db_str_yes:
         .byte "Yes", $00
 db_str_no:
         .byte "No", $00
+
+; ════════════════════════════════════════════════════════════════════
+;  SP-3.p D.1 — texte de dialogue (DB_TEXT) + message SYS_ALERT
+; ════════════════════════════════════════════════════════════════════
+        .segment "GUICODE"
+
+; ── _dlg_add_text_widget : DLG_TEXT_BUF (rempli) → widget LABELP sur
+;    DLG_WIN. In : WM_ARG_X/Y = rel x/y (16-bit), WM_ARG_W = largeur max
+;    en px (0 = pas de limite — l'app est responsable, clip ADR-31 skip
+;    si trop large). Si limite : tronque la chaîne au dernier char qui
+;    tient (somme FONT_WIDTHS). Clobbe A, X, Y, DP_PCPTR, WM_ARG_W/H. ──
+_dlg_add_text_widget:
+        lda #<DLG_TEXT_BUF
+        sta DP_PCPTR
+        lda #>DLG_TEXT_BUF
+        sta DP_PCPTR+1
+        lda #$01
+        sta DP_PCPTR+2          ; DLG_TEXT_BUF est en bank 1
+        ; troncature par largeur si WM_ARG_W (max) != 0
+        rep #$20
+        lda WM_ARG_W
+        sep #$20
+        beq _datw_measure       ; lo==0 : on teste le 16-bit complet ci-dessous
+_datw_have_max:
+        ; scan : cumule widths, tronque au char qui dépasse max
+        rep #$20
+        lda #$0000
+        sta WM_ARG_H            ; scratch cumul (réutilisé, re-posé après)
+        sep #$20
+        ldy #$00
+_datw_scan:
+        lda [DP_PCPTR],Y
+        beq _datw_measure       ; fin de chaîne avant la limite
+        and #$7F
+        tax
+        lda f:FONT_WIDTHS_FAR,X
+        rep #$20
+        and #$00FF
+        clc
+        adc WM_ARG_H
+        sta WM_ARG_H            ; cumul
+        cmp WM_ARG_W
+        sep #$20
+        bcs _datw_truncate      ; cumul > max → tronque ICI
+        iny
+        cpy #63
+        bcc _datw_scan
+_datw_truncate:
+        tyx                     ; pas de sta long,Y sur 65816
+        lda #$00
+        sta f:DLG_TEXT_BUF,x    ; terminateur au point de coupe
+_datw_measure:
+        jsr kernel_tk_text_width ; → WM_ARG_W = largeur rendue réelle
+        rep #$20
+        lda #10
+        sta WM_ARG_H            ; hauteur de ligne (fonte 8 px + marge)
+        sep #$20
+        lda DLG_WIN
+        sta WG_PARENT
+        lda #WG_TYPE_LABELP
+        sta WG_TYPE
+        lda #$00
+        sta GFX_COLOR           ; texte noir
+        sta WG_CB
+        sta WG_CB+1
+        jsr kernel_wm_add_widget
+        rts
+
+; ── _ddb_do_addtext : parse DB_TEXT (relx16 rely16 ptr16) — Y pointe le
+;    1er octet après le tag, avancé de 6 au retour. Copie la chaîne (bank
+;    de la table = [$D2]) vers DLG_TEXT_BUF, crée le widget LABELP. ─────
+_ddb_do_addtext:
+        lda [$D0],y
+        sta WM_ARG_X
+        iny
+        lda [$D0],y
+        sta WM_ARG_X+1
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y
+        iny
+        lda [$D0],y
+        sta WM_ARG_Y+1
+        iny
+        lda [$D0],y
+        sta $D6                 ; ptr chaîne lo (scratch bloc COP)
+        iny
+        lda [$D0],y
+        sta $D7                 ; ptr hi
+        iny
+        lda $D2
+        sta $D8                 ; bank source = bank de la command table
+        phy                     ; préserve l'index table (text_width clobbe Y)
+        ldy #$00
+_ddt_copy:
+        tyx                     ; pas de sta long,Y sur 65816 → X = index dest
+        lda [$D6],y
+        sta f:DLG_TEXT_BUF,x    ; (sta préserve les flags du lda)
+        beq _ddt_copied
+        iny
+        cpy #63
+        bcc _ddt_copy
+        tyx
+        lda #$00
+        sta f:DLG_TEXT_BUF,x    ; garde-fou terminateur
+_ddt_copied:
+        rep #$20
+        lda #$0000
+        sta WM_ARG_W            ; pas de limite : table déclarative = resp. app
+        sep #$20
+        jsr _dlg_add_text_widget
+        ply
+        rts
+
+; ── _alert_add_msg : message optionnel SYS_ALERT — [$D0] = ptr 24-bit
+;    chaîne (0 = aucun). Copie → DLG_TEXT_BUF, widget LABELP à rel(12,14),
+;    tronqué à la largeur utile de l'alerte (180-24 = 156 px). ──────────
+ALERT_MSG_MAX_W = 156
+_alert_add_msg:
+        lda $D0
+        ora $D1
+        ora $D2
+        beq _aam_done           ; ptr nul → pas de message
+        ldy #$00
+_aam_copy:
+        tyx                     ; pas de sta long,Y sur 65816 → X = index dest
+        lda [$D0],y
+        sta f:DLG_TEXT_BUF,x
+        beq _aam_copied
+        iny
+        cpy #63
+        bcc _aam_copy
+        tyx
+        lda #$00
+        sta f:DLG_TEXT_BUF,x
+_aam_copied:
+        rep #$20
+        lda #12
+        sta WM_ARG_X            ; rel x
+        lda #14
+        sta WM_ARG_Y            ; rel y (au-dessus des boutons y=44)
+        lda #ALERT_MSG_MAX_W
+        sta WM_ARG_W            ; limite → troncature par largeur
+        sep #$20
+        jsr _dlg_add_text_widget
+_aam_done:
+        rts
+
+        .segment "CODE"
 
 ; $1B — SYS_CTL_GET_VALUE : X = id contrôle → A = value (SP-3.o S.1) ─────
 ; $FF si id invalide (≥ WIDGET_COUNT).

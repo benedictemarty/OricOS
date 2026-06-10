@@ -163,6 +163,15 @@
 #define ALERT_OKCANCEL      1
 #define ALERT_YESNO         2
 
+/* ── Tags command table SYS_DO_DLGBOX (modèle GEOS DB_*) ─────────── */
+#define DB_END              0x00  /* fin de table */
+#define DB_POSITION         0x01  /* + x16 y16 w16 h16 (géométrie) */
+#define DB_OK               0x02  /* bouton OK (terminant, retour 1) */
+#define DB_CANCEL           0x03  /* bouton Cancel (terminant, retour 0) */
+#define DB_TEXT             0x04  /* + relx16 rely16 ptr16 — texte du dialogue,
+                                   * chaîne null-term (bank de la table),
+                                   * rendu PROPORTIONNEL (SP-3.p D.1) */
+
 /* ── Sentinelle d'erreur ─────────────────────────────────────────── */
 #define ORICOS_ERR          ((uint8_t)0xFF)
 #define ORICOS_OK           ((uint8_t)0x00)
@@ -403,17 +412,42 @@ uint8_t oricos_main_loop(void) {
 }
 
 /* SYS_ALERT : alerte pré-câblée (ALERT_OK / ALERT_OKCANCEL / ALERT_YESNO).
- * Retourne 1 (bouton gauche : OK/Yes) ou 0 (droite : Cancel/No). Modal. */
+ * Retourne 1 (bouton gauche : OK/Yes) ou 0 (droite : Cancel/No). Modal.
+ * SP-3.p D.1 : $D0-$D2 = message optionnel — cette variante n'en passe
+ * pas et DOIT les zéroter (sinon résidus du bloc COP → texte poubelle). */
 static __attribute__((always_inline)) inline
 uint8_t oricos_alert(uint8_t type) {
     uint8_t res;
     __asm__ volatile (
+        "lda #0\n sta $D0\n sta $D1\n sta $D2\n"
         "ldx %[t]\n"
         _ORICOS_LDA_SYS(SYS_ALERT)
         ".byte 0x02, 0xAA\n"
         "sta %[out]\n"
         : [out] "=r" (res)
         : [t] "r" (type)
+        : "a", "x"
+    );
+    return res;
+}
+
+/* SYS_ALERT avec message (SP-3.p D.1) : msg = chaîne null-term (const dans
+ * le bank de l'app), rendue en fonte PROPORTIONNELLE au-dessus des boutons,
+ * tronquée à la largeur de l'alerte. */
+static __attribute__((always_inline)) inline
+uint8_t oricos_alert_msg(uint8_t type, const char *msg) {
+    uint8_t res;
+    __asm__ volatile (
+        "lda %[lo]\n sta $D0\n"
+        "lda %[hi]\n sta $D1\n"
+        "phk\n pla\n sta $D2\n"
+        "ldx %[t]\n"
+        _ORICOS_LDA_SYS(SYS_ALERT)
+        ".byte 0x02, 0xAA\n"
+        "sta %[out]\n"
+        : [out] "=r" (res)
+        : [t] "r" (type),
+          [lo] "r" ((uint8_t)(unsigned)msg), [hi] "r" ((uint8_t)((unsigned)msg >> 8))
         : "a", "x"
     );
     return res;

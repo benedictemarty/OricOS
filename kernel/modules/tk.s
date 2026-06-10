@@ -114,6 +114,132 @@ gfx_t16_done:
         plp                     ; BUG_curseur_fige_gpu_bpl §4.4 : ferme la section critique
         rts
 
+; ════════════════════════════════════════════════════════════════════
+;  SP-3.p F.1 — Fonte proportionnelle (suite GUI, réf GeoWorks/GEOS)
+; ════════════════════════════════════════════════════════════════════
+; Segment GUICODE ($9200+) : CODE est plein (~94 o de marge). Routines
+; appelées en jsr intra-bank — aucun changement d'ABI.
+        .segment "GUICODE"
+; FONT_WIDTHS : 128 octets, largeur rendue de chaque glyphe (colonne max
+; allumée + 1 px d'espacement ; espace = 4). Générée au build par
+; tools/gen-font-widths.py depuis data/charset-xvga.bin.
+.export FONT_WIDTHS
+FONT_WIDTHS:
+        .incbin "../data/font_widths.bin"
+; ⚠ FONT_WIDTHS est un label de SEGMENT : il se résout en $92xx SANS octet
+; de bank → `lda f:FONT_WIDTHS_FAR,X` lirait $00:92xx (bank 0 = zéros : tous
+; les widths à 0, texte superposé — vu ROUGE par test_oricos_dlgbox
+; « texte non étalé »). Le kernel vit en bank 1 → adresse far explicite.
+FONT_WIDTHS_FAR = FONT_WIDTHS + $010000
+
+; ── kernel_tk_text_width : largeur rendue (proportionnel) d'une chaîne ──
+; In : [DP_PCPTR] = chaîne null-term (24-bit). Out : WM_ARG_W (16-bit).
+; Max TK_PROP_MAX chars (garde-fou). Clobbe A, X, Y. Préserve DP_PCPTR.
+TK_PROP_MAX = 64
+.export kernel_tk_text_width
+kernel_tk_text_width:
+        rep #$20
+        lda #$0000
+        sta WM_ARG_W
+        sep #$20
+        ldy #$00
+ktw_loop:
+        lda [DP_PCPTR],Y
+        beq ktw_done
+        and #$7F                 ; table = 128 entrées
+        tax
+        lda f:FONT_WIDTHS_FAR,X
+        rep #$20
+        and #$00FF
+        clc
+        adc WM_ARG_W
+        sta WM_ARG_W
+        sep #$20
+        iny
+        cpy #TK_PROP_MAX
+        bcc ktw_loop
+ktw_done:
+        rts
+
+; ── _tk_upload_str_spaced : copie [DP_PCPTR] → TK_STR_SCRATCH au format
+;    « espacé » [c,0,c,0,…] : chaque char devient une chaîne de longueur 1
+;    pour le GPU TEXT16 (null-terminated). GFX_STR = SCRATCH+2*i rend le
+;    char i seul. Garde-fou TK_PROP_MAX. Clobbe A, Y. ──────────────────
+_tk_upload_str_spaced:
+        lda #<TK_STR_SCRATCH
+        sta VRAM_ADDR_LO_IO
+        lda #>TK_STR_SCRATCH
+        sta VRAM_ADDR_MID_IO
+        lda #^TK_STR_SCRATCH
+        sta VRAM_ADDR_HI_IO
+        ldy #$00
+_tuss_loop:
+        lda [DP_PCPTR],Y
+        beq _tuss_done
+        sta VRAM_DATA_IO         ; char (auto-inc)
+        lda #$00
+        sta VRAM_DATA_IO         ; terminateur de la « chaîne de 1 »
+        iny
+        cpy #TK_PROP_MAX
+        bcc _tuss_loop
+_tuss_done:
+        rts
+
+; ── kernel_tk_label_prop : texte PROPORTIONNEL à (WM_ARG_X/Y), GFX_COLOR,
+;    chaîne [DP_PCPTR] (null-term). Base framebuffer = $100000. Chaque char
+;    est rendu par TEXT16 (chaîne de 1, buffer espacé), l'avance X vient de
+;    FONT_WIDTHS. Clobbe A, X, Y, WM_ARG_X (avance cumulée). ───────────
+.export kernel_tk_label_prop
+kernel_tk_label_prop:
+        jsr _tk_upload_str_spaced
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI          ; framebuffer XVGA $100000
+        lda #<TK_FONT_ADDR
+        sta GFX_FONT_LO
+        lda #>TK_FONT_ADDR
+        sta GFX_FONT_MID
+        lda #^TK_FONT_ADDR
+        sta GFX_FONT_HI
+        lda #^TK_STR_SCRATCH
+        sta GFX_STR_HI           ; bank SDRAM constant
+        ldy #$00
+tklp_loop:
+        lda [DP_PCPTR],Y
+        beq tklp_done
+        ; GFX_STR = TK_STR_SCRATCH + 2*Y (la « chaîne de 1 » du char Y)
+        phy
+        tya
+        asl a                    ; 2*Y (Y ≤ 63 → pas de carry)
+        clc
+        adc #<TK_STR_SCRATCH
+        sta GFX_STR_LO
+        lda #>TK_STR_SCRATCH
+        adc #$00
+        sta GFX_STR_MID
+        jsr kernel_gfx_text16    ; rend 1 char à WM_ARG_X/Y (lit, ne clobbe pas)
+        ply
+        ; avance : WM_ARG_X += FONT_WIDTHS[char]
+        lda [DP_PCPTR],Y
+        and #$7F
+        tax
+        lda f:FONT_WIDTHS_FAR,X
+        rep #$20
+        and #$00FF
+        clc
+        adc WM_ARG_X
+        sta WM_ARG_X
+        sep #$20
+        iny
+        cpy #TK_PROP_MAX
+        bcc tklp_loop
+tklp_done:
+        rts
+
+        .segment "CODE"
+
 ; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM
 ;    TK_STR_SCRATCH via VRAM_DATA (auto-inc). Garde-fou 255 octets. ─────
 _tk_upload_str:
@@ -745,6 +871,8 @@ _wdb_clip_y_ok:
         sep #$20
         lda WG_TYPE
         beq _wdws_label          ; 0 = label
+        cmp #WG_TYPE_LABELP      ; 11 = label proportionnel (SP-3.p F.1)
+        beq _wdws_labelp
         cmp #WG_TYPE_FIELD       ; 10 = field (ADR-30 Étape 5)
         beq _wdws_field
         cmp #WG_TYPE_SPIN        ; 9 = spin (ADR-30 Étape 4)
@@ -768,6 +896,9 @@ _wdws_field:
         rts
 _wdws_label:
         jsr kernel_tk_label
+        rts
+_wdws_labelp:
+        jsr kernel_tk_label_prop
         rts
 _wdws_text:
         jsr kernel_tk_text_field ; SP-3.o S.4b : boîte + texte + curseur si focus

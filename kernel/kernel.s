@@ -602,6 +602,9 @@ DB_END            = $00         ; fin de table
 DB_POSITION       = $01         ; suivi de x16 y16 w16 h16 (géométrie dialogue)
 DB_OK             = $02         ; bouton OK (auto-positionné, terminant → retour 1)
 DB_CANCEL         = $03         ; bouton Cancel (auto-positionné, terminant → retour 0)
+DB_TEXT           = $04         ; SP-3.p D.1 : texte du dialogue (GEOS DBTXTSTR) —
+                                ; suivi de relx16 rely16 ptr16 (chaîne null-term dans
+                                ; le bank de la table). Rendu proportionnel (LABELP).
 ; Types d'alerte (SP-3.n G.6, SYS_ALERT $1A — arg X). Construites sur DoDlgBox.
 ; Retour : 1 = bouton gauche (OK/Yes), 0 = bouton droit (Cancel/No).
 ALERT_OK          = $00         ; un seul bouton OK
@@ -811,6 +814,9 @@ WG_TYPE_SPIN     = $09           ; ADR-30 Étape 4 : incrémenteur (GenValue, al
                                  ; GeoWorks SpinClass). value(+14) ; max(+15). Click haut
                                  ; moitié = +1, click bas moitié = -1, clamp [min..max].
 WG_TYPE_FIELD    = $0A           ; ADR-30 Étape 5 : champ étiqueté (gFieldC). Label statique
+WG_TYPE_LABELP   = $0B           ; SP-3.p F.1 : label PROPORTIONNEL (FONT_WIDTHS,
+                                 ; kernel_tk_label_prop). Utilisé par DB_TEXT (dialogues)
+                                 ; et SYS_ALERT (message). strptr (+12/13) comme LABEL.
                                  ; (strptr +12/13 bank 1) + value (+14) affichée 2 digits.
                                  ; Non cliquable. Update via SYS_CTL_SET_VALUE.
                                  ; (count slots de LIST_ITEM_STRIDE o), selected(+14)/count(+15)
@@ -1026,6 +1032,10 @@ WM_NO_BACKING_MAGIC = $A5
 ; per-widget pour les labels boutons. 8 widgets × 16 octets = 128 octets
 ; (cohérent WIDGET_ENTSZ).
 BUTTON_LABELS    = $016A00      ; 8 × 16 = 128B bank 1, label par widget id
+; SP-3.p D.1 : texte des dialogues (DB_TEXT / message SYS_ALERT), copié du
+; bank app vers bank 1 (le rendu widget lit strptr en bank 1).
+DLG_TEXT_BUF     = $016A80      ; 64B bank 1 (63 chars + terminateur)
+.assert DLG_TEXT_BUF + 64 <= $017000, error, "DLG_TEXT_BUF chevauche BUNDLES"
 .assert WM_COMPACT_FLAGS + 8 <= $01EE00, error, "WM_COMPACT_FLAGS chevauche TC flags"
 .assert WCMP_SLOT_ID < $01EE00, error, "WCMP_SLOT_ID chevauche TC flags"
 .assert WM_NO_BACKING_FLAGS + 8 <= $01EE00, error, "WM_NO_BACKING_FLAGS chevauche TC flags"
