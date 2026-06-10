@@ -10,10 +10,19 @@
 ; Migration PROGRESSIVE : KBD_RING et MOUSE_* restent alimentés en parallèle →
 ; les consommateurs actuels ne changent pas (aucune régression).
 ;
-; Pré-cond push : appelé depuis l'IRQ handler (mode N M=X=1, DBR=0, I=1 → pas
-; de nesting IRQ). EVT_TMP ($6E) est un scratch dédié IRQ-only (jamais touché
-; par du code interruptible) → pas de race. La ZP basse ($00-$88) est disjointe
-; de la ZP app llvm-mos ($89-$CF) → l'IRQ ne corrompt pas l'app courante.
+; Pré-cond push (RÉVISÉE 2026-06-10, ADR-32 §10.12) : la section critique
+; [test COUNT → _evt_tail_offset (EVT_TMP) → écriture record →
+; _evt_advance_tail (RMW TAIL/COUNT)] doit s'exécuter avec I=1.
+;   - Pushers IRQ-only (push_key/mouse/timer) : I=1 par contexte (pas de
+;     nesting IRQ) — pas de garde supplémentaire.
+;   - Pushers TÂCHE-callable (push_menu — hit menu dyn ADR-30 ; push_verbatim
+;     — task_wm ADR-28) : php/sei … plp obligatoire (sinon un pusher IRQ
+;     s'insère : EVT_TMP clobbé + deux records au même slot, count faux).
+;   - TOUT NOUVEAU pusher appelable hors IRQ suit la même règle. Invariant
+;     gardé mécaniquement : test_oricos_evt_push_atomic (Phosphoric, dans
+;     make tests) rougit si _evt_advance_tail est atteint avec I=0.
+; La ZP basse ($00-$88) est disjointe de la ZP app llvm-mos ($89-$CF) →
+; l'IRQ ne corrompt pas l'app courante.
         .segment "CODE"
 
 .a8
@@ -126,6 +135,10 @@ _evt_tail_offset:
         rts
 
 ; ── _evt_advance_tail : tail = (tail+1) mod 16 ; count++ (déjà non plein) ──
+; [TEST-INFRA] Exposé pour test_oricos_evt_push_atomic (ADR-32 §10.12) :
+; le test vérifie l'invariant « jamais atteint avec I=0 » (tous les pushers
+; de nouveaux slots passent ici — point d'ancrage de la section critique).
+.export _evt_advance_tail
 _evt_advance_tail:
         lda EVENT_RING_TAIL
         inc a
@@ -297,11 +310,16 @@ keptm_ok:
 
 .export kernel_event_push_menu
 kernel_event_push_menu:
+        ; ADR-32 §10.12 : appelé depuis le hit-test menu en contexte TÂCHE
+        ; (main loop classify, I=0) — même section critique que push_verbatim.
+        php
+        sei
         pha                      ; sauve packed id
         lda EVENT_RING_COUNT
         cmp #EVENT_ENTRIES
         bcc kepmen_ok
         pla                      ; plein → drop
+        plp
         rts
 kepmen_ok:
         jsr _evt_tail_offset     ; X = offset slot
@@ -320,7 +338,9 @@ kepmen_ok:
         lda MOUSE_BTN
         sta EVENT_RING + EVT_MODS,x
         jsr _evt_fill_where_when
-        jmp _evt_advance_tail
+        jsr _evt_advance_tail
+        plp
+        rts
 
 ; ════════════════════════════════════════════════════════════════════
 ;  kernel_event_pop — extrait le prochain record dans EVT_OUT (ZP), ou EV_NULL
@@ -650,9 +670,15 @@ rwake_done:
 ; Drop silencieux si EVENT_RING plein. Pas de coalescing (serveur peut le gérer en amont).
 .export kernel_event_push_verbatim
 kernel_event_push_verbatim:
+        ; ADR-32 §10.12 : appelé depuis task_wm (TÂCHE, I=0) — section
+        ; critique vs pushers IRQ (T1 timer, KBD2, MOU2) : COUNT/TAIL/slot
+        ; RMW + EVT_TMP partagés. php/sei couvre [test COUNT → advance_tail].
+        php
+        sei
         lda EVENT_RING_COUNT
         cmp #EVENT_ENTRIES
         bcc kepv_ok
+        plp
         rts                      ; plein → drop
 kepv_ok:
         jsr _evt_tail_offset     ; X = offset du slot écrit
@@ -664,7 +690,9 @@ kepv_copy:
         iny
         cpy #EVENT_SIZE
         bcc kepv_copy
-        jmp _evt_advance_tail
+        jsr _evt_advance_tail
+        plp
+        rts
 
 ; ── kernel_raw_pop — extrait le record de tête vers $D0..$D9 ──
 ; Sortie A = octet 0 du record ($D0), ou EV_NULL si file vide. Clobbe A, X, Y.

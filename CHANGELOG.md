@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10d
+
+### Fixed — push EVENT_RING atomique (ADR-32 §10.12, fenêtre EVT_TMP/T1)
+
+`kernel_event_push_menu` (hit menu dyn, tâche) et `kernel_event_push_verbatim`
+(task_wm, tâche) exécutaient la section critique de la file (test COUNT →
+_evt_tail_offset/EVT_TMP → écriture record → _evt_advance_tail RMW
+TAIL/COUNT) avec I=0 — préemptible par les pushers IRQ (T1 timer/KBD2/MOU2) :
+deux records au même slot, count faux. Fix : php/sei…plp sur les 2 pushers
+tâche-callable (pattern event_pop/raw_pop/kbd_ring_pop). Les pushers IRQ-only
+restent sans garde (I=1 par contexte). Pré-condition réécrite en tête
+d'event.s + règle pour tout nouveau pusher. `_evt_advance_tail` exporté
+(test-infra). Choix tracé : pas de migration EVT_TMP→$E2 (n'aurait protégé
+que le scratch, pas le RMW). Validation rouge→vert :
+test-oricos-evt-push-atomic 10/10 violations avant, 0 après, dans make tests.
+
 ## [Unreleased] - 2026-06-10c
 
 ### Changed — Opt-A retiré, protection de classe ZP souris-drag (ADR-32 §10.11)
