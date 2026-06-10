@@ -8,6 +8,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10m
+
+### Added — drag = replay translaté, widgets/menu/taskbar listés (ADR-34 C2b)
+
+GPU-ISA v4 : _wl_exec poste EXEC_LIST_XY ($0A, ARG2 = dy<<12|dx signés
+12-bit) quand la fenêtre a bougé depuis le record (_wl_record_end
+mémorise WL_ORG_X/Y) — le GPU rejoue la liste translatée, le drag ne
+reconstruit RIEN. Avec la cap LIST_XY ($80) : move_focused n'invalide
+plus, la draguée n'est plus spécial-casée. Carte v3 : comportement C2a
+(routage par capacités).
+
+Widgets DANS la liste de leur fenêtre (_wl_window_chrome_listed record
+chrome + _wm_draw_widgets_for_slot) ; chaînes via l'ARÈNE SDRAM
+per-(slot,flip) (WL_ARENA $038000, chunk $400, bump remis à zéro au
+record — stables tant que la liste est valide, ce que le ring 32×32 ne
+garantit pas) ; label_prop sous record émet char par char (EXEC_LIST
+imbriqué interdit), buffer espacé 128 o d'arène. Garde 64 entrées
+(borne GPU) + arène pleine → WL_ABORT → liste non validée → fallback
+rendu direct. Invalidations widget : kernel_wm_redraw_widget (entonnoir),
+toggle/radio/list_select/text-focus/_wm_widget_hit (WIDGET_ACTIVE),
+add_widget. Listes 9 (menu : barre+titres+dropdown ; invalidée
+open/close/déclaration dyn) et 10 (taskbar fond+boutons ; invalidée
+add/close/set_focus/minimize ; horloge restée directe).
+
+### Added — coalescing de frames + culling dirty-rect du geste (C2b)
+
+kernel_wm_redraw_drag : pendant un geste, GPU BUSY → frame SKIPPÉE
+(WM_RD_SKIPPED ; capture du rect sale gelée ; rattrapage à la fin du
+geste dans _wm_mouse_step_body) — supprime le pic de 52k cyc de spin
+QFULL derrière le full redraw du clic (~100k cyc GPU). Mode dirty-rect
+(WM_RD_DIRTY) : union (ancien ∪ courant) calculée une fois →
+_wm_draw_one ne rejoue que les fenêtres intersectantes
+(_rect_overlap_win), menu skippé (barre inatteignable si fermé),
+taskbar skippée si la bande y ≥ TB_Y_SEP n'est pas touchée. Charge GPU
+par frame ~21k → ~8k cyc (plus de saturation en régime établi).
+redraw_drag max : 10184 → 1307 cyc (−90,1 % vs baseline pré-C2 13151 —
+critère de ratification C atteint ; −68 % vs carte sans LIST à kernel
+égal).
+
+### Fixed — collision latente WL_VALID / PANIC_CODE / BUNDLE_FOUND_* (C2a)
+
+WL_VALID ($019095, 9 o) chevauchait PANIC_CODE ($019095) et
+BUNDLE_FOUND_* ($019096-$01909C) : un panic invalidait la liste du slot
+0, une liste validée corrompait le résultat du scan bundle (les peeks
+$019098-$01909C de test_oricos_boot passaient par chance d'ordre).
+Bloc WL relogé $0191A0-$0191ED (libre entre IRQ_ZP_SAVE et GUICODE),
+étendu à 11 slots, chaîne d'asserts ld65 posée sur tout le bloc.
+
 ## [Unreleased] - 2026-06-10l
 
 ### Added — fenêtres = display-lists rejouables (ADR-34 C2a)

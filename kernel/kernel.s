@@ -63,24 +63,64 @@ TICK_COUNTER    = $019093       ; 1B counter (tick T1, incrémenté par l'IRQ)
 ; = caps<<4 | version ; 0 = carte v1 sans FIFO). L'OS route ses chemins gfx
 ; selon CES bits, jamais selon l'identité de la carte — contrat ISA.
 GPU_CAPS_KERNEL = $019094       ; 1B : caps<<4 | version
-; ADR-34 C2 : display-lists du chrome fenêtre (slots 0-7) + icônes (idx 8).
-; Une liste = le chrome d'UNE fenêtre en coords absolues, rejouée par
-; EXEC_LIST tant que valide ; invalidée par move/resize/focus/close/add.
-WL_VALID         = $019095      ; 9B : $A5 = liste rejouable (0 au boot = invalide)
+; ADR-34 C2 : display-lists — slots 0-7 fenêtres (chrome + widgets, C2b),
+; 8 icônes, 9 barre de menu, 10 taskbar (sans horloge). Une liste = le rendu
+; d'UN élément en coords absolues, rejouée par EXEC_LIST tant que valide ;
+; invalidée par resize/focus/close/add/changement d'état widget ou menu.
+; C2b : le MOVE n'invalide PLUS si la carte a EXEC_LIST_XY — le drag rejoue
+; la liste translatée de (x−org_x, y−org_y), zéro reconstruction.
+; ⚠ C2b reloge le bloc en $0191A0+ : l'ancien WL_VALID ($019095, 9B)
+; chevauchait PANIC_CODE ($019095) et BUNDLE_FOUND_* ($019096-$01909C) —
+; collision latente C2a (un panic invalidait la liste 0 ; une liste validée
+; corrompait le résultat du scan bundle). Asserts de layout ci-dessous.
+WL_SLOTS         = 11           ; 0-7 fenêtres, 8 icônes, 9 menu, 10 taskbar
+WL_SLOT_ICONS    = 8
+WL_SLOT_MENU     = 9
+WL_SLOT_TASKBAR  = 10
+WL_VALID         = $0191A0      ; 11B : $A5 = liste rejouable (0 au boot)
+WL_FLIP          = $0191AB      ; 11B : buffer courant (0/1) par slot
+WL_ORG_X         = $0191B6      ; 11×2B : x fenêtre au moment du record (slots 0-7)
+WL_ORG_Y         = $0191CC      ; 11×2B : y fenêtre au moment du record
+WL_NENT          = $0191E2      ; 1B : entrées émises pendant le record courant
+WL_ABORT         = $0191E3      ; 1B : $A5 = record avorté (>64 entrées ou arène
+                                ;   pleine) → liste non validée, rendu direct
+WL_ARENA_BASE    = $0191E4      ; 2B : base 16-bit du chunk d'arène du record
+WL_ARENA_BUMP    = $0191E6      ; 2B : bump dans le chunk (0..WL_ARENA_CHUNK)
+WL_DX            = $0191E8      ; 2B : delta x signé (calc replay translaté)
+WL_DY            = $0191EA      ; 2B : delta y signé
+; C2b coalescing + dirty-rect du drag :
+WM_RD_SKIPPED    = $0191EC      ; 1B : $A5 = dernière frame de geste SKIPPÉE
+                                ;   (GPU saturé) → la capture du rect sale est
+                                ;   gelée et la fin de geste rattrape la frame
+WM_RD_DIRTY      = $0191ED      ; 1B : $A5 = chaîne de dessin en mode dirty-rect
+                                ;   (redraw_drag) → fenêtres/menu/taskbar non
+                                ;   touchés par (ancien ∪ nouveau rect) skippés
 WL_REC           = $01909E      ; 1B : $A5 = mode record (fill16/text16 émettent)
 WL_PTR           = $0190B1      ; 3B : curseur d'émission SDRAM (l'IRQ peut
                                 ;      clobber VRAM_ADDR → re-posé par émission)
-WL_LISTS         = $013000      ; SDRAM : 9 slots × 2 buffers × $200 (double-
+WL_LISTS         = $030000      ; SDRAM : 11 slots × 2 buffers × $400 (double-
                                 ;   buffer : record dans l'autre pendant que le
-                                ;   courant peut être en vol — zéro drain)
-WL_LIST_STRIDE   = $0400        ; par slot ($200 par buffer)
-WL_FLIP          = $0190B4      ; 9B : buffer courant (0/1) par slot
+                                ;   courant peut être en vol — zéro drain).
+                                ;   $400/buffer = 64 entrées × 13 o + terminateur
+                                ;   (64 = borne GPU_LIST_MAX_ENTRIES).
+WL_LIST_STRIDE   = $0800        ; par slot ($400 par buffer)
+; C2b : arène de chaînes per-(slot, flip) — les chaînes référencées par une
+; liste doivent rester stables TANT QUE la liste est valide (le ring 32×32
+; n'offre que 2×FIFO de profondeur). Bump-alloc remis à zéro à chaque
+; record ; chunk = (slot×2 + flip) × $400. 22 chunks × $400 = $5800.
+WL_ARENA         = $038000      ; SDRAM : $038000-$03D7FF
+WL_ARENA_CHUNK   = $0400
 WL_SCRATCH16     = $0190BD      ; 2B : adresse de liste en cours (calcul 16-bit
                                 ;   hors ZP — sta DP_TMP 16-bit écraserait $11
                                 ;   = DP_SYS_ARG_X, l'arg COP !)
 GPU_CAP_FIFO_BIT = $10          ; bit 4 : FIFO async disponible
+GPU_CAP_LISTXY_BIT = $80        ; bit 7 : EXEC_LIST_XY (GPU-ISA v4, ADR-34 C2b)
 GPU_ST_QFULL    = $20           ; STATUS bit 5 : FIFO pleine
 GPU_ST_BUSY     = $80           ; STATUS bit 7 : busy
+; Layout : le bloc WL v2 vit entre IRQ_ZP_SAVE ($019100+140=$01918C) et le
+; segment GUICODE ($019200).
+.assert WL_VALID >= $01918C,                  error, "WL block chevauche IRQ_ZP_SAVE"
+.assert WL_DY + 2 <= $019200,                 error, "WL block chevauche GUICODE"
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
 ; widgets) et écrasait ces données runtime → corruption.
@@ -1140,8 +1180,11 @@ GFX_BPL_HI       = $91
 TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)
 GPU_OP_TEXT16    = $07           ; texte coords 16-bit (ADR-21, SP-3.d)
 GPU_OP_EXEC_LIST = $09           ; GPU-ISA v3 (ADR-34 C) : display-list en SDRAM
+GPU_OP_EXEC_LIST_XY = $0A        ; GPU-ISA v4 (ADR-34 C2b) : replay translaté —
+                                 ;   ARG2 = dy<<12 | dx (12-bit two's complement)
 GPU_LIST_END     = $FF           ; terminateur de display-list
 GPU_CAP_LIST_BIT = $40           ; GPU_CAPS_KERNEL : cap EXEC_LIST (<<4)
+GPU_LIST_MAX_ENT = 64            ; borne d'entrées GPU — le record avorte au-delà
 ; ADR-34 C2 : scratch du label proportionnel en DOUBLE-BUFFER — une liste
 ; peut être en vol (FIFO) pendant qu'on construit la suivante, zéro drain
 ; en régime normal. ⚠ l'ancienne TK_LIST_SCRATCH ($011100) écrasait les
@@ -1261,13 +1304,26 @@ T1_PERIOD_HI    = $10
 ; ADR-32 §10.13 : TICK_COUNTER vit entre CURSOR_X et BANK_FREE_LIST.
 .assert CURSOR_X + 1     <= TICK_COUNTER,    error, "overlap CURSOR_X/TICK_COUNTER"
 .assert TICK_COUNTER + 1 <= GPU_CAPS_KERNEL, error, "overlap TICK_COUNTER/GPU_CAPS_KERNEL"
-.assert GPU_CAPS_KERNEL + 1 <= WL_VALID,     error, "overlap GPU_CAPS_KERNEL/WL_VALID"
-.assert WL_VALID + 9 <= WL_REC,              error, "overlap WL_VALID/WL_REC"
-.assert WL_REC + 1 <= BANK_FREE_LIST,        error, "overlap WL_REC/BANK_FREE_LIST"
+.assert GPU_CAPS_KERNEL + 1 <= PANIC_CODE,   error, "overlap GPU_CAPS_KERNEL/PANIC_CODE"
+; C2b : bloc WL relogé $0191A0+ (l'ancien $019095 chevauchait PANIC_CODE
+; et BUNDLE_FOUND_* — collision latente C2a). Chaîne d'asserts du bloc :
+.assert PANIC_CODE + 1 <= BUNDLE_FOUND_NSEC, error, "overlap PANIC_CODE/BUNDLE_FOUND"
+.assert WL_REC + 1 <= BUNDLE_APP_BANK,       error, "overlap WL_REC/BUNDLE_APP_BANK"
 .assert BANK_FREE_TOP + 1 <= WL_PTR,         error, "overlap BANK_FREE_TOP/WL_PTR"
-.assert WL_PTR + 3 <= WL_FLIP,               error, "overlap WL_PTR/WL_FLIP"
-.assert WL_FLIP + 9 <= WL_SCRATCH16,         error, "overlap WL_FLIP/WL_SCRATCH16"
+.assert WL_PTR + 3 <= WL_SCRATCH16,          error, "overlap WL_PTR/WL_SCRATCH16"
 .assert WL_SCRATCH16 + 2 <= TK_LP_FLIP,      error, "overlap WL_SCRATCH16/TK_LP_FLIP"
+.assert IRQ_ZP_SAVE + 140 <= WL_VALID,       error, "overlap IRQ_ZP_SAVE/WL_VALID"
+.assert WL_VALID + WL_SLOTS <= WL_FLIP,      error, "overlap WL_VALID/WL_FLIP"
+.assert WL_FLIP + WL_SLOTS <= WL_ORG_X,      error, "overlap WL_FLIP/WL_ORG_X"
+.assert WL_ORG_X + 2*WL_SLOTS <= WL_ORG_Y,   error, "overlap WL_ORG_X/WL_ORG_Y"
+.assert WL_ORG_Y + 2*WL_SLOTS <= WL_NENT,    error, "overlap WL_ORG_Y/WL_NENT"
+.assert WL_NENT + 1 <= WL_ABORT,             error, "overlap WL_NENT/WL_ABORT"
+.assert WL_ABORT + 1 <= WL_ARENA_BASE,       error, "overlap WL_ABORT/WL_ARENA_BASE"
+.assert WL_ARENA_BASE + 2 <= WL_ARENA_BUMP,  error, "overlap WL_ARENA_BASE/BUMP"
+.assert WL_ARENA_BUMP + 2 <= WL_DX,          error, "overlap WL_ARENA_BUMP/WL_DX"
+.assert WL_DX + 2 <= WL_DY,                  error, "overlap WL_DX/WL_DY"
+.assert WL_DY + 2 <= WM_RD_SKIPPED,          error, "overlap WL_DY/WM_RD_SKIPPED"
+.assert WM_RD_DIRTY + 1 <= $019200,          error, "WM_RD_DIRTY chevauche GUICODE"
 .assert TK_LP_PEND + 2 <= TK_STR_RING_IDX,   error, "overlap TK_LP_PEND/TK_STR_RING_IDX"
 .assert TK_STR_RING_IDX + 1 <= TK_LP_STRB,   error, "overlap TK_STR_RING_IDX/TK_LP_STRB"
 .assert TK_LP_LISTB + 3 <= LOG_RING,         error, "overlap TK_LP_LISTB/LOG_RING"

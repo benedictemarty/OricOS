@@ -211,6 +211,37 @@ _tuss_done:
 ;    FONT_WIDTHS. Clobbe A, X, Y, WM_ARG_X (avance cumulée). ───────────
 .export kernel_tk_label_prop
 kernel_tk_label_prop:
+        ; ADR-34 C2b : sous RECORD, chaque char est ÉMIS (hook text16) dans
+        ; la liste de la fenêtre — _tklp_list posterait un EXEC_LIST
+        ; imbriqué (interdit par le GPU). Le buffer espacé vient de l'ARÈNE
+        ; (128 o), stable tant que la liste est valide.
+        lda f:WL_REC
+        cmp #$A5
+        bne _tklp_not_rec
+        rep #$20
+        lda f:WL_ARENA_BUMP
+        cmp #(WL_ARENA_CHUNK - 128 + 1)
+        sep #$20
+        bcs _tklp_rec_full
+        rep #$20
+        lda f:WL_ARENA_BASE
+        clc
+        adc f:WL_ARENA_BUMP
+        sta f:TK_LP_STRB         ; 16-bit : pose lo+mid d'un coup
+        lda f:WL_ARENA_BUMP
+        clc
+        adc #128
+        sta f:WL_ARENA_BUMP
+        sep #$20
+        lda #^WL_ARENA
+        sta f:TK_LP_STRB+2
+        jsr _tk_upload_str_spaced
+        bra tklp_render
+_tklp_rec_full:
+        lda #$A5
+        sta f:WL_ABORT           ; record avorté → le caller rendra direct
+        bra tklp_sync_path       ; (les émissions restantes sont sans effet)
+_tklp_not_rec:
         ; ADR-34 C : si la carte a les display-lists, le texte entier devient
         ; UNE commande EXEC_LIST (N entrées TEXT16 construites en SDRAM) au
         ; lieu de N commandes synchrones — l'IRQ/la tâche ne paie plus que la
@@ -227,6 +258,7 @@ tklp_sync_path:
         lda #^TK_LP_STR0
         sta f:TK_LP_STRB+2
         jsr _tk_upload_str_spaced
+tklp_render:
         lda #$00
         sta GFX_BASE_LO
         sta GFX_BASE_MID
@@ -238,21 +270,23 @@ tklp_sync_path:
         sta GFX_FONT_MID
         lda #^TK_FONT_ADDR
         sta GFX_FONT_HI
-        lda #^TK_LP_STR0
-        sta GFX_STR_HI           ; bank SDRAM constant (sync = buffer 0)
+        lda f:TK_LP_STRB+2
+        sta GFX_STR_HI           ; bank SDRAM du buffer espacé courant
         ldy #$00
 tklp_loop:
         lda [DP_PCPTR],Y
         beq tklp_done
-        ; GFX_STR = TK_LP_STR0 + 2*Y (la « chaîne de 1 » du char Y)
+        ; GFX_STR = TK_LP_STRB + 2*Y (la « chaîne de 1 » du char Y)
         phy
+        rep #$20
         tya
+        and #$00FF
         asl a                    ; 2*Y (Y ≤ 63 → pas de carry)
         clc
-        adc #<TK_LP_STR0
+        adc f:TK_LP_STRB         ; base courante (STR0 fixe OU arène)
+        sep #$20
         sta GFX_STR_LO
-        lda #>TK_LP_STR0
-        adc #$00
+        xba
         sta GFX_STR_MID
         jsr kernel_gfx_text16    ; rend 1 char à WM_ARG_X/Y (lit, ne clobbe pas)
         ply
@@ -487,11 +521,50 @@ _tkll_qwait:
         plx
         rts
 
-        .segment "CODE"
-
+; (C2b : _tk_upload_str reste en GUICODE — CODE plein.)
 ; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM
-;    TK_STR_SCRATCH via VRAM_DATA (auto-inc). Garde-fou 255 octets. ─────
+;    via VRAM_DATA (auto-inc). Garde-fou 30 octets + terminateur. ───────
+;    Hors record : slot du RING (round-robin, stable le temps d'un vol
+;    FIFO). Sous record (WL_REC=$A5) : slot de l'ARÈNE per-(slot,flip) —
+;    la chaîne doit rester stable TANT QUE la liste est valide, ce que le
+;    ring ne garantit pas (ADR-34 C2b). Arène pleine → record avorté
+;    (WL_ABORT) + fallback ring (le rendu sera refait en direct). ───────
 _tk_upload_str:
+        lda f:WL_REC
+        cmp #$A5
+        bne _tus_ring
+        ; ── chemin arène (record) : alloue 32 octets ──
+        rep #$20
+        lda f:WL_ARENA_BUMP
+        cmp #(WL_ARENA_CHUNK - 32 + 1)
+        sep #$20
+        bcs _tus_arena_full
+        rep #$20
+        lda f:WL_ARENA_BASE
+        clc
+        adc f:WL_ARENA_BUMP
+        sta f:WL_SCRATCH16       ; adresse du slot arène (16 bas)
+        lda f:WL_ARENA_BUMP
+        clc
+        adc #32
+        sta f:WL_ARENA_BUMP
+        sep #$20
+        lda f:WL_SCRATCH16
+        sta VRAM_ADDR_LO_IO
+        sta GFX_STR_LO
+        lda f:WL_SCRATCH16+1
+        sta VRAM_ADDR_MID_IO
+        sta GFX_STR_MID
+        lda #^WL_ARENA
+        sta VRAM_ADDR_HI_IO
+        sta GFX_STR_HI
+        ldy #$00
+        bra _tus_loop
+_tus_arena_full:
+        lda #$A5
+        sta f:WL_ABORT           ; liste non validée → rendu direct ensuite
+        ; fall-through : ring (les émissions restantes sont sans effet)
+_tus_ring:
         ; ADR-34 C2 : slot du RING (round-robin). Avec text16 en
         ; post-and-continue, le scratch unique faisait pointer toutes les
         ; commandes en vol sur le DERNIER texte — chaque upload a désormais
@@ -533,6 +606,8 @@ _tus_loop:
         sta VRAM_DATA_IO
 _tus_done:
         rts
+
+        .segment "CODE"
 
 ; ── kernel_tk_label : texte à (WM_ARG_X,Y), GFX_COLOR, chaîne [DP_PCPTR]
 ;    (bank1, null-term). Base framebuffer = $100000. Modifie A,X,Y.
@@ -1000,6 +1075,13 @@ _waw_ok:
         sta WIDGET_TABLE+14,X    ; length = 0
         sta f:TEXT_BUFS,X        ; buffer[0] = 0 (chaîne vide)
 _waw_count:
+        ; ADR-34 C2b : nouveau widget → la display-list de sa fenêtre ne le
+        ; contient pas encore → périmée.
+        lda WG_PARENT
+        cmp #WM_MAX
+        bcs _waw_no_inval
+        jsr _wl_invalidate
+_waw_no_inval:
         ; ADR-29 Étape 2 : pose le hint en attente sur ce widget puis reset.
         ; Si aucun GU_HINT_IMMEDIATE_DRAG_NOTIFY n'a précédé, UI_PENDING_HINT = 0
         ; (= HINT_DRAG_DELAYED), default sûr aligné GeoWorks.
@@ -1068,6 +1150,10 @@ kernel_wm_redraw_widget:
         lda WIDGET_TABLE+0,X
         and #$01
         beq _wrw_done           ; slot libre → rien
+        ; C2b : tout redraw ciblé signifie « l'état du widget a changé » —
+        ; la display-list de sa fenêtre (qui contient son ancien visuel)
+        ; est périmée. Entonnoir : couvre text_edit, scroll, spin…
+        jsr _wl_inval_wparent_x
         lda WIDGET_TABLE+1,X
         sta WIN_SLOT
         jsr _wm_draw_widget_body
@@ -1700,6 +1786,45 @@ _menu_setbase:
 ; ── kernel_menu_draw : barre (titres des N menus) + dropdown si ouvert ─
 .export kernel_menu_draw
 kernel_menu_draw:
+        ; C2b dirty-rect : pendant redraw_drag, la barre (y < MENU_BAR_H)
+        ; est inatteignable (y fenêtre clampé ≥ MENU_BAR_H par le move) —
+        ; si aucun dropdown ouvert, ses pixels sont intacts : skip.
+        lda f:WM_RD_DIRTY
+        cmp #$A5
+        bne _kmd_chain
+        lda MENU_OPEN
+        cmp #$FF
+        bne _kmd_chain
+        jmp kernel_taskbar_draw
+_kmd_chain:
+        ; ADR-34 C2b : barre + titres + dropdown par display-list (slot 9,
+        ; invalidée sur open/close/déclaration dynamique). Les chaînes des
+        ; titres passent par _tk_upload_str qui, sous record, alloue dans
+        ; l'arène (stables tant que la liste est valide).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LIST_BIT
+        beq _kmd_direct
+        ldx #WL_SLOT_MENU
+        lda f:WL_VALID,X
+        cmp #$A5
+        beq _kmd_replay
+        lda #WL_SLOT_MENU
+        jsr _wl_record_begin
+        jsr _kmd_body            ; le corps émet (WL_REC=$A5)
+        lda #WL_SLOT_MENU
+        jsr _wl_record_end
+        ldx #WL_SLOT_MENU
+        lda f:WL_VALID,X
+        cmp #$A5
+        bne _kmd_direct          ; record avorté → rendu direct
+_kmd_replay:
+        lda #WL_SLOT_MENU
+        jsr _wl_exec
+        jmp kernel_taskbar_draw  ; SP-3.g : taskbar en dernier
+_kmd_direct:
+        jsr _kmd_body
+        jmp kernel_taskbar_draw
+_kmd_body:
         ; barre (0,0,1024,14) darkgray
         rep #$20
         lda #0
@@ -1763,7 +1888,7 @@ _mdl_drop:
         lda MENU_OPEN
         cmp #$FF
         bne _mdl_open
-        jmp kernel_taskbar_draw  ; SP-3.g : taskbar en dernier
+        rts                      ; C2b : fin du corps (taskbar chaînée par le caller)
 _mdl_open:
         sta MENU_I
         jsr _menu_setbase
@@ -1854,7 +1979,7 @@ _mdl_open:
         lda #$01
         sta DP_PCPTR+2
         jsr kernel_tk_label
-        jmp kernel_taskbar_draw  ; SP-3.g : taskbar en dernier (après dropdown)
+        rts                      ; C2b : fin du corps (taskbar chaînée par le caller)
 
 ; ── kernel_menu_handle_click : ouvre/ferme + invoque l'item. ──────────
 ; Lit MOUSE_X/Y. A=1 si consommé, A=0 sinon. (SP-3.d v0.6, table-driven)
@@ -1862,7 +1987,9 @@ _mdl_open:
 kernel_menu_handle_click:
         lda MENU_OPEN
         cmp #$FF
-        bne _mhc_isopen
+        beq _mhc_closed          ; (portée : _mhc_isopen éloigné par C2b)
+        jmp _mhc_isopen
+_mhc_closed:
         ; fermé : clic dans la barre (y<14) ?
         rep #$20
         lda MOUSE_Y
@@ -1910,6 +2037,7 @@ _mhc_tl_go:
         sep #$20                 ; HIT titre MENU_I → ouvrir
         lda MENU_I
         sta MENU_OPEN
+        jsr _wl_inval_menu       ; ADR-34 C2b : contenu barre/dropdown change
         lda #$01
         rts
 _mhc_tl_next:
@@ -1980,12 +2108,14 @@ _mhc_invoke:
         bne _mhc_invoke_normal
         lda WG_CB_VEC            ; submenu_idx
         sta MENU_OPEN            ; bascule sur le submenu (sa propre dropdown)
+        jsr _wl_inval_menu       ; ADR-34 C2b
         pla                      ; cleanup item_id sur la pile
         lda #$01                 ; consommé
         rts
 _mhc_invoke_normal:
         lda #$FF
         sta MENU_OPEN            ; ferme
+        jsr _wl_inval_menu       ; ADR-34 C2b
         lda WG_CB_VEC
         ora WG_CB_VEC+1
         beq _mhc_no_cb
@@ -2019,6 +2149,7 @@ _mhc_close:
         sep #$20
         lda #$FF
         sta MENU_OPEN
+        jsr _wl_inval_menu       ; ADR-34 C2b
         lda #$01
         rts
 
@@ -2080,6 +2211,14 @@ menu_i_hide:
 ; = index du bouton touché, ou $FF. Modifie A,X,Y,WG_*. (SP-3.d v0.3)
 _wm_widget_hit:
         ASSERT_A8               ; audit §3.6/8.3 : entrée routine, M=8
+        ; C2b : l'état « pressé » du bouton actif est dans la liste de sa
+        ; fenêtre — toute transition de WIDGET_ACTIVE (set OU clear) la
+        ; périme. Invalide l'ancienne avant le reset.
+        lda WIDGET_ACTIVE
+        cmp #$FF
+        beq _wh_no_old
+        jsr _wl_inval_wparent
+_wh_no_old:
         lda #$FF
         sta WIDGET_ACTIVE
         lda #$00
@@ -2156,6 +2295,8 @@ _wh_isbtn:
         ; HIT
         lda WG_I
         sta WIDGET_ACTIVE
+        lda WG_I
+        jsr _wl_inval_wparent    ; C2b : visuel pressé → liste périmée
         rts
 _wh_next:
         lda WG_I

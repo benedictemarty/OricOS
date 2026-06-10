@@ -210,6 +210,10 @@ kernel_wm_init:
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
         lda #$FF
         sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
+        ; ADR-34 C2b : flags coalescing/dirty-rect du geste
+        lda #$00
+        sta f:WM_RD_SKIPPED
+        sta f:WM_RD_DIRTY
         ; SP-3.f : vide la table des flags de titres (WM_MAX=8 × 1B = $00)
         lda #$00
         sta WM_TITLES+0
@@ -284,6 +288,7 @@ wm_add_scan:
         pla
         sta DP_TMP               ; id = premier slot libre
         jsr _wl_invalidate       ; ADR-34 C2 : slot (ré)utilisé → liste périmée
+        jsr _wl_inval_taskbar    ; C2b : un bouton taskbar apparaît
         lda DP_TMP
         jsr kernel_wm_offset     ; X = id*10
         bra wm_add_init
@@ -427,7 +432,10 @@ wm_ht_done:
 kernel_wm_set_focus:
         sta DP_TMP               ; nouvel id
         ; ADR-34 C2 : la couleur titlebar dépend du focus → les listes des
-        ; DEUX fenêtres concernées sont périmées.
+        ; DEUX fenêtres concernées sont périmées. C2b : la couleur du
+        ; bouton taskbar aussi.
+        jsr _wl_inval_taskbar
+        lda DP_TMP
         jsr _wl_invalidate       ; A = nouveau focus (préserve X,Y)
         lda WM_FOCUS
         cmp #$FF
@@ -501,8 +509,15 @@ kernel_wm_move_focused:
         lda WM_STATES,X
         cmp #WM_STATE_MAXED
         beq wm_mv_done           ; maximisée → pas de déplacement
+        ; ADR-34 C2b : avec EXEC_LIST_XY la liste reste VALIDE — le replay
+        ; est translaté de (x−org_x, y−org_y) par le GPU. Sans la cap
+        ; (carte v3) : coords absolues figées → périmée (C2a).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LISTXY_BIT
+        bne wm_mv_no_inval
         lda WM_FOCUS
-        jsr _wl_invalidate       ; ADR-34 C2 : coords absolues figées → périmée
+        jsr _wl_invalidate
+wm_mv_no_inval:
         lda WM_FOCUS
         jsr kernel_wm_offset     ; X = focus*10
         rep #$20
@@ -587,6 +602,7 @@ kernel_wm_close:
 wm_close_go:
         sta DP_TMP               ; sauve id
         jsr _wl_invalidate       ; ADR-34 C2 : la liste du slot fermé est morte
+        jsr _wl_inval_taskbar    ; C2b : son bouton taskbar disparaît
         lda DP_TMP
         jsr kernel_wm_offset     ; X = id*10
         lda WM_TABLE+WM_OFF_FLAGS,X
@@ -1136,6 +1152,7 @@ kwmin_next_focus:
         iny
         bra kwmin_find_focus
 kwmin_redraw:
+        jsr _wl_inval_taskbar    ; C2b : focus/état boutons taskbar changent
         jsr kernel_wm_redraw
 kwmin_done:
         rts
@@ -1411,6 +1428,11 @@ kernel_wm_redraw:
         ; (callers en M=8 ou M=16 ; `lda f:` lirait 2 octets en M=16 sinon).
         php
         sep #$20
+        ; C2b : un full redraw repeint TOUT → sortir du mode dirty-rect et
+        ; lever le gel de capture du geste (sous sep : M=8 garanti).
+        lda #$00
+        sta f:WM_RD_DIRTY
+        sta f:WM_RD_SKIPPED
         lda f:GFX_BPL_SHADOW
         ora f:GFX_BPL_SHADOW+1
         beq wmr_stride_skip
@@ -1470,6 +1492,20 @@ _wm_draw_one:
         and #(WM_F_USED | WM_F_VISIBLE)
         cmp #(WM_F_USED | WM_F_VISIBLE)
         bne _wdo_done
+        ; ── C2b dirty-rect : pendant redraw_drag, seules les fenêtres
+        ; touchées par le rect sale (PIR_RECT_* = union ancien ∪ courant,
+        ; posé par redraw_drag) sont rejouées — les autres ont leurs
+        ; pixels intacts. _rect_overlap_win préserve X (= slot×10). ──
+        lda f:WM_RD_DIRTY
+        cmp #$A5
+        bne _wdo_no_cull
+        lda WIN_SLOT
+        cmp WM_FOCUS
+        beq _wdo_no_cull        ; la draguée se redessine toujours
+        jsr _rect_overlap_win   ; C=1 → intersecte → peindre
+        bcs _wdo_no_cull
+        jmp _wdo_done           ; intacte → skip
+_wdo_no_cull:
         ; Couleur titlebar selon focus (v0.8)
         lda WIN_SLOT
         cmp WM_FOCUS
@@ -1493,19 +1529,20 @@ _wdo_setcol:
         sep #$20
         ; ADR-34 C2 : chrome par display-list rejouable si la carte a les
         ; listes (chaînes du chrome 100 % stables : titres $012000+slot,
-        ; X/O/_ boot-uploadées). Widgets/hotzones restent en immédiat
-        ; (leurs labels passent par le scratch partagé — C2b).
+        ; X/O/_ boot-uploadées). C2b : les WIDGETS sont dans la liste eux
+        ; aussi (chaînes per-record dans l'arène WL_ARENA) — le chemin
+        ; listé les dessine, ne PAS les redessiner ici.
         lda f:GPU_CAPS_KERNEL
         and #GPU_CAP_LIST_BIT
         beq _wdo_chrome_direct
-        jsr _wl_window_chrome_listed
-        bra _wdo_after_chrome
+        jsr _wl_window_chrome_listed    ; chrome + widgets (listés ou fallback)
+        bra _wdo_after_widgets
 _wdo_chrome_direct:
         jsr _wdo_chrome_draw
-_wdo_after_chrome:
         ; Widgets de ce slot (Z-order : la fenêtre suivante couvrira les siens).
         lda WIN_SLOT
         jsr _wm_draw_widgets_for_slot
+_wdo_after_widgets:
         ; Pattern GEOS DoIcons : visualisation hot-zones SI flag debug posé.
         ; Hors debug : hotzones invisibles par design.
         lda HOTZONE_DEBUG_FLAG
@@ -1789,6 +1826,94 @@ _wm_dtc_max_draw:
 
 .export kernel_wm_redraw_drag
 kernel_wm_redraw_drag:
+        ; ── C2b coalescing : pendant un geste (drag/resize armé), si le GPU
+        ; est encore occupé par les frames précédentes, SKIP cette frame —
+        ; le rect sale capturé reste l'ancien (cf. _wm_capture_focused_rect)
+        ; et la frame suivante (ou la fin de geste, _wm_mouse_step_body)
+        ; peindra la position courante. Modèle compositeur : lâcher des
+        ; frames plutôt que bloquer le CPU sur QFULL (52k cyc mesurés au
+        ; pic post-clic : le full redraw du clic poste ~100k cyc GPU). ──
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_FIFO_BIT
+        beq _krd_run             ; carte sync : pas de FIFO → pas de skip
+        lda WM_DRAG_ARMED
+        ora WM_RESIZE_ARMED
+        beq _krd_run             ; hors geste (rattrapage fin de course) : peindre
+        lda GPU_STATUS_IO
+        and #GPU_ST_BUSY
+        beq _krd_run
+        lda #$A5
+        sta f:WM_RD_SKIPPED
+        rts
+_krd_run:
+        lda #$00
+        sta f:WM_RD_SKIPPED
+        lda #$A5
+        sta f:WM_RD_DIRTY        ; chaîne de dessin en mode dirty-rect (C2b)
+        ; ── Rect sale = union(ancien rect, rect courant de la draguée) →
+        ; PIR_RECT_* (consommé par le cull fenêtres et le skip taskbar).
+        ; Calculé UNE fois par frame — les fenêtres testent 1 overlap. ──
+        lda WM_FOCUS
+        cmp #$FF
+        bne _krd_have_focus
+        rep #$20                 ; défensif : pas de focus → union = OLD seul
+        lda WM_DRAG_OLD_X
+        sta PIR_RECT_X
+        lda WM_DRAG_OLD_Y
+        sta PIR_RECT_Y
+        lda WM_DRAG_OLD_W
+        sta PIR_RECT_W
+        lda WM_DRAG_OLD_H
+        sta PIR_RECT_H
+        sep #$20
+        bra _krd_union_done
+_krd_have_focus:
+        jsr kernel_wm_offset     ; X = focus*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X  ; x = min(old.x, cur.x)
+        cmp WM_DRAG_OLD_X
+        bcc _kru_x_cur
+        lda WM_DRAG_OLD_X
+_kru_x_cur:
+        sta PIR_RECT_X
+        lda WM_TABLE+WM_OFF_X,X  ; right = max(old.right, cur.right)
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        sta PIR_RECT_W           ; temp : cur.right
+        lda WM_DRAG_OLD_X
+        clc
+        adc WM_DRAG_OLD_W
+        cmp PIR_RECT_W
+        bcc _kru_right_cur
+        sta PIR_RECT_W
+_kru_right_cur:
+        lda PIR_RECT_W
+        sec
+        sbc PIR_RECT_X
+        sta PIR_RECT_W           ; w = right - x
+        lda WM_TABLE+WM_OFF_Y,X  ; y = min(old.y, cur.y)
+        cmp WM_DRAG_OLD_Y
+        bcc _kru_y_cur
+        lda WM_DRAG_OLD_Y
+_kru_y_cur:
+        sta PIR_RECT_Y
+        lda WM_TABLE+WM_OFF_Y,X  ; bottom = max(old.bottom, cur.bottom)
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        sta PIR_RECT_H           ; temp : cur.bottom
+        lda WM_DRAG_OLD_Y
+        clc
+        adc WM_DRAG_OLD_H
+        cmp PIR_RECT_H
+        bcc _kru_bottom_cur
+        sta PIR_RECT_H
+_kru_bottom_cur:
+        lda PIR_RECT_H
+        sec
+        sbc PIR_RECT_Y
+        sta PIR_RECT_H           ; h = bottom - y
+        sep #$20
+_krd_union_done:
         rep #$20
         lda WM_DRAG_OLD_X
         sta WM_ARG_X
@@ -1812,7 +1937,13 @@ kernel_wm_redraw_drag:
 
 ; ── _wm_capture_focused_rect : copie le rect de la fenêtre focus dans
 ;    WM_DRAG_OLD_* (avant déplacement). No-op si pas de focus. Modifie A,X.
+;    C2b : si la frame précédente du geste a été SKIPPÉE (coalescing), le
+;    rect sale reste celui de la dernière position DESSINÉE — sinon
+;    l'image à l'écran ne serait jamais effacée (traînée).
 _wm_capture_focused_rect:
+        lda f:WM_RD_SKIPPED
+        cmp #$A5
+        beq _wcr_done
         lda WM_FOCUS
         cmp #$FF
         beq _wcr_done
@@ -1837,8 +1968,52 @@ _wcr_done:
 ; ── kernel_taskbar_draw : dessine la taskbar complète. ────────────────
 ; Appelé en fin de kernel_menu_draw (dernière étape du rendu GUI).
 ; Base SDRAM $100000 (framebuffer XVGA ADR-20). Modifie A, X, Y.
+; ADR-34 C2b : fond + séparateur + boutons par display-list (slot 10,
+; invalidée par add/close/set_focus/minimize) ; l'HORLOGE reste directe
+; (elle change à chaque tick — la lister invaliderait en permanence).
+; En GUICODE (C2b : CODE plein).
+        .segment "GUICODE"
 .export kernel_taskbar_draw
 kernel_taskbar_draw:
+        ; C2b dirty-rect : si le rect sale du geste (PIR_RECT_* = union,
+        ; posé par redraw_drag) ne touche pas la bande taskbar
+        ; (y ≥ TB_Y_SEP), pixels intacts (horloge comprise) : skip.
+        lda f:WM_RD_DIRTY
+        cmp #$A5
+        bne _ktb_chain
+        rep #$20
+        lda PIR_RECT_Y
+        clc
+        adc PIR_RECT_H
+        cmp #TB_Y_SEP
+        sep #$20
+        bcs _ktb_chain           ; le rect sale touche la bande → repeindre
+        rts
+_ktb_chain:
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LIST_BIT
+        beq _ktb_direct
+        ldx #WL_SLOT_TASKBAR
+        lda f:WL_VALID,X
+        cmp #$A5
+        beq _ktb_replay
+        lda #WL_SLOT_TASKBAR
+        jsr _wl_record_begin
+        jsr _ktb_body            ; le corps émet (WL_REC=$A5)
+        lda #WL_SLOT_TASKBAR
+        jsr _wl_record_end
+        ldx #WL_SLOT_TASKBAR
+        lda f:WL_VALID,X
+        cmp #$A5
+        bne _ktb_direct          ; record avorté → rendu direct
+_ktb_replay:
+        lda #WL_SLOT_TASKBAR
+        jsr _wl_exec
+        jmp _tb_clock            ; horloge en direct, par-dessus le replay
+_ktb_direct:
+        jsr _ktb_body
+        jmp _tb_clock
+_ktb_body:
         ; ── Fond taskbar (0, 755, 1024, 13) darkgray ($08) ────────────
         lda #$00
         sta GFX_BASE_LO
@@ -2014,6 +2189,9 @@ _tb_skip_slot:
         sta TB_I
         jmp _tb_draw_loop
 _tb_draw_done:
+        rts                      ; C2b : fin du corps listable (l'horloge suit)
+
+_tb_clock:
         ; ── Horloge taskbar (Sprint 3 polish) : "T:NN" hex tick counter ──
         ; Format "T:HH\0" (4 chars + null) en bank 1 TB_CLK_SCRATCH, upload
         ; SDRAM TB_CLK_SDRAM, TEXT16 à (~980, TB_BTN_TY) blanc.
@@ -2093,6 +2271,7 @@ _tbhc_digit:
         clc
         adc #'0'
         rts
+        .segment "CODE"
 
 ; ── kernel_taskbar_hit : teste clic dans la taskbar. ─────────────────
 ; Pré-cond : MOUSE_X/Y/BTN à jour (kernel_mouse_read appelé avant).
@@ -2264,6 +2443,14 @@ _wm_mouse_step_body:
         lda #$00
         sta WM_DRAG_ARMED
         sta WM_RESIZE_ARMED
+        ; C2b : si la dernière frame du geste a été coalescée (GPU saturé),
+        ; la fenêtre est affichée à une position périmée → rattrapage
+        ; MAINTENANT (gate hors geste : redraw_drag ne skippe plus).
+        lda f:WM_RD_SKIPPED
+        cmp #$A5
+        bne _wms_no_catchup
+        jsr kernel_wm_redraw_drag
+_wms_no_catchup:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_pressed:
@@ -2473,8 +2660,17 @@ _iac_radio:
         jsr kernel_ctl_radio_select
         rts
 _iac_text:
+        ; C2b : l'ancien champ focalisé perd son curseur texte → sa fenêtre
+        ; aussi (le curseur est dans la liste).
+        lda TEXT_FOCUS_ID
+        cmp #$FF
+        beq _iact_no_old
+        jsr _wl_inval_wparent
+_iact_no_old:
         lda WIDGET_ACTIVE
         sta TEXT_FOCUS_ID
+        lda WIDGET_ACTIVE
+        jsr _wl_inval_wparent
         jsr kernel_wm_redraw
         rts
 _iac_list:
@@ -2515,6 +2711,7 @@ _ctog_unchecked:
         lda #WG_COL_UNCHECKED
 _ctog_setcol:
         sta WIDGET_TABLE+3,x     ; couleur du widget
+        jsr _wl_inval_wparent_x  ; C2b : état visuel dans la liste → périmée
         jsr kernel_wm_redraw     ; reflète visuellement le nouvel état
         rts
 
@@ -2556,6 +2753,7 @@ _crs_loop:
         sta WIDGET_TABLE+WG_OFF_VALUE,x   ; désélectionne
         lda #WG_COL_UNCHECKED
         sta WIDGET_TABLE+3,x
+        jsr _wl_inval_wparent_x  ; C2b (groupe possiblement multi-fenêtres)
 _crs_next:
         lda WG_I
         inc a
@@ -2572,6 +2770,7 @@ _crs_done:
         sta WIDGET_TABLE+WG_OFF_VALUE,x
         lda #WG_COL_CHECKED
         sta WIDGET_TABLE+3,x
+        jsr _wl_inval_wparent_x  ; C2b
         jsr kernel_wm_redraw
         rts
 
@@ -2700,6 +2899,7 @@ _cls_store:
         tax
         pla                      ; row
         sta WIDGET_TABLE+14,X    ; selected
+        jsr _wl_inval_wparent_x  ; C2b
         jsr kernel_wm_redraw
         rts
 
@@ -3889,7 +4089,9 @@ mlc_md_hit:
         sta WIN_SLOT            ; pour _wm_chrome_hit
         jsr _wm_chrome_hit      ; A : 0=non, 1=close, 2=max, 3=min (MOUSE_X/Y)
         cmp #$01                ; G.3c : clic sur la case fermeture → MSG_CLOSE
-        beq mlc_md_close_plp
+        bne _mlc_not_close      ; (portée : cible éloignée par C2b)
+        jmp mlc_md_close_plp
+_mlc_not_close:
         ; G.4 : clic sur un contrôle (bouton) de la fenêtre → MSG_CONTROL + id.
         jsr _wm_widget_hit      ; WIDGET_ACTIVE = index bouton touché, ou $FF
         plp                     ; ré-autorise l'IRQ souris
@@ -3948,6 +4150,12 @@ mlc_ctl_radio:
         jsr kernel_ctl_radio_select  ; sélectionne ce radio, désélectionne le groupe
         bra mlc_ctl_ret
 mlc_ctl_text:
+        ; C2b : la fenêtre de l'ancien champ focalisé est périmée (curseur)
+        lda TEXT_FOCUS_ID
+        cmp #$FF
+        beq _mct_no_old
+        jsr _wl_inval_wparent
+_mct_no_old:
         pla                     ; id
         pha
         sta TEXT_FOCUS_ID       ; ce champ prend le focus clavier
@@ -4529,6 +4737,7 @@ sud_m_bx_set:
         lda MENU_DYN_COUNT_BAR
         inc a
         sta MENU_DYN_COUNT_BAR
+        jsr _wl_inval_menu      ; ADR-34 C2b : la barre change
         jmp sud_loop
 sud_m_skip:
         ; Drop : consomme tag + chaîne sans l'enregistrer
@@ -4595,6 +4804,7 @@ sud_sm_ready:
         lda MENU_DYN_COUNT
         inc a
         sta MENU_DYN_COUNT
+        jsr _wl_inval_menu      ; ADR-34 C2b
         jmp sud_loop
 sud_sm_skip:
         iny
@@ -4701,6 +4911,7 @@ sud_mi_write:
         lda MENU_DYN_ITEM_CNT
         inc a
         sta MENU_DYN_ITEM_CNT
+        jsr _wl_inval_menu      ; ADR-34 C2b : items du dropdown changent
         jmp sud_loop
 sud_mi_skip:
         iny
@@ -5045,7 +5256,7 @@ _wl_set_vram_ptr:
         sta VRAM_ADDR_HI_IO
         rts
 
-; ── _wl_ptr_advance : WL_PTR += 13 (une entrée émise). Sous sei. ──────
+; ── _wl_ptr_advance : WL_PTR += 13 (une entrée émise) + WL_NENT++. Sous sei. ──
 _wl_ptr_advance:
         rep #$20
         lda f:WL_PTR
@@ -5053,12 +5264,25 @@ _wl_ptr_advance:
         adc #13
         sta f:WL_PTR
         sep #$20
-        ; (pas de carry vers WL_PTR+2 : les listes vivent en $0130xx-$0141xx)
+        ; (pas de carry vers WL_PTR+2 : offsets de listes ≤ $57FF depuis
+        ;  WL_LISTS $030000 — le 16-bit bas ne déborde jamais)
+        lda f:WL_NENT
+        inc a
+        sta f:WL_NENT
         rts
 
 ; ── _wl_emit_fill16 : émet l'entrée FILL_RECT16 (13 o) dans la liste.
-;    Mêmes packings que kernel_gfx_fill_rect16. Clobbe A. ──────────────
+;    Mêmes packings que kernel_gfx_fill_rect16. Clobbe A.
+;    C2b : borne GPU (64 entrées) — au-delà, le record avorte (WL_ABORT),
+;    l'émission est SKIPPÉE et le caller rendra en direct. ─────────────
 _wl_emit_fill16:
+        lda f:WL_NENT
+        cmp #GPU_LIST_MAX_ENT
+        bcc _wlef_go
+        lda #$A5
+        sta f:WL_ABORT
+        rts
+_wlef_go:
         php
         sei                     ; atomique vs IRQ (VRAM_ADDR partagé)
         jsr _wl_set_vram_ptr
@@ -5130,8 +5354,16 @@ _wl_emit_fill16:
         rts
 
 ; ── _wl_emit_text16 : émet l'entrée TEXT16 (13 o). Mêmes packings que
-;    kernel_gfx_text16 (arg4 = color<<20|y<<10|x). Clobbe A. ───────────
+;    kernel_gfx_text16 (arg4 = color<<20|y<<10|x). Clobbe A.
+;    C2b : même borne 64 entrées que _wl_emit_fill16. ──────────────────
 _wl_emit_text16:
+        lda f:WL_NENT
+        cmp #GPU_LIST_MAX_ENT
+        bcc _wlet_go
+        lda #$A5
+        sta f:WL_ABORT
+        rts
+_wlet_go:
         php
         sei
         jsr _wl_set_vram_ptr
@@ -5190,8 +5422,10 @@ _wl_emit_text16:
         plp
         rts
 
-; ── _wl_record_begin : A = index de liste (0-7 fenêtres, 8 icônes).
-;    WL_PTR = WL_LISTS + idx*$200, WL_REC = $A5. Clobbe A. ─────────────
+; ── _wl_record_begin : A = index de liste (0-7 fenêtres, 8 icônes,
+;    9 menu, 10 taskbar). WL_PTR = WL_LISTS + idx*$800 (+$400 si buffer
+;    opposé = 1), WL_REC = $A5. C2b : init WL_NENT/WL_ABORT et le chunk
+;    d'arène de chaînes (slot, flip cible). Clobbe A. ──────────────────
 _wl_record_begin:
         ; Double-buffer : on enregistre dans le buffer OPPOSÉ au courant —
         ; le courant peut encore être en vol dans la FIFO (zéro drain).
@@ -5202,11 +5436,13 @@ _wl_record_begin:
         eor #$01
         sta DP_TMP              ; buffer cible (0/1)
         pla                     ; idx
+        pha                     ; (re-sauve pour le calcul d'arène)
         rep #$20
         and #$00FF
         xba                     ; ×256
         asl a
-        asl a                   ; ×1024 = stride par slot
+        asl a
+        asl a                   ; ×2048 = stride par slot (C2b : $400/buffer)
         clc
         adc #(WL_LISTS & $FFFF)
         sta f:WL_PTR
@@ -5216,18 +5452,42 @@ _wl_record_begin:
         rep #$20
         lda f:WL_PTR
         clc
-        adc #$0200              ; + buffer 1
+        adc #$0400              ; + buffer 1
         sta f:WL_PTR
         sep #$20
 _wlrb_buf0:
         lda #^WL_LISTS
         sta f:WL_PTR+2
+        ; ── C2b : chunk d'arène = WL_ARENA + (idx*2 + flip_cible)*$400 ──
+        pla                     ; idx
+        rep #$20
+        and #$00FF
+        asl a                   ; idx*2
+        clc
+        adc DP_TMP              ; + flip cible (DP_TMP+1 = garbage : pas de
+                                ;   retenue possible — idx*2+flip ≤ 21 —
+        and #$00FF              ;   et le and ne garde que l'octet bas)
+        xba                     ; ×256
+        asl a
+        asl a                   ; ×1024 = ×$400
+        clc
+        adc #(WL_ARENA & $FFFF)
+        sta f:WL_ARENA_BASE
+        lda #$0000
+        sta f:WL_ARENA_BUMP
+        sep #$20
+        lda #$00
+        sta f:WL_NENT
+        sta f:WL_ABORT
         lda #$A5
         sta f:WL_REC
         plx
         rts
 
-; ── _wl_record_end : A = index — terminateur + liste validée. ─────────
+; ── _wl_record_end : A = index — terminateur + liste validée (sauf si le
+;    record a avorté : WL_ABORT=$A5 → liste NON validée, pas de flip, le
+;    caller doit rendre en direct). C2b : mémorise l'origine (x, y) de la
+;    fenêtre pour le replay translaté (slots 0-7). ─────────────────────
 _wl_record_end:
         pha
         php
@@ -5238,15 +5498,47 @@ _wl_record_end:
         plp
         lda #$00
         sta f:WL_REC
+        lda f:WL_ABORT
+        cmp #$A5
+        bne _wlre_commit
+        plx                     ; dépile l'index (liste avortée : pas de flip,
+        rts                     ;   pas de validation — WL_VALID reste 0)
+_wlre_commit:
         plx                     ; (pha plus haut → récupère l'index dans X)
         lda f:WL_FLIP,X         ; bascule : le buffer fraîchement écrit devient
         eor #$01                ; le courant (celui que _wl_exec rejouera)
         sta f:WL_FLIP,X
         lda #$A5
         sta f:WL_VALID,X
+        ; ── C2b : origine du record (slots fenêtres uniquement) ──
+        cpx #$08
+        bcs _wlre_done          ; 8-10 (icônes/menu/taskbar) : pas d'origine
+        phx                     ; X = idx ; sauvegarde pour l'indexation ×2
+        txa
+        jsr kernel_wm_offset    ; X = idx*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta f:WL_DX             ; temp (évite un 2e kernel_wm_offset)
+        lda WM_TABLE+WM_OFF_Y,X
+        sta f:WL_DY
+        sep #$20
+        pla                     ; idx
+        asl a                   ; ×2 (tables 16-bit)
+        tax
+        rep #$20
+        lda f:WL_DX
+        sta f:WL_ORG_X,X
+        lda f:WL_DY
+        sta f:WL_ORG_Y,X
+        sep #$20
+_wlre_done:
         rts
 
-; ── _wl_exec : A = index — poste EXEC_LIST(WL_LISTS + idx*$200). ──────
+; ── _wl_exec : A = index — poste EXEC_LIST(WL_LISTS + idx*$800 + flip).
+;    C2b : pour un slot fenêtre dont la position diffère de l'origine du
+;    record, poste EXEC_LIST_XY avec (dx, dy) — le GPU rejoue la liste
+;    translatée, le drag ne reconstruit rien. Pré-cond quand dx/dy ≠ 0 :
+;    cap LISTXY (garanti par kernel_wm_move_focused qui invalide sinon). ─
 _wl_exec:
         phx
         tax                     ; X = idx (préservé par les calculs A)
@@ -5254,7 +5546,8 @@ _wl_exec:
         and #$00FF
         xba
         asl a
-        asl a                   ; idx × $400 (stride par slot, double-buffer)
+        asl a
+        asl a                   ; idx × $800 (stride par slot, double-buffer)
         clc
         adc #(WL_LISTS & $FFFF)
         sta f:WL_SCRATCH16      ; bank 1 — PAS DP_TMP (16-bit écraserait $11
@@ -5264,10 +5557,44 @@ _wl_exec:
         rep #$20
         lda f:WL_SCRATCH16
         clc
-        adc #$0200
+        adc #$0400
         sta f:WL_SCRATCH16
         sep #$20
 _wlx_buf0:
+        ; ── C2b : delta position vs origine (slots fenêtres 0-7) ──
+        rep #$20
+        lda #$0000
+        sta f:WL_DX
+        sta f:WL_DY
+        sep #$20
+        cpx #$08
+        bcs _wlx_post           ; icônes/menu/taskbar : jamais translatés
+        phx                     ; idx
+        txa
+        jsr kernel_wm_offset    ; X = idx*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta f:WL_DX             ; temp : x courant
+        lda WM_TABLE+WM_OFF_Y,X
+        sta f:WL_DY
+        sep #$20
+        pla                     ; idx
+        asl a
+        tax                     ; X = idx*2 (tables ORG 16-bit)
+        rep #$20
+        lda f:WL_DX
+        sec
+        sbc f:WL_ORG_X,X
+        sta f:WL_DX             ; dx signé
+        lda f:WL_DY
+        sec
+        sbc f:WL_ORG_Y,X
+        sta f:WL_DY             ; dy signé
+        sep #$20
+        txa
+        lsr a
+        tax                     ; X = idx (restauré pour la suite)
+_wlx_post:
         php
         sei                     ; commande GPU atomique vs IRQ
 _wlx_qwait:
@@ -5280,14 +5607,53 @@ _wlx_qwait:
         sta GPU_ARG1_MID_IO
         lda #^WL_LISTS
         sta GPU_ARG1_HI_IO
+        ; dx|dy == 0 → EXEC_LIST (sémantique v3 inchangée) ; sinon
+        ; EXEC_LIST_XY, ARG2 = dy<<12 | dx (12-bit two's complement).
+        lda f:WL_DX
+        ora f:WL_DX+1
+        ora f:WL_DY
+        ora f:WL_DY+1
+        bne _wlx_xy
         lda #GPU_OP_EXEC_LIST
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
         plp
         plx
         rts
+_wlx_xy:
+        lda f:WL_DX
+        sta GPU_ARG2_LO_IO      ; dx[7:0]
+        lda f:WL_DX+1
+        and #$0F
+        sta DP_TMP
+        lda f:WL_DY
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG2_MID_IO     ; dy[3:0]<<4 | dx[11:8]
+        lda f:WL_DY
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda f:WL_DY+1
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta GPU_ARG2_HI_IO      ; dy[11:4]
+        lda #GPU_OP_EXEC_LIST_XY
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        plp
+        plx
+        rts
 
-; ── _wl_invalidate : A = index 0-8. Préserve X, Y ; clobbe A. ─────────
+; ── _wl_invalidate : A = index 0-10. Préserve X, Y ; clobbe A. ────────
 .export _wl_invalidate
 _wl_invalidate:
         phx
@@ -5297,21 +5663,99 @@ _wl_invalidate:
         plx
         rts
 
-; ── _wl_window_chrome_listed : chrome du slot WIN_SLOT par display-list.
+; ── _wl_inval_wparent : A = index widget → invalide la liste de sa
+;    fenêtre parente (C2b : l'état visuel des widgets est DANS la liste).
+;    Clobbe A, X. Variante _wl_inval_wparent_x : X = offset (index×16),
+;    préserve X. ────────────────────────────────────────────────────────
+_wl_inval_wparent:
+        asl a
+        asl a
+        asl a
+        asl a
+        tax
+_wl_inval_wparent_x:
+        lda WIDGET_TABLE+1,X     ; parent slot
+        cmp #WM_MAX
+        bcs _wliwp_done          ; parent hors plage → no-op défensif
+        jmp _wl_invalidate       ; (préserve X ; rts là-bas)
+_wliwp_done:
+        rts
+
+; ── _rect_overlap_win : la fenêtre WM_TABLE[X] (X = slot×10) intersecte-
+;    t-elle le rect PIR_RECT_* ? Out : C=1 si oui. M=8 in/out. ──────────
+_rect_overlap_win:
+        rep #$20
+        lda PIR_RECT_X
+        clc
+        adc PIR_RECT_W
+        cmp WM_TABLE+WM_OFF_X,X  ; r.right <= win.x → disjoint
+        beq _row_dis
+        bcc _row_dis
+        lda WM_TABLE+WM_OFF_X,X
+        clc
+        adc WM_TABLE+WM_OFF_W,X
+        cmp PIR_RECT_X           ; win.right <= r.x → disjoint
+        beq _row_dis
+        bcc _row_dis
+        lda PIR_RECT_Y
+        clc
+        adc PIR_RECT_H
+        cmp WM_TABLE+WM_OFF_Y,X  ; r.bottom <= win.y → disjoint
+        beq _row_dis
+        bcc _row_dis
+        lda WM_TABLE+WM_OFF_Y,X
+        clc
+        adc WM_TABLE+WM_OFF_H,X
+        cmp PIR_RECT_Y           ; win.bottom <= r.y → disjoint
+        beq _row_dis
+        bcc _row_dis
+        sep #$20
+        .a8
+        sec
+        rts
+_row_dis:
+        .a16                     ; atteint via branches depuis la région M=16
+        sep #$20
+        .a8
+        clc
+        rts
+
+; ── _wl_inval_menu / _wl_inval_taskbar : invalident les listes 9/10.
+;    Préservent A, X, Y (appelables au milieu d'un flux). ──────────────
+_wl_inval_menu:
+        pha
+        lda #WL_SLOT_MENU
+        jsr _wl_invalidate
+        pla
+        rts
+_wl_inval_taskbar:
+        pha
+        lda #WL_SLOT_TASKBAR
+        jsr _wl_invalidate
+        pla
+        rts
+
+; ── _wl_window_chrome_listed : chrome + WIDGETS du slot WIN_SLOT par
+;    display-list (C2b : la liste contient toute la fenêtre).
 ;    Pré-cond : WM_ARG_*/GFX_BASE/WM_TITLE_COL posés (comme _wdo_chrome).
-;    Si la liste du slot est invalide : drain (elle peut être en vol),
-;    record du chrome, validation. Puis EXEC_LIST. ─────────────────────
+;    Liste invalide → record (chrome + widgets, double-buffer zéro drain) ;
+;    record avorté (>64 entrées / arène pleine) → rendu DIRECT (les
+;    émissions skippées n'ont rien peint). Puis EXEC_LIST — translaté
+;    (EXEC_LIST_XY) si la fenêtre a bougé depuis le record (drag C2b). ──
 _wl_window_chrome_listed:
-        ; Pendant un drag, la fenêtre draguée est invalidée à CHAQUE move —
-        ; l'enregistrer serait du travail jeté à chaque frame (ça faisait
-        ; déborder le budget IRQ legacy). Chrome direct pour elle ; sa liste
-        ; sera (re)construite au premier rendu au repos.
+        ; C2b : avec la cap EXEC_LIST_XY, la draguée est REJOUÉE translatée
+        ; (zéro reconstruction). Sans la cap (carte v3), comportement C2a :
+        ; chrome direct pendant le drag (sa liste est invalidée à chaque
+        ; move par kernel_wm_move_focused — l'enregistrer = travail jeté).
         lda f:WM_DRAG_ARMED
         beq _wlcl_not_dragging
         lda WIN_SLOT
         cmp WM_FOCUS
         bne _wlcl_not_dragging
-        jmp _wdo_chrome_draw     ; draguée → direct (post-and-continue quand même)
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LISTXY_BIT
+        bne _wlcl_not_dragging   ; cap XY → chemin listé normal (replay translaté)
+        jmp _wlcl_direct         ; carte v3 : draguée → direct (chrome+widgets)
 _wlcl_not_dragging:
         lda WIN_SLOT
         tax
@@ -5323,10 +5767,36 @@ _wlcl_not_dragging:
         jsr _wl_record_begin
         jsr _wdo_chrome_draw    ; les helpers gfx émettent (WL_REC=$A5)
         lda WIN_SLOT
+        jsr _wm_draw_widgets_for_slot   ; C2b : widgets émis dans la liste
+        lda WIN_SLOT
         jsr _wl_record_end
+        ; record avorté ? (liste non validée) → rendu direct
+        lda WIN_SLOT
+        tax
+        lda f:WL_VALID,X
+        cmp #$A5
+        bne _wlcl_direct
 _wlcl_replay:
         lda WIN_SLOT
         jmp _wl_exec            ; (rts là-bas)
+_wlcl_direct:
+        ; Fallback direct : re-pose WM_ARG_* (clobbés par le rendu widgets
+        ; pendant un record avorté) puis chrome + widgets en immédiat.
+        lda WIN_SLOT
+        jsr kernel_wm_offset    ; X = slot*10
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,X
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,X
+        sta WM_ARG_Y
+        lda WM_TABLE+WM_OFF_W,X
+        sta WM_ARG_W
+        lda WM_TABLE+WM_OFF_H,X
+        sta WM_ARG_H
+        sep #$20
+        jsr _wdo_chrome_draw
+        lda WIN_SLOT
+        jmp _wm_draw_widgets_for_slot   ; (rts là-bas)
 
 ; ════════════════════════════════════════════════════════════════════
 ;  SP-3.p D.1 — texte de dialogue (DB_TEXT) + message SYS_ALERT
