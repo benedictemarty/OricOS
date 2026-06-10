@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10r
+
+### Fixed — titre des fenêtres modales (retour interactif « pas de titre pour win2 »)
+
+Les dialogues (DoDlgBox) et alertes (SYS_ALERT) étaient créés « sans
+titre v1 » → titlebar vide + bouton taskbar « WinN ». Titre par défaut
+posé : « Dialog » (DoDlgBox) / « Alert » (SYS_ALERT) via WM_ARG_TITLE →
+kernel_wm_add fait la copie bank 1 (WM_TITLES_B1) + SDRAM + flag, donc
+titlebar ET taskbar l'affichent. Confirmé que le drag des fenêtres de
+fond reste correctement bloqué tant que la modale est ouverte (comportement
+attendu) et se débloque à la fermeture (WM_MODAL→$FF mesuré). Garde
+rouge→vert : test_oricos_dlgbox vérifie le titre « Dialog » en bank 1.
+
 ## [Unreleased] - 2026-06-10q
 
 ### Fixed — dialogues : boutons élargis, Cancel repositionné, repaint à la fermeture (retour interactif)

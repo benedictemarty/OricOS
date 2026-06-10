@@ -5161,9 +5161,13 @@ ddb_pos:
         lda [$D0],y
         sta WM_ARG_H+1
         iny
-        ; crée la fenêtre dialogue (sans titre v1) + la passe modale
-        lda #$00
+        ; crée la fenêtre dialogue + la passe modale. SP-GUI (retour
+        ; interactif : « pas de titre pour win2 ») : titre par défaut
+        ; « Dialog » — kernel_wm_add fait la copie bank 1 + SDRAM + flag,
+        ; donc titlebar ET bouton taskbar l'affichent (plus de « WinN »).
+        lda #<db_str_dlgtitle
         sta WM_ARG_TITLE_LO
+        lda #>db_str_dlgtitle
         sta WM_ARG_TITLE_HI
         phy
         jsr kernel_wm_add       ; A = handle
@@ -5262,8 +5266,9 @@ sys_alert:
         lda #70
         sta WM_ARG_H
         sep #$20
-        lda #$00
+        lda #<db_str_alerttitle ; SP-GUI : titre « Alert » (plus de « WinN »)
         sta WM_ARG_TITLE_LO
+        lda #>db_str_alerttitle
         sta WM_ARG_TITLE_HI
         jsr kernel_wm_add       ; A = handle
         sta DLG_WIN
@@ -5348,6 +5353,10 @@ db_str_ok:
         .byte "OK", $00
 db_str_cancel:
         .byte "Cancel", $00
+db_str_dlgtitle:
+        .byte "Dialog", $00      ; SP-GUI : titre par défaut des modales
+db_str_alerttitle:
+        .byte "Alert", $00
 db_str_yes:
         .byte "Yes", $00
 db_str_no:
