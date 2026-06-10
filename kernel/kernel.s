@@ -63,6 +63,21 @@ TICK_COUNTER    = $019093       ; 1B counter (tick T1, incrémenté par l'IRQ)
 ; = caps<<4 | version ; 0 = carte v1 sans FIFO). L'OS route ses chemins gfx
 ; selon CES bits, jamais selon l'identité de la carte — contrat ISA.
 GPU_CAPS_KERNEL = $019094       ; 1B : caps<<4 | version
+; ADR-34 C2 : display-lists du chrome fenêtre (slots 0-7) + icônes (idx 8).
+; Une liste = le chrome d'UNE fenêtre en coords absolues, rejouée par
+; EXEC_LIST tant que valide ; invalidée par move/resize/focus/close/add.
+WL_VALID         = $019095      ; 9B : $A5 = liste rejouable (0 au boot = invalide)
+WL_REC           = $01909E      ; 1B : $A5 = mode record (fill16/text16 émettent)
+WL_PTR           = $0190B1      ; 3B : curseur d'émission SDRAM (l'IRQ peut
+                                ;      clobber VRAM_ADDR → re-posé par émission)
+WL_LISTS         = $013000      ; SDRAM : 9 slots × 2 buffers × $200 (double-
+                                ;   buffer : record dans l'autre pendant que le
+                                ;   courant peut être en vol — zéro drain)
+WL_LIST_STRIDE   = $0400        ; par slot ($200 par buffer)
+WL_FLIP          = $0190B4      ; 9B : buffer courant (0/1) par slot
+WL_SCRATCH16     = $0190BD      ; 2B : adresse de liste en cours (calcul 16-bit
+                                ;   hors ZP — sta DP_TMP 16-bit écraserait $11
+                                ;   = DP_SYS_ARG_X, l'arg COP !)
 GPU_CAP_FIFO_BIT = $10          ; bit 4 : FIFO async disponible
 GPU_ST_QFULL    = $20           ; STATUS bit 5 : FIFO pleine
 GPU_ST_BUSY     = $80           ; STATUS bit 7 : busy
@@ -1123,13 +1138,28 @@ GFX_BPL_HI       = $91
 
 ; ── SP-3.d : toolkit (label/frame/button) — adresses SDRAM ─────────────
 TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)
-TK_STR_SCRATCH   = $011000       ; scratch SDRAM pour les chaînes de label
 GPU_OP_TEXT16    = $07           ; texte coords 16-bit (ADR-21, SP-3.d)
 GPU_OP_EXEC_LIST = $09           ; GPU-ISA v3 (ADR-34 C) : display-list en SDRAM
 GPU_LIST_END     = $FF           ; terminateur de display-list
 GPU_CAP_LIST_BIT = $40           ; GPU_CAPS_KERNEL : cap EXEC_LIST (<<4)
-TK_LIST_SCRATCH  = $011100       ; display-list du label proportionnel (64×13 o max,
-                                 ; après TK_STR_SCRATCH $011000-$0110FF, avant titres $012000)
+; ADR-34 C2 : scratch du label proportionnel en DOUBLE-BUFFER — une liste
+; peut être en vol (FIFO) pendant qu'on construit la suivante, zéro drain
+; en régime normal. ⚠ l'ancienne TK_LIST_SCRATCH ($011100) écrasait les
+; labels d'icônes ($011200+) — bug C1 corrigé par cette relocalisation.
+TK_LP_STR0       = $011000       ; chaînes espacées, buffer 0 (128 o : 64 ch × 2)
+TK_LP_STR1       = $015600       ; buffer 1
+TK_LP_LIST0      = $015800       ; display-list, buffer 0 (64×13 = 832 o)
+TK_LP_LIST1      = $015C00       ; buffer 1
+TK_LP_FLIP       = $0190BF       ; 1B : buffer courant (0/1)
+TK_LP_PEND       = $0190C0       ; 2B : buffer émis-sans-drain (garde réutilisation)
+; ADR-34 C2 : ring de chaînes pour tk_label — 32 slots × 32 o en SDRAM.
+; SÛRETÉ STRUCTURELLE : ring (32) ≥ 2 × GPU FIFO (16) → un slot réutilisé
+; ne peut plus être référencé par une commande en vol. Ferme AUSSI le bug
+; historique « labels partagés » (kernel.s ~1030 : UI_STR_BUF unique).
+TK_STR_RING      = $016000       ; SDRAM : 32 × 32 o = 1 Ko ($016000-$0163FF)
+TK_STR_RING_IDX  = $0190C2       ; 1B : slot courant (0-31, round-robin)
+TK_LP_STRB       = $0190C3       ; 3B : base SDRAM du buffer chaînes courant
+TK_LP_LISTB      = $0190C6       ; 3B : base SDRAM de la display-list courante
 TK_COL_BORDER    = $0F           ; frame : blanc
 TK_COL_BTN_FACE  = $07           ; bouton : lightgray
 TK_COL_BTN_TEXT  = $00           ; bouton : texte noir
@@ -1231,7 +1261,16 @@ T1_PERIOD_HI    = $10
 ; ADR-32 §10.13 : TICK_COUNTER vit entre CURSOR_X et BANK_FREE_LIST.
 .assert CURSOR_X + 1     <= TICK_COUNTER,    error, "overlap CURSOR_X/TICK_COUNTER"
 .assert TICK_COUNTER + 1 <= GPU_CAPS_KERNEL, error, "overlap TICK_COUNTER/GPU_CAPS_KERNEL"
-.assert GPU_CAPS_KERNEL + 1 <= BANK_FREE_LIST, error, "overlap GPU_CAPS_KERNEL/BANK_FREE_LIST"
+.assert GPU_CAPS_KERNEL + 1 <= WL_VALID,     error, "overlap GPU_CAPS_KERNEL/WL_VALID"
+.assert WL_VALID + 9 <= WL_REC,              error, "overlap WL_VALID/WL_REC"
+.assert WL_REC + 1 <= BANK_FREE_LIST,        error, "overlap WL_REC/BANK_FREE_LIST"
+.assert BANK_FREE_TOP + 1 <= WL_PTR,         error, "overlap BANK_FREE_TOP/WL_PTR"
+.assert WL_PTR + 3 <= WL_FLIP,               error, "overlap WL_PTR/WL_FLIP"
+.assert WL_FLIP + 9 <= WL_SCRATCH16,         error, "overlap WL_FLIP/WL_SCRATCH16"
+.assert WL_SCRATCH16 + 2 <= TK_LP_FLIP,      error, "overlap WL_SCRATCH16/TK_LP_FLIP"
+.assert TK_LP_PEND + 2 <= TK_STR_RING_IDX,   error, "overlap TK_LP_PEND/TK_STR_RING_IDX"
+.assert TK_STR_RING_IDX + 1 <= TK_LP_STRB,   error, "overlap TK_STR_RING_IDX/TK_LP_STRB"
+.assert TK_LP_LISTB + 3 <= LOG_RING,         error, "overlap TK_LP_LISTB/LOG_RING"
 
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"

@@ -36,6 +36,10 @@ kernel_entry:
         ; lit 0 → l'OS reste sur les chemins sync. Contrat : s'adapter aux
         ; CAPACITÉS, jamais à l'identité de la carte. ──
         lda GPU_TRIGGER_IO
+        cmp #$FF                 ; bus flottant ($FF) = pas de GPU sur cette
+        bne _gcaps_ok            ; carte → caps 0 (chemins sync v1, aucune
+        lda #$00                 ; commande postée à un device absent)
+_gcaps_ok:
         sta GPU_CAPS_KERNEL
 
         ; ── PH-cleanup-zombie (2026-05-09) ─────────────────────────

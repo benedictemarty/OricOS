@@ -283,6 +283,8 @@ wm_add_scan:
         bne wm_add_scan_next     ; occupé → suivant
         pla
         sta DP_TMP               ; id = premier slot libre
+        jsr _wl_invalidate       ; ADR-34 C2 : slot (ré)utilisé → liste périmée
+        lda DP_TMP
         jsr kernel_wm_offset     ; X = id*10
         bra wm_add_init
 wm_add_scan_next:
@@ -424,9 +426,14 @@ wm_ht_done:
 .export kernel_wm_set_focus
 kernel_wm_set_focus:
         sta DP_TMP               ; nouvel id
+        ; ADR-34 C2 : la couleur titlebar dépend du focus → les listes des
+        ; DEUX fenêtres concernées sont périmées.
+        jsr _wl_invalidate       ; A = nouveau focus (préserve X,Y)
         lda WM_FOCUS
         cmp #$FF
         beq wm_sf_new
+        jsr _wl_invalidate       ; A = ancien focus
+        lda WM_FOCUS
         jsr kernel_wm_offset     ; X = ancien focus *10
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #(<~WM_F_FOCUS)      ; clear bit focus
@@ -494,6 +501,8 @@ kernel_wm_move_focused:
         lda WM_STATES,X
         cmp #WM_STATE_MAXED
         beq wm_mv_done           ; maximisée → pas de déplacement
+        lda WM_FOCUS
+        jsr _wl_invalidate       ; ADR-34 C2 : coords absolues figées → périmée
         lda WM_FOCUS
         jsr kernel_wm_offset     ; X = focus*10
         rep #$20
@@ -577,6 +586,8 @@ kernel_wm_close:
         jmp wm_close_done
 wm_close_go:
         sta DP_TMP               ; sauve id
+        jsr _wl_invalidate       ; ADR-34 C2 : la liste du slot fermé est morte
+        lda DP_TMP
         jsr kernel_wm_offset     ; X = id*10
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
@@ -694,6 +705,10 @@ kernel_wm_clear_modal:
 ; Retourne A = id (0..3) ou $FF (table pleine). Modifie A, X, Y.
 .export kernel_icon_add
 kernel_icon_add:
+        pha
+        lda #$08                 ; ADR-34 C2 : liste icônes périmée
+        jsr _wl_invalidate
+        pla
         ; Chercher un slot libre
         ldx #$00
 _kia_find:
@@ -800,8 +815,24 @@ _kia_sdram_done:
 .export kernel_icon_draw_all
 kernel_icon_draw_all:
         lda ICON_COUNT
-        bne _kid_start
+        bne _kid_go
         rts
+_kid_go:
+        ; ADR-34 C2 : icônes par display-list (labels SDRAM $011200 stables).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LIST_BIT
+        beq _kid_start           ; carte sans listes → rendu direct
+        lda f:WL_VALID+8
+        cmp #$A5
+        beq _kid_replay
+        lda #$08                 ; (double-buffer : zéro drain)
+        jsr _wl_record_begin
+        jsr _kid_start           ; le corps émet (WL_REC=$A5)
+        lda #$08
+        jsr _wl_record_end
+_kid_replay:
+        lda #$08
+        jmp _wl_exec
 _kid_start:
         lda #$00
         sta GFX_BASE_LO
@@ -945,6 +976,8 @@ kernel_wm_maximize:
         cmp #WM_MAX
         bcs kwmax_done           ; id invalide
         sta DP_TMP               ; sauve id (8-bit)
+        jsr _wl_invalidate       ; ADR-34 C2 : géométrie changée → liste périmée
+        lda DP_TMP
         tax
         lda WM_STATES,X          ; WM_STATES[id]
         cmp #WM_STATE_MAXED
@@ -1056,6 +1089,8 @@ kernel_wm_minimize:
         cmp #WM_MAX
         bcs kwmin_done
         sta DP_TMP
+        jsr _wl_invalidate       ; ADR-34 C2
+        lda DP_TMP
         jsr kernel_wm_offset     ; X = slot*10
         lda WM_TABLE+WM_OFF_FLAGS,X
         and #WM_F_USED
@@ -1110,6 +1145,13 @@ kwmin_done:
 ; ARG2 = y<<12|x, ARG3 = h<<12|w. Modifie A. Préserve X, Y.
 .export kernel_gfx_fill_rect16
 kernel_gfx_fill_rect16:
+        ; ADR-34 C2 : en mode record, la commande est ÉMISE dans la
+        ; display-list en construction au lieu d'être postée au GPU.
+        lda f:WL_REC
+        cmp #$A5
+        bne _gfr16_direct
+        jmp _wl_emit_fill16
+_gfr16_direct:
         ; BUG curseur figé GPU_BPL (2026-06-01) : php;sei DOIT précéder le
         ; bpl_guard pour fermer le trou I=0 entre le SET_BPL et le FILL.
         ; Sans ça, l'IRQ MOU2 s'insère entre les deux commandes GPU et
@@ -1180,10 +1222,26 @@ kernel_gfx_fill_rect16:
         sta GPU_ARG3_HI_IO
         lda GFX_COLOR
         sta GPU_ARG4_LO_IO
+        ; ADR-34 C2 : carte FIFO → post-and-continue (attendre une PLACE,
+        ; pas le vide — l'ordre FIFO garantit la cohérence GPU-GPU ; les
+        ; lecteurs CPU de SDRAM utilisent kernel_gfx_drain). Carte v1 →
+        ; poll-idle après (sync historique).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_FIFO_BIT
+        beq gfx_fr16_sync
+gfx_fr16_qwait:
+        lda GPU_STATUS_IO
+        and #GPU_ST_QFULL
+        bne gfx_fr16_qwait
         lda #GPU_OP_FILL_RECT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
-        ; Poll busy (timeout 256, cohérent avec les autres helpers GPU — prérequis v0.2 async)
+        plp
+        rts
+gfx_fr16_sync:
+        lda #GPU_OP_FILL_RECT16
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
         ldx #$00
 gfx_fr16_wait:
         lda GPU_STATUS_IO
@@ -1433,25 +1491,18 @@ _wdo_setcol:
         lda WM_TABLE+WM_OFF_H,X
         sta WM_ARG_H
         sep #$20
-        ; Corps lightgray (7), base SDRAM $100000.
-        lda #$00
-        sta GFX_BASE_LO
-        sta GFX_BASE_MID
-        lda #$10
-        sta GFX_BASE_HI
-        lda #$07
-        sta GFX_COLOR
-        jsr kernel_gfx_fill_rect16
-        ; Title bar : même x/y/w, h=12, couleur selon focus.
-        rep #$20
-        lda #12
-        sta WM_ARG_H
-        sep #$20
-        lda WM_TITLE_COL
-        sta GFX_COLOR
-        jsr kernel_gfx_fill_rect16
-        ; Titre + bouton fermer (SP-3.f) — WIN_SLOT déjà posé.
-        jsr _wm_draw_title_and_close
+        ; ADR-34 C2 : chrome par display-list rejouable si la carte a les
+        ; listes (chaînes du chrome 100 % stables : titres $012000+slot,
+        ; X/O/_ boot-uploadées). Widgets/hotzones restent en immédiat
+        ; (leurs labels passent par le scratch partagé — C2b).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LIST_BIT
+        beq _wdo_chrome_direct
+        jsr _wl_window_chrome_listed
+        bra _wdo_after_chrome
+_wdo_chrome_direct:
+        jsr _wdo_chrome_draw
+_wdo_after_chrome:
         ; Widgets de ce slot (Z-order : la fenêtre suivante couvrira les siens).
         lda WIN_SLOT
         jsr _wm_draw_widgets_for_slot
@@ -1527,6 +1578,33 @@ hzd_done:
 ; SP-3.f v0.1 (titre) + v0.2 (bouton fermer).
 ; Pré-cond : WIN_SLOT = id du slot courant. WM_ARG_X/Y/W posés (window coords).
 ; GFX_BASE déjà set à $100000. Modifie A, X (Y clobbé par GPU helpers).
+; ── _wdo_chrome_draw : le chrome d'une fenêtre (body + titlebar + titre +
+;    boutons). Pré-cond : WM_ARG_X/Y/W/H, WM_TITLE_COL, WIN_SLOT posés.
+;    Appelé en direct (carte v1) OU sous record (les helpers émettent
+;    dans la display-list du slot). En GUICODE (CODE plein). ───────────
+        .segment "GUICODE"
+_wdo_chrome_draw:
+        ; Corps lightgray (7), base SDRAM $100000 (framebuffer XVGA).
+        lda #$00
+        sta GFX_BASE_LO
+        sta GFX_BASE_MID
+        lda #$10
+        sta GFX_BASE_HI
+        lda #$07
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; Title bar : même x/y/w, h=12, couleur selon focus.
+        rep #$20
+        lda #12
+        sta WM_ARG_H
+        sep #$20
+        lda WM_TITLE_COL
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        ; Titre + bouton fermer (SP-3.f) — WIN_SLOT déjà posé.
+        jmp _wm_draw_title_and_close    ; (rts là-bas)
+
+; (ADR-34 C2 : title_and_close suit le chrome en GUICODE — CODE plein.)
 _wm_draw_title_and_close:
         ; ── Titre (v0.1) ──────────────────────────────────────────────
         ; Vérifie le flag WM_TITLES[slot] (1B : $01=titre présent, $00=absent).
@@ -1707,6 +1785,8 @@ _wm_dtc_max_draw:
 ; Efface seulement l'ancien rect de la fenêtre (WM_DRAG_OLD_*) en bleu,
 ; puis redessine toutes les fenêtres. Évite le clear plein écran (393 Ko).
 ; Modifie A, X, Y.
+        .segment "CODE"
+
 .export kernel_wm_redraw_drag
 kernel_wm_redraw_drag:
         rep #$20
@@ -3002,6 +3082,8 @@ _wm_do_resize:
         ora MOUSE_DY
         beq _dr_done
         ; Capture rect avant modif (dirty rect pour redraw incrémental)
+        lda WM_FOCUS
+        jsr _wl_invalidate       ; ADR-34 C2 : w/h changent → liste périmée
         jsr _wm_capture_focused_rect
         jsr kernel_wm_cursor_restore
         ; Fix A : delta 16-bit complet (MOUSE_DX16/DY16).
@@ -3235,6 +3317,10 @@ _cursor_calc_addr:
 ; met CURSOR_OLD = CUR_DRAW, VALID = 1.
 .export kernel_wm_cursor_save
 kernel_wm_cursor_save:
+        ; ADR-34 C2 : lecteur CPU du framebuffer — barrière obligatoire
+        ; (le backing capturerait un état intermédiaire). Chemin sprite HW :
+        ; cette routine n'est pas appelée (draw_cursor positionne le sprite).
+        jsr kernel_gfx_drain
         jsr _cursor_calc_addr
         lda #<CURSOR_SAVE
         sta DP_PCPTR
@@ -3269,8 +3355,10 @@ _csv_row:
 kernel_wm_cursor_restore:
         lda CURSOR_VALID
         bne _crst_go
-        rts
+        rts                      ; mode sprite HW (ADR-33) : backing jamais
+                                 ; validé → early-out AVANT le drain
 _crst_go:
+        jsr kernel_gfx_drain     ; ADR-34 C2 : écrit le framebuffer — ordre vs FIFO
         rep #$20
         lda CURSOR_OLD_X
         sta CUR_DRAW_X
@@ -4939,6 +5027,306 @@ db_str_yes:
         .byte "Yes", $00
 db_str_no:
         .byte "No", $00
+
+; ════════════════════════════════════════════════════════════════════
+;  ADR-34 C2 — display-lists du chrome fenêtre + icônes
+; ════════════════════════════════════════════════════════════════════
+        .segment "GUICODE"
+
+; ── _wl_set_vram_ptr : VRAM_ADDR = WL_PTR. L'IRQ (cursor save/restore)
+;    peut clobber VRAM_ADDR entre deux émissions → on re-pose à chaque
+;    fois depuis le curseur kernel. Appeler sous sei. ──────────────────
+_wl_set_vram_ptr:
+        lda f:WL_PTR
+        sta VRAM_ADDR_LO_IO
+        lda f:WL_PTR+1
+        sta VRAM_ADDR_MID_IO
+        lda f:WL_PTR+2
+        sta VRAM_ADDR_HI_IO
+        rts
+
+; ── _wl_ptr_advance : WL_PTR += 13 (une entrée émise). Sous sei. ──────
+_wl_ptr_advance:
+        rep #$20
+        lda f:WL_PTR
+        clc
+        adc #13
+        sta f:WL_PTR
+        sep #$20
+        ; (pas de carry vers WL_PTR+2 : les listes vivent en $0130xx-$0141xx)
+        rts
+
+; ── _wl_emit_fill16 : émet l'entrée FILL_RECT16 (13 o) dans la liste.
+;    Mêmes packings que kernel_gfx_fill_rect16. Clobbe A. ──────────────
+_wl_emit_fill16:
+        php
+        sei                     ; atomique vs IRQ (VRAM_ADDR partagé)
+        jsr _wl_set_vram_ptr
+        lda #GPU_OP_FILL_RECT16
+        sta VRAM_DATA_IO        ; op
+        lda GFX_BASE_LO
+        sta VRAM_DATA_IO        ; arg1 = base
+        lda GFX_BASE_MID
+        sta VRAM_DATA_IO
+        lda GFX_BASE_HI
+        sta VRAM_DATA_IO
+        lda WM_ARG_X            ; arg2 = pack(x,y)
+        sta VRAM_DATA_IO
+        lda WM_ARG_X+1
+        and #$0F
+        sta DP_TMP
+        lda WM_ARG_Y
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO
+        lda WM_ARG_Y
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_Y+1
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO
+        lda WM_ARG_W            ; arg3 = pack(w,h)
+        sta VRAM_DATA_IO
+        lda WM_ARG_W+1
+        and #$0F
+        sta DP_TMP
+        lda WM_ARG_H
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO
+        lda WM_ARG_H
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_H+1
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO
+        lda GFX_COLOR           ; arg4 = color
+        sta VRAM_DATA_IO
+        lda #$00
+        sta VRAM_DATA_IO
+        sta VRAM_DATA_IO
+        jsr _wl_ptr_advance
+        plp
+        rts
+
+; ── _wl_emit_text16 : émet l'entrée TEXT16 (13 o). Mêmes packings que
+;    kernel_gfx_text16 (arg4 = color<<20|y<<10|x). Clobbe A. ───────────
+_wl_emit_text16:
+        php
+        sei
+        jsr _wl_set_vram_ptr
+        lda #GPU_OP_TEXT16
+        sta VRAM_DATA_IO        ; op
+        lda GFX_BASE_LO
+        sta VRAM_DATA_IO        ; arg1 = base
+        lda GFX_BASE_MID
+        sta VRAM_DATA_IO
+        lda GFX_BASE_HI
+        sta VRAM_DATA_IO
+        lda GFX_FONT_LO
+        sta VRAM_DATA_IO        ; arg2 = fonte
+        lda GFX_FONT_MID
+        sta VRAM_DATA_IO
+        lda GFX_FONT_HI
+        sta VRAM_DATA_IO
+        lda GFX_STR_LO
+        sta VRAM_DATA_IO        ; arg3 = chaîne (STABLE exigée — titres slot,
+        lda GFX_STR_MID         ;   chrome boot-uploadé, labels icônes)
+        sta VRAM_DATA_IO
+        lda GFX_STR_HI
+        sta VRAM_DATA_IO
+        lda WM_ARG_X            ; arg4 LO = x[7:0]
+        sta VRAM_DATA_IO
+        lda WM_ARG_X+1
+        and #$03
+        sta DP_TMP
+        lda WM_ARG_Y
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO        ; MID = y[5:0]<<2 | x[9:8]
+        lda WM_ARG_Y
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_Y+1
+        and #$03
+        asl a
+        asl a
+        ora DP_TMP
+        sta DP_TMP
+        lda GFX_COLOR
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO        ; HI = color<<4 | y[9:6]
+        jsr _wl_ptr_advance
+        plp
+        rts
+
+; ── _wl_record_begin : A = index de liste (0-7 fenêtres, 8 icônes).
+;    WL_PTR = WL_LISTS + idx*$200, WL_REC = $A5. Clobbe A. ─────────────
+_wl_record_begin:
+        ; Double-buffer : on enregistre dans le buffer OPPOSÉ au courant —
+        ; le courant peut encore être en vol dans la FIFO (zéro drain).
+        phx
+        tax
+        pha                     ; sauve idx
+        lda f:WL_FLIP,X
+        eor #$01
+        sta DP_TMP              ; buffer cible (0/1)
+        pla                     ; idx
+        rep #$20
+        and #$00FF
+        xba                     ; ×256
+        asl a
+        asl a                   ; ×1024 = stride par slot
+        clc
+        adc #(WL_LISTS & $FFFF)
+        sta f:WL_PTR
+        sep #$20
+        lda DP_TMP
+        beq _wlrb_buf0
+        rep #$20
+        lda f:WL_PTR
+        clc
+        adc #$0200              ; + buffer 1
+        sta f:WL_PTR
+        sep #$20
+_wlrb_buf0:
+        lda #^WL_LISTS
+        sta f:WL_PTR+2
+        lda #$A5
+        sta f:WL_REC
+        plx
+        rts
+
+; ── _wl_record_end : A = index — terminateur + liste validée. ─────────
+_wl_record_end:
+        pha
+        php
+        sei
+        jsr _wl_set_vram_ptr
+        lda #GPU_LIST_END
+        sta VRAM_DATA_IO
+        plp
+        lda #$00
+        sta f:WL_REC
+        plx                     ; (pha plus haut → récupère l'index dans X)
+        lda f:WL_FLIP,X         ; bascule : le buffer fraîchement écrit devient
+        eor #$01                ; le courant (celui que _wl_exec rejouera)
+        sta f:WL_FLIP,X
+        lda #$A5
+        sta f:WL_VALID,X
+        rts
+
+; ── _wl_exec : A = index — poste EXEC_LIST(WL_LISTS + idx*$200). ──────
+_wl_exec:
+        phx
+        tax                     ; X = idx (préservé par les calculs A)
+        rep #$20
+        and #$00FF
+        xba
+        asl a
+        asl a                   ; idx × $400 (stride par slot, double-buffer)
+        clc
+        adc #(WL_LISTS & $FFFF)
+        sta f:WL_SCRATCH16      ; bank 1 — PAS DP_TMP (16-bit écraserait $11
+        sep #$20                ;   = DP_SYS_ARG_X, l'arg COP)
+        lda f:WL_FLIP,X         ; buffer courant (0/1)
+        beq _wlx_buf0
+        rep #$20
+        lda f:WL_SCRATCH16
+        clc
+        adc #$0200
+        sta f:WL_SCRATCH16
+        sep #$20
+_wlx_buf0:
+        php
+        sei                     ; commande GPU atomique vs IRQ
+_wlx_qwait:
+        lda GPU_STATUS_IO
+        and #GPU_ST_QFULL
+        bne _wlx_qwait
+        lda f:WL_SCRATCH16
+        sta GPU_ARG1_LO_IO
+        lda f:WL_SCRATCH16+1
+        sta GPU_ARG1_MID_IO
+        lda #^WL_LISTS
+        sta GPU_ARG1_HI_IO
+        lda #GPU_OP_EXEC_LIST
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        plp
+        plx
+        rts
+
+; ── _wl_invalidate : A = index 0-8. Préserve X, Y ; clobbe A. ─────────
+.export _wl_invalidate
+_wl_invalidate:
+        phx
+        tax
+        lda #$00
+        sta f:WL_VALID,X
+        plx
+        rts
+
+; ── _wl_window_chrome_listed : chrome du slot WIN_SLOT par display-list.
+;    Pré-cond : WM_ARG_*/GFX_BASE/WM_TITLE_COL posés (comme _wdo_chrome).
+;    Si la liste du slot est invalide : drain (elle peut être en vol),
+;    record du chrome, validation. Puis EXEC_LIST. ─────────────────────
+_wl_window_chrome_listed:
+        ; Pendant un drag, la fenêtre draguée est invalidée à CHAQUE move —
+        ; l'enregistrer serait du travail jeté à chaque frame (ça faisait
+        ; déborder le budget IRQ legacy). Chrome direct pour elle ; sa liste
+        ; sera (re)construite au premier rendu au repos.
+        lda f:WM_DRAG_ARMED
+        beq _wlcl_not_dragging
+        lda WIN_SLOT
+        cmp WM_FOCUS
+        bne _wlcl_not_dragging
+        jmp _wdo_chrome_draw     ; draguée → direct (post-and-continue quand même)
+_wlcl_not_dragging:
+        lda WIN_SLOT
+        tax
+        lda f:WL_VALID,X
+        cmp #$A5
+        beq _wlcl_replay
+        ; (double-buffer : record dans l'autre buffer — zéro drain)
+        lda WIN_SLOT
+        jsr _wl_record_begin
+        jsr _wdo_chrome_draw    ; les helpers gfx émettent (WL_REC=$A5)
+        lda WIN_SLOT
+        jsr _wl_record_end
+_wlcl_replay:
+        lda WIN_SLOT
+        jmp _wl_exec            ; (rts là-bas)
 
 ; ════════════════════════════════════════════════════════════════════
 ;  SP-3.p D.1 — texte de dialogue (DB_TEXT) + message SYS_ALERT

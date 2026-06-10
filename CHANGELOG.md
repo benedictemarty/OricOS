@@ -8,6 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10l
+
+### Added — fenêtres = display-lists rejouables (ADR-34 C2a)
+
+Record/replay du chrome fenêtre : hooks WL_REC dans kernel_gfx_fill_rect16
+et kernel_gfx_text16 (_wl_emit_fill16/_wl_emit_text16 écrivent l'entrée 13 o
+dans la liste via VRAM port auto-inc). _wl_record_begin/_wl_record_end
+encadrent _wdo_chrome_draw ; redraw suivant : WL_VALID → UNE commande
+EXEC_LIST (routage par GPU_CAP_LIST_BIT). Listes par slot double-bufferées
+(WL_LISTS $013000, stride $400, flip → zéro drain au re-record).
+Invalidation _wl_invalidate sur 8 sites : wm_add, wm_close, set_focus (2
+slots), move_focused, _wm_do_resize, maximize, minimize, icon_add. Fenêtre
+draguée : chrome direct pendant WM_DRAG_ARMED (record/invalidate en boucle
+serait du gaspillage). fill16/text16 post-and-continue gated FIFO (poll
+QFULL avant trigger).
+
+### Added — ring de chaînes + double-buffer label (sûreté en vol)
+
+_tk_upload_str → TK_STR_RING ($016000, 32 slots ×32 o ≥ 2×FIFO) : une
+commande TEXT16 en vol ne peut plus pointer une chaîne réécrite (fermeture
+structurelle du bug « labels partagés »). kernel_tk_label_prop :
+double-buffer chaînes+liste (TK_LP_STR0/1, TK_LP_LIST0/1 — relocalisés
+$015600-$015FFF, l'ancien TK_LIST_SCRATCH $011100 écrasait les labels
+d'icônes $011200) + garde opportuniste TK_LP_PEND (drain seulement si la
+cible est en vol ET GPU BUSY). Barrières cursor_save/restore : drain APRÈS
+l'early-out CURSOR_VALID.
+
+### Added — segment GUICODE + garde bus flottant
+
+kernel.cfg : segment GUICODE $9200-$EDFF (CODE plein) ; _wdo_chrome_draw,
+_wm_draw_title_and_close et l'infrastructure _wl_* y vivent. boot.s :
+TRIGGER lu $FF (bus flottant, pas de GPU) → GPU_CAPS_KERNEL=0, tous les
+chemins listés retombent en sync. TICK_COUNTER relocalisé $019093.
+
+### Changed
+
+Gain mesuré (Phosphoric test-oricos-gpu-async, drag réel 60 Hz) :
+redraw_drag 13151→10184 cyc (−22 %). C2b tracé pour le critère −90 %
+(widgets listés + EXEC_LIST offset). AUDIT_REP_X_BASELINE 18→19.
+
 ## [Unreleased] - 2026-06-10k
 
 ### Added — display-list pour le label proportionnel (ADR-34 C1)

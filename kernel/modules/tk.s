@@ -40,6 +40,12 @@ kernel_tk_font_init:
 ;        GFX_COLOR (4-bit). ARG4 packé = color<<20 | y<<10 | x. Modifie A.
 .export kernel_gfx_text16
 kernel_gfx_text16:
+        ; ADR-34 C2 : en mode record, émet dans la display-list en cours.
+        lda f:WL_REC
+        cmp #$A5
+        bne _gt16_direct
+        jmp _wl_emit_text16
+_gt16_direct:
         ; BUG_curseur_fige_gpu_bpl §4.4 : section critique GPU atomique (guard+text16).
         ; text16 n'avait PAS de sei avant le fix — race possible avec IRQ mouse_step
         ; qui set_bpl. La poll busy (gfx_t16_wait) inclut sei pour ne pas tenir I=0
@@ -100,6 +106,20 @@ kernel_gfx_text16:
         asl a                   ; color<<4
         ora DP_TMP
         sta GPU_ARG4_HI_IO
+        ; ADR-34 C2 : post-and-continue si FIFO (cf. fill_rect16).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_FIFO_BIT
+        beq gfx_t16_sync
+gfx_t16_qwait:
+        lda GPU_STATUS_IO
+        and #GPU_ST_QFULL
+        bne gfx_t16_qwait
+        lda #GPU_OP_TEXT16
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        plp
+        rts
+gfx_t16_sync:
         lda #GPU_OP_TEXT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
@@ -166,11 +186,11 @@ ktw_done:
 ;    pour le GPU TEXT16 (null-terminated). GFX_STR = SCRATCH+2*i rend le
 ;    char i seul. Garde-fou TK_PROP_MAX. Clobbe A, Y. ──────────────────
 _tk_upload_str_spaced:
-        lda #<TK_STR_SCRATCH
+        lda f:TK_LP_STRB         ; base variable (double-buffer, ADR-34 C2)
         sta VRAM_ADDR_LO_IO
-        lda #>TK_STR_SCRATCH
+        lda f:TK_LP_STRB+1
         sta VRAM_ADDR_MID_IO
-        lda #^TK_STR_SCRATCH
+        lda f:TK_LP_STRB+2
         sta VRAM_ADDR_HI_IO
         ldy #$00
 _tuss_loop:
@@ -200,6 +220,12 @@ kernel_tk_label_prop:
         beq tklp_sync_path
         jmp _tklp_list
 tklp_sync_path:
+        lda #<TK_LP_STR0         ; chemin sync : buffer 0 fixe (consommation
+        sta f:TK_LP_STRB         ; immédiate commande par commande)
+        lda #>TK_LP_STR0
+        sta f:TK_LP_STRB+1
+        lda #^TK_LP_STR0
+        sta f:TK_LP_STRB+2
         jsr _tk_upload_str_spaced
         lda #$00
         sta GFX_BASE_LO
@@ -212,20 +238,20 @@ tklp_sync_path:
         sta GFX_FONT_MID
         lda #^TK_FONT_ADDR
         sta GFX_FONT_HI
-        lda #^TK_STR_SCRATCH
-        sta GFX_STR_HI           ; bank SDRAM constant
+        lda #^TK_LP_STR0
+        sta GFX_STR_HI           ; bank SDRAM constant (sync = buffer 0)
         ldy #$00
 tklp_loop:
         lda [DP_PCPTR],Y
         beq tklp_done
-        ; GFX_STR = TK_STR_SCRATCH + 2*Y (la « chaîne de 1 » du char Y)
+        ; GFX_STR = TK_LP_STR0 + 2*Y (la « chaîne de 1 » du char Y)
         phy
         tya
         asl a                    ; 2*Y (Y ≤ 63 → pas de carry)
         clc
-        adc #<TK_STR_SCRATCH
+        adc #<TK_LP_STR0
         sta GFX_STR_LO
-        lda #>TK_STR_SCRATCH
+        lda #>TK_LP_STR0
         adc #$00
         sta GFX_STR_MID
         jsr kernel_gfx_text16    ; rend 1 char à WM_ARG_X/Y (lit, ne clobbe pas)
@@ -298,15 +324,62 @@ _mts_open:
 ; commande EXEC_LIST. Pré-cond : GPU_CAPS_KERNEL bit LIST.
 ; Clobbe A, X, Y, WM_ARG_X (avance), DP_TMP.
 _tklp_list:
+        ; ── Double-buffer + garde opportuniste (ADR-34 C2) : on bascule de
+        ; buffer à chaque label ; drain SEULEMENT si le buffer cible a été
+        ; émis et que la FIFO est encore active (cas pathologique). En
+        ; régime normal : ZÉRO drain — le coût du pipeline (ex. clear
+        ; desktop ~98k cyc GPU) n'est plus payé par le label. ──
+        lda GPU_STATUS_IO
+        and #GPU_ST_BUSY
+        bne _tkl_busy
+        lda #$00                 ; FIFO vide → tout est sûr
+        sta f:TK_LP_PEND
+        sta f:TK_LP_PEND+1
+        bra _tkl_pick
+_tkl_busy:
+        lda f:TK_LP_FLIP
+        eor #$01
+        tax
+        lda f:TK_LP_PEND,X
+        beq _tkl_pick
+        jsr kernel_gfx_drain     ; cible encore en vol → barrière (rare)
+        lda #$00
+        sta f:TK_LP_PEND
+        sta f:TK_LP_PEND+1
+_tkl_pick:
+        lda f:TK_LP_FLIP
+        eor #$01
+        sta f:TK_LP_FLIP         ; bascule sur le buffer cible
+        bne _tkl_b1
+        lda #<TK_LP_STR0
+        sta f:TK_LP_STRB
+        lda #>TK_LP_STR0
+        sta f:TK_LP_STRB+1
+        lda #<TK_LP_LIST0
+        sta f:TK_LP_LISTB
+        lda #>TK_LP_LIST0
+        sta f:TK_LP_LISTB+1
+        bra _tkl_bases_done
+_tkl_b1:
+        lda #<TK_LP_STR1
+        sta f:TK_LP_STRB
+        lda #>TK_LP_STR1
+        sta f:TK_LP_STRB+1
+        lda #<TK_LP_LIST1
+        sta f:TK_LP_LISTB
+        lda #>TK_LP_LIST1
+        sta f:TK_LP_LISTB+1
+_tkl_bases_done:
+        lda #^TK_LP_STR0
+        sta f:TK_LP_STRB+2
+        lda #^TK_LP_LIST0
+        sta f:TK_LP_LISTB+2
         jsr _tk_upload_str_spaced
-        ; drain : un EXEC_LIST précédent peut encore référencer les scratch
-        ; (TK_STR_SCRATCH / TK_LIST_SCRATCH) — ne pas les réécrire sous lui.
-        jsr kernel_gfx_drain
-        lda #<TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB
         sta VRAM_ADDR_LO_IO
-        lda #>TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB+1
         sta VRAM_ADDR_MID_IO
-        lda #^TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB+2
         sta VRAM_ADDR_HI_IO
         ldy #$00
 _tkll_loop:
@@ -328,15 +401,15 @@ _tkll_emit:
         sta VRAM_DATA_IO
         lda #^TK_FONT_ADDR
         sta VRAM_DATA_IO
-        tya                      ; arg3 = TK_STR_SCRATCH + 2*Y (chaîne de 1)
+        tya                      ; arg3 = TK_LP_STRB + 2*Y (chaîne de 1)
         asl a
         clc
-        adc #<TK_STR_SCRATCH
+        adc f:TK_LP_STRB
         sta VRAM_DATA_IO
-        lda #>TK_STR_SCRATCH
+        lda f:TK_LP_STRB+1
         adc #$00
         sta VRAM_DATA_IO
-        lda #^TK_STR_SCRATCH
+        lda f:TK_LP_STRB+2
         sta VRAM_DATA_IO
         ; arg4 = color<<20 | y<<10 | x — même packing que kernel_gfx_text16.
         lda WM_ARG_X
@@ -395,16 +468,23 @@ _tkll_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
         bne _tkll_qwait
-        lda #<TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB
         sta GPU_ARG1_LO_IO
-        lda #>TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB+1
         sta GPU_ARG1_MID_IO
-        lda #^TK_LIST_SCRATCH
+        lda f:TK_LP_LISTB+2
         sta GPU_ARG1_HI_IO
         lda #GPU_OP_EXEC_LIST
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
         plp
+        ; marque ce buffer « en vol » (garde de réutilisation)
+        phx
+        lda f:TK_LP_FLIP
+        tax
+        lda #$01
+        sta f:TK_LP_PEND,X
+        plx
         rts
 
         .segment "CODE"
@@ -412,25 +492,46 @@ _tkll_qwait:
 ; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM
 ;    TK_STR_SCRATCH via VRAM_DATA (auto-inc). Garde-fou 255 octets. ─────
 _tk_upload_str:
-        lda #<TK_STR_SCRATCH
+        ; ADR-34 C2 : slot du RING (round-robin). Avec text16 en
+        ; post-and-continue, le scratch unique faisait pointer toutes les
+        ; commandes en vol sur le DERNIER texte — chaque upload a désormais
+        ; SON slot, stable le temps du vol (ring 32 ≥ 2×FIFO 16). Pose
+        ; GFX_STR sur le slot (les callers n'ont plus à le faire).
+        lda f:TK_STR_RING_IDX
+        inc a
+        and #$1F                 ; wrap 32
+        sta f:TK_STR_RING_IDX
+        rep #$20
+        and #$00FF
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a                    ; ×32
+        clc
+        adc #(TK_STR_RING & $FFFF)
+        sta f:WL_SCRATCH16       ; base du slot (16 bas)
+        sep #$20
+        lda f:WL_SCRATCH16
         sta VRAM_ADDR_LO_IO
-        lda #>TK_STR_SCRATCH
+        sta GFX_STR_LO
+        lda f:WL_SCRATCH16+1
         sta VRAM_ADDR_MID_IO
-        lda #^TK_STR_SCRATCH
+        sta GFX_STR_MID
+        lda #^TK_STR_RING
         sta VRAM_ADDR_HI_IO
-        rep #$10
-        ldy #$0000
+        sta GFX_STR_HI
+        ldy #$00
 _tus_loop:
         lda [DP_PCPTR],Y
         sta VRAM_DATA_IO         ; écrit l'octet (null inclus) + auto-inc
         beq _tus_done            ; Z = octet lu == 0 → terminateur écrit
         iny
-        cpy #$00FF
+        cpy #30                  ; 30 chars + terminateur ≤ 32 (slot)
         bcc _tus_loop
         lda #$00                 ; garde-fou : force terminateur
         sta VRAM_DATA_IO
 _tus_done:
-        sep #$10
         rts
 
 ; ── kernel_tk_label : texte à (WM_ARG_X,Y), GFX_COLOR, chaîne [DP_PCPTR]
@@ -449,12 +550,7 @@ kernel_tk_label:
         sta GFX_FONT_MID
         lda #^TK_FONT_ADDR
         sta GFX_FONT_HI
-        lda #<TK_STR_SCRATCH
-        sta GFX_STR_LO
-        lda #>TK_STR_SCRATCH
-        sta GFX_STR_MID
-        lda #^TK_STR_SCRATCH
-        sta GFX_STR_HI
+        ; (GFX_STR posé par _tk_upload_str — slot du ring)
         jsr kernel_gfx_text16
         rts
 
