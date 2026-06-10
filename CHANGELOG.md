@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10k
+
+### Added — display-list pour le label proportionnel (ADR-34 C1)
+
+kernel_tk_label_prop : si GPU_CAPS_KERNEL bit LIST, construit en SDRAM
+(TK_LIST_SCRATCH $011100, VRAM port auto-inc) une entrée TEXT16 de 13
+octets par caractère (packing arg4 identique à kernel_gfx_text16,
+positions proportionnelles précalculées) puis poste UNE commande
+EXEC_LIST. Drain en tête (les scratch peuvent être référencés par une
+liste en vol), pas de drain final. Carte sans LIST : boucle sync v1
+intacte. Équates GPU_OP_EXEC_LIST/GPU_LIST_END/GPU_CAP_LIST_BIT.
+Gain mesuré −48 % (Phosphoric test-oricos-gpu-async).
+
 ## [Unreleased] - 2026-06-10j
 
 ### Added — GPU-ISA v2 côté kernel (ADR-34 étape B)

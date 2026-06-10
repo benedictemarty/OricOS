@@ -191,6 +191,15 @@ _tuss_done:
 ;    FONT_WIDTHS. Clobbe A, X, Y, WM_ARG_X (avance cumulée). ───────────
 .export kernel_tk_label_prop
 kernel_tk_label_prop:
+        ; ADR-34 C : si la carte a les display-lists, le texte entier devient
+        ; UNE commande EXEC_LIST (N entrées TEXT16 construites en SDRAM) au
+        ; lieu de N commandes synchrones — l'IRQ/la tâche ne paie plus que la
+        ; construction. Carte sans listes → boucle sync v1 inchangée.
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_LIST_BIT
+        beq tklp_sync_path
+        jmp _tklp_list
+tklp_sync_path:
         jsr _tk_upload_str_spaced
         lda #$00
         sta GFX_BASE_LO
@@ -280,6 +289,122 @@ _mts_open:
         sep #$20
         lda #$00
         sta GFX_COLOR            ; texte noir sur fond blanc (inversion)
+        rts
+
+; ── _tklp_list : rendu proportionnel par DISPLAY-LIST (ADR-34 C). ──────
+; Construit en SDRAM (TK_LIST_SCRATCH, via VRAM port auto-inc) une entrée
+; TEXT16 de 13 octets par caractère — positions X précalculées (FONT_WIDTHS),
+; pointeurs vers les « chaînes de 1 » du buffer espacé — puis poste UNE
+; commande EXEC_LIST. Pré-cond : GPU_CAPS_KERNEL bit LIST.
+; Clobbe A, X, Y, WM_ARG_X (avance), DP_TMP.
+_tklp_list:
+        jsr _tk_upload_str_spaced
+        ; drain : un EXEC_LIST précédent peut encore référencer les scratch
+        ; (TK_STR_SCRATCH / TK_LIST_SCRATCH) — ne pas les réécrire sous lui.
+        jsr kernel_gfx_drain
+        lda #<TK_LIST_SCRATCH
+        sta VRAM_ADDR_LO_IO
+        lda #>TK_LIST_SCRATCH
+        sta VRAM_ADDR_MID_IO
+        lda #^TK_LIST_SCRATCH
+        sta VRAM_ADDR_HI_IO
+        ldy #$00
+_tkll_loop:
+        lda [DP_PCPTR],Y
+        bne _tkll_emit
+        jmp _tkll_end            ; (boucle > 127 octets — branch long)
+_tkll_emit:
+        ; ── entrée TEXT16 : [op][arg1×3][arg2×3][arg3×3][arg4×3] ──
+        lda #GPU_OP_TEXT16
+        sta VRAM_DATA_IO         ; op
+        lda #$00
+        sta VRAM_DATA_IO         ; arg1 = $100000 (framebuffer XVGA)
+        sta VRAM_DATA_IO
+        lda #$10
+        sta VRAM_DATA_IO
+        lda #<TK_FONT_ADDR
+        sta VRAM_DATA_IO         ; arg2 = fonte
+        lda #>TK_FONT_ADDR
+        sta VRAM_DATA_IO
+        lda #^TK_FONT_ADDR
+        sta VRAM_DATA_IO
+        tya                      ; arg3 = TK_STR_SCRATCH + 2*Y (chaîne de 1)
+        asl a
+        clc
+        adc #<TK_STR_SCRATCH
+        sta VRAM_DATA_IO
+        lda #>TK_STR_SCRATCH
+        adc #$00
+        sta VRAM_DATA_IO
+        lda #^TK_STR_SCRATCH
+        sta VRAM_DATA_IO
+        ; arg4 = color<<20 | y<<10 | x — même packing que kernel_gfx_text16.
+        lda WM_ARG_X
+        sta VRAM_DATA_IO         ; LO = x[7:0]
+        lda WM_ARG_X+1
+        and #$03
+        sta DP_TMP
+        lda WM_ARG_Y
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO         ; MID = y[5:0]<<2 | x[9:8]
+        lda WM_ARG_Y
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        lsr a
+        sta DP_TMP
+        lda WM_ARG_Y+1
+        and #$03
+        asl a
+        asl a
+        ora DP_TMP
+        sta DP_TMP
+        lda GFX_COLOR
+        asl a
+        asl a
+        asl a
+        asl a
+        ora DP_TMP
+        sta VRAM_DATA_IO         ; HI = color<<4 | y[9:6]
+        ; ── avance proportionnelle : WM_ARG_X += FONT_WIDTHS[char] ──
+        lda [DP_PCPTR],Y
+        and #$7F
+        tax
+        lda f:FONT_WIDTHS_FAR,X
+        rep #$20
+        and #$00FF
+        clc
+        adc WM_ARG_X
+        sta WM_ARG_X
+        sep #$20
+        iny
+        cpy #TK_PROP_MAX
+        bcs _tkll_end
+        jmp _tkll_loop           ; (boucle > 127 octets — branch long)
+_tkll_end:
+        lda #GPU_LIST_END
+        sta VRAM_DATA_IO         ; terminateur
+        ; ── poste EXEC_LIST (post-and-continue : pas de drain final) ──
+        php
+        sei                      ; commande GPU atomique vs IRQ (OS-gpu-race)
+_tkll_qwait:
+        lda GPU_STATUS_IO
+        and #GPU_ST_QFULL
+        bne _tkll_qwait
+        lda #<TK_LIST_SCRATCH
+        sta GPU_ARG1_LO_IO
+        lda #>TK_LIST_SCRATCH
+        sta GPU_ARG1_MID_IO
+        lda #^TK_LIST_SCRATCH
+        sta GPU_ARG1_HI_IO
+        lda #GPU_OP_EXEC_LIST
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO
+        plp
         rts
 
         .segment "CODE"

@@ -1125,6 +1125,11 @@ GFX_BPL_HI       = $91
 TK_FONT_ADDR     = $010000       ; fonte ASCII (1024 o) uploadée au boot (hors zone self-test VRAM $001000-$00C000)
 TK_STR_SCRATCH   = $011000       ; scratch SDRAM pour les chaînes de label
 GPU_OP_TEXT16    = $07           ; texte coords 16-bit (ADR-21, SP-3.d)
+GPU_OP_EXEC_LIST = $09           ; GPU-ISA v3 (ADR-34 C) : display-list en SDRAM
+GPU_LIST_END     = $FF           ; terminateur de display-list
+GPU_CAP_LIST_BIT = $40           ; GPU_CAPS_KERNEL : cap EXEC_LIST (<<4)
+TK_LIST_SCRATCH  = $011100       ; display-list du label proportionnel (64×13 o max,
+                                 ; après TK_STR_SCRATCH $011000-$0110FF, avant titres $012000)
 TK_COL_BORDER    = $0F           ; frame : blanc
 TK_COL_BTN_FACE  = $07           ; bouton : lightgray
 TK_COL_BTN_TEXT  = $00           ; bouton : texte noir
