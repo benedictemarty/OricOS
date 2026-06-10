@@ -152,6 +152,15 @@ BANK_POOL_END   = $80            ; dernier bank du pool + 1 (= $80, banks 4-127)
 BANK_FREE_LIST  = $0190A0       ; 16 bytes stack (banks libérés)
 BANK_FREE_TOP   = $0190B0       ; 1 byte (count 0..16)
 
+; ── ADR-32 §10.11 : buffer de sauvegarde ZP du chemin souris IRQ ────
+; kernel_irq_handler copie les scratch ZP $08-$93 (140 octets) ici avant
+; le bloc souris (mouse_read → mouse_step/drag → event_push_mouse) et les
+; restaure après : un syscall body préempté par une IRQ souris reprend
+; avec ses scratch (WM_ARG_*/WM_DP_TMP/GFX_*/EVT_TMP/VRAM_OP_*) intacts.
+; Une seule instance suffit : pas d'IRQ imbriquée (I=1 dans le handler).
+IRQ_ZP_SAVE     = $019100       ; 140 bytes ($019100-$01918B)
+IRQ_ZP_SAVE_LEN = $8C           ; 140 = $94-$08 (plage ZP $08..$93 incluse)
+
 ; ─── Bank allocator pool LIVE (Sprint VRAM-3, ADR-19 + ADR-20) ─────
 ; Pool live : banks 132-159 (= $84..$9F, 28 banks) en BRAM ECP5.
 ; Banks 128-131 ($80..$83) réservés au framebuffer principal XVGA

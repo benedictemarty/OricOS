@@ -69,7 +69,7 @@ audit-smart:
 # IRQ_CONFORMITE §3.3 A : détecte les nouveaux sites `rep #$10/#$30` (X 16-bit)
 # qui pourraient corrompre Y.hi si T1 fire pendant. Compte vs baseline auditée
 # (cf. handlers.s tableau du §3.3 A). Échoue si nouveau site non documenté.
-AUDIT_REP_X_BASELINE := 18
+AUDIT_REP_X_BASELINE := 20
 audit-rep-x:
 	@count=$$(grep -rnE 'rep #\$$[13][0-9a-fA-F]' kernel/modules/ kernel/kernel.s 2>/dev/null | grep -v '\.assert\|asize\|isize' | grep -v ':;' | wc -l); \
 	if [ "$$count" != "$(AUDIT_REP_X_BASELINE)" ]; then \

@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10c
+
+### Changed — Opt-A retiré, protection de classe ZP souris-drag (ADR-32 §10.11)
+
+Les sei/cli Opt-A de `sys_gfx_fill_rect`/`sys_win_flush` (fix de point du
+bug clock, devenu sans objet depuis la frame IRQ 16-bit §10.10) sont
+retirés. À la place, protection de CLASSE : `kernel_irq_handler` sauvegarde
+les scratch ZP $08-$93 (140 octets → `IRQ_ZP_SAVE` $019100, nouvelle
+constante kernel.s) avant le bloc souris (mouse_read → mouse_step/drag →
+event_push_mouse) et les restaure après — un body syscall préempté par une
+IRQ souris reprend avec WM_ARG_*/WM_DP_TMP/GFX_*/EVT_TMP/VRAM_OP_* intacts,
+quel que soit le syscall. Boucles 16-bit ~2×750 cyc payées uniquement sur
+IRQ avec event MOU2 (IRQ T1 pures inchangées). Validation rouge→vert :
+test-position-shift v2.2 (Phosphoric) ROUGE 20 corruptions sans la
+protection (GFX_COLOR $00→$0F : l'app aurait peint le framebuffer desktop),
+VERT 0/33 phases avec, IRQ-dans-fenêtre toujours exercées. Suite complète
+verte sans rebasage des budgets cycles. audit-rep-x baseline 18→20.
+
 ## [Unreleased] - 2026-06-10b
 
 ### Fixed — frame IRQ 16-bit (ADR-32 §10.10, option A validée par Bénédicte)

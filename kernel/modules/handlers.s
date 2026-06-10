@@ -187,7 +187,28 @@ kernel_irq_handler:
         ; kernel_mouse_read clear l'event (deassert IRQF_MOU2).
         lda MOU2_STATUS
         and #$80                ; bit7 = event
-        beq irq_no_mou
+        bne irq_mou_event
+        jmp irq_no_mou
+irq_mou_event:
+        ; ── ADR-32 §10.11 : sauvegarde des scratch ZP $08-$93 ──────
+        ; Le chemin souris (mouse_step → drag → redraw → event_push)
+        ; clobbe WM_ARG_*/WM_DP_TMP/GFX_*/EVT_TMP/VRAM_OP_* — un body
+        ; syscall préempté (cop_handler fait cli, ADR-03) les relirait
+        ; corrompus (rouge test-position-shift v2.2). Save ici, restore
+        ; à irq_mou_zp_restore : le body reprend avec ses scratch
+        ; intacts. Coût ~2×750 cyc, payé UNIQUEMENT sur IRQ souris
+        ; (les IRQ T1 pures ne passent pas ici). Remplace les sei
+        ; Opt-A par une protection de classe (tous les syscalls).
+        rep #$30
+        ldx #$0000
+irq_mou_zp_save:
+        lda $08,x               ; D=0 : ZP $08+X (16-bit par paire)
+        sta f:IRQ_ZP_SAVE,x
+        inx
+        inx
+        cpx #IRQ_ZP_SAVE_LEN
+        bcc irq_mou_zp_save
+        sep #$30
         jsr kernel_mouse_read
         ; ADR-32 §3 : si WM_TASKMODE=$A5 (anti-revert ADR-28 Étape 3), l'IRQ
         ; ne fait PAS mouse_step — c'est task_wm qui le fait après raw_pop
@@ -219,7 +240,22 @@ irq_mou_moved:
         lda #EV_MOUSE_MOVED
 irq_mou_post:
         jsr kernel_event_push_mouse
+        ; ── ADR-32 §10.11 : restauration des scratch ZP $08-$93 ────
+        rep #$30
+        ldx #$0000
+irq_mou_zp_restore:
+        lda f:IRQ_ZP_SAVE,x
+        sta $08,x
+        inx
+        inx
+        cpx #IRQ_ZP_SAVE_LEN
+        bcc irq_mou_zp_restore
+        sep #$30
 irq_no_mou:
+        ; Convention .smart (CLAUDE.md OricOS) : label atteint par jmp en
+        ; M=8/X=8 ; le sep #$30 ci-dessus couvre aussi le fall-through.
+        .a8
+        .i8
         ; ── OS-2.d (ADR-22) : draine la FIFO KBD2 → ring ───────────
         ; IRQ_CONFORMITE §3.4 : optimisation envisagée (court-circuit si
         ; KBD2_STATUS bit7 = 0) testée mais cassait des sentinelles
