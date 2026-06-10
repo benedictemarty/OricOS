@@ -210,6 +210,7 @@ kernel_wm_init:
         sta WIDGET_ACTIVE        ; SP-3.d v0.3 : aucun bouton actif
         lda #$FF
         sta MENU_OPEN            ; SP-3.d v0.5 : menu fermé ($FF)
+        sta MENU_HOVER           ; SP-GUI M.2 : aucun item survolé
         ; ADR-34 C2b : flags coalescing/dirty-rect du geste
         lda #$00
         sta f:WM_RD_SKIPPED
@@ -341,6 +342,27 @@ wm_add_init:
         lda #$00
         sta VRAM_OP_LEN_HI
         jsr kernel_vram_write_block
+        ; SP-GUI : copie AUSSI le titre en bank 1 (WM_TITLES_B1 + id*32)
+        ; pour le rendu proportionnel (label_prop lit côté CPU).
+        lda DP_TMP               ; id (≤ 7)
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a                    ; ×32
+        tax
+        ldy #$00
+_kwa_tb1_loop:
+        lda [DP_PCPTR],Y
+        sta f:WM_TITLES_B1,X
+        beq _kwa_tb1_done        ; terminateur copié
+        inx
+        iny
+        cpy #31
+        bcc _kwa_tb1_loop
+        lda #$00
+        sta f:WM_TITLES_B1,X     ; tronque : terminateur forcé
+_kwa_tb1_done:
         ; Set flag titre = $01 (présent)
         ldx DP_TMP               ; id
         lda #$01
@@ -1665,18 +1687,23 @@ _wm_draw_title_and_close:
         lda WM_TITLES,X          ; flag : $01 = titre présent
         beq _wm_dtc_close        ; $00 → pas de titre → bouton X direct
 
-        ; TEXT16 : dessine le titre depuis SDRAM $012000+slot*$100 à (win_x+4, win_y+3).
-        ; Calcule l'adresse SDRAM du titre : MID = $20 + slot, LO = $00, HI = $01.
+        ; SP-GUI : titre PROPORTIONNEL (GeoWorks) depuis la copie bank 1
+        ; (WM_TITLES_B1 + slot*32) à (win_x+4, win_y+3). label_prop gère
+        ; le record C2b (émission char par char, buffer espacé en arène).
         lda WIN_SLOT
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a                    ; ×32
         clc
-        adc #WM_SDRAM_TITLE_BASE_MID ; $20 + slot
-        sta GFX_STR_MID
+        adc #<WM_TITLES_B1
+        sta DP_PCPTR
         lda #$00
-        sta GFX_STR_LO
+        adc #>WM_TITLES_B1
+        sta DP_PCPTR+1
         lda #$01
-        sta GFX_STR_HI           ; str = $012000 + slot*$100
-
-        ; Coords TEXT16 : win_x+4, win_y+3 (lus depuis WM_TABLE)
+        sta DP_PCPTR+2           ; bank 1
         lda WIN_SLOT
         jsr kernel_wm_offset     ; X = slot*10
         rep #$20
@@ -1689,20 +1716,9 @@ _wm_draw_title_and_close:
         adc #3
         sta WM_ARG_Y             ; win_y + 3
         sep #$20
-        lda #$00
-        sta GFX_BASE_LO
-        sta GFX_BASE_MID
-        lda #$10
-        sta GFX_BASE_HI          ; base = $100000 (XVGA desktop)
-        lda #<TK_FONT_ADDR
-        sta GFX_FONT_LO
-        lda #>TK_FONT_ADDR
-        sta GFX_FONT_MID
-        lda #$01
-        sta GFX_FONT_HI          ; font = $010000 (bank 1)
         lda #$0F
         sta GFX_COLOR            ; white
-        jsr kernel_gfx_text16    ; GPU_OP_TEXT16 (WM_ARG_X/Y = coords 16-bit)
+        jsr kernel_tk_label_prop
 
 _wm_dtc_close:
         ; ── Bouton fermer "X" (v0.2) ──────────────────────────────────
@@ -2199,18 +2215,27 @@ _tb_setcol:
         tax
         lda WM_TITLES,X
         beq _tb_no_title
-        ; Titre présent.
+        ; Titre présent : copie bank 1 (WM_TITLES_B1 + slot*32) → prop.
         lda TB_I
+        asl a
+        asl a
+        asl a
+        asl a
+        asl a                    ; ×32
         clc
-        adc #WM_SDRAM_TITLE_BASE_MID  ; $20 + slot
-        sta GFX_STR_MID
+        adc #<WM_TITLES_B1
+        sta DP_PCPTR
         lda #$00
-        sta GFX_STR_LO
+        adc #>WM_TITLES_B1
+        sta DP_PCPTR+1
         lda #$01
-        sta GFX_STR_HI           ; STR addr = $01_(20+slot)_00
+        sta DP_PCPTR+2
         bra _tb_do_text
 _tb_no_title:
-        ; Génère "WinN\0" (5 bytes) dans TB_WIN_SCRATCH (bank 1 RAM).
+        ; Génère "WinN\0" (5 bytes) dans TB_WIN_SCRATCH (bank 1 RAM) —
+        ; SP-GUI : rendu prop direct depuis bank 1, plus d'upload SDRAM
+        ; (le scratch partagé TB_WIN_SDRAM disparaît : sous record C2b,
+        ; chaque label a ses chars dans l'arène, stables par construction).
         lda #'W'
         sta TB_WIN_SCRATCH+0
         lda #'i'
@@ -2223,32 +2248,14 @@ _tb_no_title:
         sta TB_WIN_SCRATCH+3     ; '0'+slot
         lda #$00
         sta TB_WIN_SCRATCH+4
-        ; Upload vers SDRAM TB_WIN_SDRAM ($011100).
         lda #<TB_WIN_SCRATCH
         sta DP_PCPTR
         lda #>TB_WIN_SCRATCH
         sta DP_PCPTR+1
         lda #$01
         sta DP_PCPTR+2
-        lda #<TB_WIN_SDRAM
-        sta VRAM_OP_ADDR_LO
-        lda #>TB_WIN_SDRAM
-        sta VRAM_OP_ADDR_MID
-        lda #$00
-        sta VRAM_OP_ADDR_HI
-        lda #$05
-        sta VRAM_OP_LEN_LO
-        lda #$00
-        sta VRAM_OP_LEN_HI
-        jsr kernel_vram_write_block
-        lda #<TB_WIN_SDRAM
-        sta GFX_STR_LO
-        lda #>TB_WIN_SDRAM
-        sta GFX_STR_MID
-        lda #$00
-        sta GFX_STR_HI
 _tb_do_text:
-        ; TEXT16 à (TB_BTN_X+4, TB_BTN_TY), blanc, fonte TK_FONT_ADDR.
+        ; SP-GUI : label PROPORTIONNEL à (TB_BTN_X+4, TB_BTN_TY), blanc.
         rep #$20
         lda TB_BTN_X
         clc
@@ -2257,20 +2264,9 @@ _tb_do_text:
         lda #TB_BTN_TY
         sta WM_ARG_Y
         sep #$20
-        lda #$00
-        sta GFX_BASE_LO
-        sta GFX_BASE_MID
-        lda #$10
-        sta GFX_BASE_HI
-        lda #<TK_FONT_ADDR
-        sta GFX_FONT_LO
-        lda #>TK_FONT_ADDR
-        sta GFX_FONT_MID
-        lda #$01
-        sta GFX_FONT_HI
         lda #$0F                 ; blanc
         sta GFX_COLOR
-        jsr kernel_gfx_text16
+        jsr kernel_tk_label_prop
 _tb_draw_advance:
         ; Avance TB_BTN_X uniquement pour les slots UTILISÉS (boutons contigus).
         rep #$20
@@ -2551,6 +2547,12 @@ _wm_mouse_step_body:
         bne _wms_no_catchup
         jsr kernel_wm_redraw_drag
 _wms_no_catchup:
+        ; SP-GUI M.2 : menu ouvert → tracking du survol d'item (GeoWorks).
+        lda MENU_OPEN
+        cmp #$FF
+        beq _wms_no_hover
+        jsr _menu_hover_track
+_wms_no_hover:
         jsr kernel_wm_cursor_blit
         rts
 wm_step_pressed:
@@ -5824,6 +5826,59 @@ _row_dis:
         sep #$20
         .a8
         clc
+        rts
+
+; ── _menu_hover_track : menu ouvert + motion → MENU_HOVER = item du
+;    dropdown sous la souris (0/1, $FF hors dropdown). Sur changement :
+;    liste menu (9) invalidée + menu redessiné (GeoWorks : l'item sous
+;    le curseur s'inverse). Lit MOUSE_X/Y (event-source §5bis : posés
+;    par install_event_state en taskmode). Clobbe A, X, Y. ─────────────
+_menu_hover_track:
+        lda MENU_OPEN
+        sta MENU_I
+        jsr _menu_setbase        ; DP_PCPTR = entrée menu_defs
+        ldy #2
+        lda [DP_PCPTR],Y         ; bar_x (8-bit)
+        rep #$20
+        and #$00FF
+        sta WG_RELX
+        lda MOUSE_X              ; x ∈ [bar_x, bar_x+64) ?
+        cmp WG_RELX
+        bcc _mht_none16
+        lda WG_RELX
+        clc
+        adc #64
+        sta WG_RELW
+        lda MOUSE_X
+        cmp WG_RELW
+        bcs _mht_none16
+        lda MOUSE_Y              ; y : [14,26) → item0 ; [26,38) → item1
+        cmp #MENU_BAR_H
+        bcc _mht_none16
+        cmp #38
+        bcs _mht_none16
+        cmp #26
+        sep #$20
+        .a8
+        bcs _mht_it1
+        lda #$00
+        bra _mht_have
+_mht_it1:
+        .a8                      ; (atteint par bcs depuis région M=8)
+        lda #$01
+        bra _mht_have
+_mht_none16:
+        .a16                     ; (atteint par bcc/bcs depuis région M=16)
+        sep #$20
+        .a8
+        lda #$FF
+_mht_have:
+        cmp MENU_HOVER
+        beq _mht_done            ; inchangé → rien à repeindre
+        sta MENU_HOVER
+        jsr _wl_inval_menu       ; le contenu du dropdown change (liste 9)
+        jsr kernel_menu_draw     ; repaint menu (replay ; taskbar chaînée)
+_mht_done:
         rts
 
 ; ── _wl_inval_menu / _wl_inval_taskbar : invalident les listes 9/10.

@@ -859,6 +859,8 @@ CB_FLAG          = $015A87       ; 1B : compteur démo (clics sur "OK")
 ; ── SP-3.d v0.5/v0.6 : barre de menu déroulant (table de N menus) ─────
 MENU_OPEN        = $015A88       ; 1B : index menu ouvert, ou $FF=fermé
 MENU_I           = $015A89       ; 1B : index boucle menu
+MENU_HOVER       = $015A8A       ; 1B : item du dropdown sous la souris (0/1,
+                                 ;   $FF=aucun) — surlignage GeoWorks (SP-GUI M.2)
 MENU_BAR_H       = 14            ; hauteur barre de menu (px)
 MENU_N           = 2             ; nb de menus dans la barre (top-level static)
 MENU_TOTAL_N     = 4             ; nb total de menus en table (top + submenus dyn, ADR-30 post-clôture)
@@ -1107,7 +1109,12 @@ BUTTON_LABELS    = $016A00      ; 8 × 16 = 128B bank 1, label par widget id
 ; SP-3.p D.1 : texte des dialogues (DB_TEXT / message SYS_ALERT), copié du
 ; bank app vers bank 1 (le rendu widget lit strptr en bank 1).
 DLG_TEXT_BUF     = $016A80      ; 64B bank 1 (63 chars + terminateur)
-.assert DLG_TEXT_BUF + 64 <= $017000, error, "DLG_TEXT_BUF chevauche BUNDLES"
+; SP-GUI : copie bank 1 des titres de fenêtres (rendu PROPORTIONNEL —
+; label_prop lit [DP_PCPTR] côté CPU ; la copie SDRAM $012000 reste pour
+; compat). 8 slots × 32 o.
+WM_TITLES_B1     = $016B00      ; 256B bank 1 ($016B00-$016BFF)
+.assert DLG_TEXT_BUF + 64 <= WM_TITLES_B1, error, "DLG_TEXT_BUF chevauche WM_TITLES_B1"
+.assert WM_TITLES_B1 + 256 <= $017000, error, "WM_TITLES_B1 chevauche BUNDLES"
 .assert WM_COMPACT_FLAGS + 8 <= $01EE00, error, "WM_COMPACT_FLAGS chevauche TC flags"
 .assert WCMP_SLOT_ID < $01EE00, error, "WCMP_SLOT_ID chevauche TC flags"
 .assert WM_NO_BACKING_FLAGS + 8 <= $01EE00, error, "WM_NO_BACKING_FLAGS chevauche TC flags"

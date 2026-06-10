@@ -750,20 +750,37 @@ _tkb_face_set:
         lda #TK_COL_BORDER
         sta GFX_COLOR
         jsr kernel_tk_frame
-        ; 3. label noir à (x+4, y+2) — DP_PCPTR inchangé depuis l'appel.
+        ; 3. label noir CENTRÉ (SP-GUI : GeoWorks) en PROPORTIONNEL —
+        ; x = TK_X + (w − text_width)/2, y = TK_Y + (h − 8)/2.
+        ; DP_PCPTR inchangé depuis l'appel (text_width le préserve).
+        jsr kernel_tk_text_width ; → WM_ARG_W = largeur rendue prop.
         rep #$20
-        lda TK_X
+        lda TK_W
+        sec
+        sbc WM_ARG_W
+        bpl _tkb_cw_ok
+        lda #$0008               ; label plus large que le bouton → marge 4
+_tkb_cw_ok:
+        .a16
+        lsr a
         clc
-        adc #4
+        adc TK_X
         sta WM_ARG_X
-        lda TK_Y
+        lda TK_H
+        sec
+        sbc #8                   ; hauteur fonte
+        bpl _tkb_ch_ok
+        lda #$0004               ; bouton plus bas que la fonte → marge 2
+_tkb_ch_ok:
+        .a16
+        lsr a
         clc
-        adc #2
+        adc TK_Y
         sta WM_ARG_Y
         sep #$20
         lda #TK_COL_BTN_TEXT
         sta GFX_COLOR
-        jsr kernel_tk_label
+        jsr kernel_tk_label_prop
         rts
 
 ; ── kernel_tk_text_field : champ texte éditable (SP-3.o S.4b) ────────────────
@@ -1784,6 +1801,8 @@ _menu_setbase:
         rts
 
 ; ── kernel_menu_draw : barre (titres des N menus) + dropdown si ouvert ─
+; En GUICODE (SP-GUI M.2 : CODE plein).
+        .segment "GUICODE"
 .export kernel_menu_draw
 kernel_menu_draw:
         ; C2b dirty-rect : pendant redraw_drag, la barre (y < MENU_BAR_H)
@@ -1879,7 +1898,7 @@ _mdl_title_cmp_done:
         pla
         sta DP_PCPTR             ; (DP_PCPTR+2 reste $01)
         jsr _menu_title_style    ; SP-3.p M.1 : inversion si MENU_I == MENU_OPEN
-        jsr kernel_tk_label
+        jsr kernel_tk_label_prop ; SP-GUI : titres de menus proportionnels
         lda MENU_I
         inc a
         sta MENU_I
@@ -1943,7 +1962,29 @@ _mdl_open:
         lda #$0F
         sta GFX_COLOR
         jsr kernel_tk_frame
-        ; item0 (bar_x+4, 16) noir
+        ; ── item0 (bar_x+4, 16) — SP-GUI M.2 : inversé si survolé ──
+        lda MENU_HOVER
+        cmp #$00
+        bne _kmd_it0_norm
+        rep #$20
+        lda WG_RELX              ; barre d'inversion : (bar_x, 14, 64, 12)
+        sta WM_ARG_X
+        lda #MENU_BAR_H
+        sta WM_ARG_Y
+        lda #64
+        sta WM_ARG_W
+        lda #12
+        sta WM_ARG_H
+        sep #$20
+        lda #$00                 ; fond noir (inversion GeoWorks)
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        lda #$0F                 ; texte blanc
+        bra _kmd_it0_col
+_kmd_it0_norm:
+        lda #$00                 ; texte noir
+_kmd_it0_col:
+        pha
         rep #$20
         lda WG_RELX
         clc
@@ -1952,7 +1993,7 @@ _mdl_open:
         lda #16
         sta WM_ARG_Y
         sep #$20
-        lda #$00
+        pla
         sta GFX_COLOR
         lda WG_RELY
         sta DP_PCPTR
@@ -1960,8 +2001,30 @@ _mdl_open:
         sta DP_PCPTR+1
         lda #$01
         sta DP_PCPTR+2
-        jsr kernel_tk_label
-        ; item1 (bar_x+4, 26) noir
+        jsr kernel_tk_label_prop ; SP-GUI : items proportionnels
+        ; ── item1 (bar_x+4, 26) — inversé si survolé ──
+        lda MENU_HOVER
+        cmp #$01
+        bne _kmd_it1_norm
+        rep #$20
+        lda WG_RELX              ; barre d'inversion : (bar_x, 26, 64, 12)
+        sta WM_ARG_X
+        lda #26
+        sta WM_ARG_Y
+        lda #64
+        sta WM_ARG_W
+        lda #12
+        sta WM_ARG_H
+        sep #$20
+        lda #$00
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        lda #$0F                 ; texte blanc
+        bra _kmd_it1_col
+_kmd_it1_norm:
+        lda #$00                 ; texte noir
+_kmd_it1_col:
+        pha
         rep #$20
         lda WG_RELX
         clc
@@ -1970,7 +2033,7 @@ _mdl_open:
         lda #26
         sta WM_ARG_Y
         sep #$20
-        lda #$00
+        pla
         sta GFX_COLOR
         lda WG_RELW
         sta DP_PCPTR
@@ -1978,8 +2041,10 @@ _mdl_open:
         sta DP_PCPTR+1
         lda #$01
         sta DP_PCPTR+2
-        jsr kernel_tk_label
+        jsr kernel_tk_label_prop ; SP-GUI : items proportionnels
         rts                      ; C2b : fin du corps (taskbar chaînée par le caller)
+
+        .segment "CODE"
 
 ; ── kernel_menu_handle_click : ouvre/ferme + invoque l'item. ──────────
 ; Lit MOUSE_X/Y. A=1 si consommé, A=0 sinon. (SP-3.d v0.6, table-driven)
@@ -2037,6 +2102,8 @@ _mhc_tl_go:
         sep #$20                 ; HIT titre MENU_I → ouvrir
         lda MENU_I
         sta MENU_OPEN
+        lda #$FF
+        sta MENU_HOVER           ; SP-GUI M.2 : reset survol à l'ouverture
         jsr _wl_inval_menu       ; ADR-34 C2b : contenu barre/dropdown change
         lda #$01
         rts
@@ -2108,6 +2175,8 @@ _mhc_invoke:
         bne _mhc_invoke_normal
         lda WG_CB_VEC            ; submenu_idx
         sta MENU_OPEN            ; bascule sur le submenu (sa propre dropdown)
+        lda #$FF
+        sta MENU_HOVER           ; SP-GUI M.2
         jsr _wl_inval_menu       ; ADR-34 C2b
         pla                      ; cleanup item_id sur la pile
         lda #$01                 ; consommé
@@ -2115,6 +2184,7 @@ _mhc_invoke:
 _mhc_invoke_normal:
         lda #$FF
         sta MENU_OPEN            ; ferme
+        sta MENU_HOVER           ; SP-GUI M.2
         jsr _wl_inval_menu       ; ADR-34 C2b
         lda WG_CB_VEC
         ora WG_CB_VEC+1
@@ -2149,6 +2219,7 @@ _mhc_close:
         sep #$20
         lda #$FF
         sta MENU_OPEN
+        sta MENU_HOVER           ; SP-GUI M.2
         jsr _wl_inval_menu       ; ADR-34 C2b
         lda #$01
         rts

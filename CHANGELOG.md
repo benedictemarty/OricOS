@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10p
+
+### Added — sprint « suite GUI » : hover menu, centrage, proportionnel partout
+
+Trois briques GeoWorks (réf feedback-gui-direction) :
+- **Item de menu survolé inversé** (SP-GUI M.2) : MENU_HOVER ($015A8A) +
+  _menu_hover_track dans le chemin motion (menu ouvert) — hit-test des
+  2 rows du dropdown, sur changement : invalidation liste 9 + repaint.
+  Barre d'inversion noire pleine largeur + texte blanc (pattern GEOS).
+  Reset à l'ouverture/fermeture/bascule submenu.
+- **Labels de boutons centrés** : kernel_tk_button rend le label en
+  PROPORTIONNEL, centré H (x+(w−text_width)/2) et V (y+(h−8)/2), clamp
+  si label plus large que le bouton.
+- **Proportionnel généralisé** : titres de fenêtres (copie bank 1
+  WM_TITLES_B1 $016B00 posée par kernel_wm_add — label_prop lit côté
+  CPU ; la copie SDRAM $012000 reste pour compat), titres et items de
+  menus, boutons de taskbar (le scratch SDRAM partagé TB_WIN_SDRAM
+  disparaît : chaque label passe par l'arène C2b, stable par
+  construction). Compatible record display-lists (émission par char).
+kernel_menu_draw déplacé en GUICODE (CODE plein).
+
 ## [Unreleased] - 2026-06-10o
 
 ### Fixed — clignotement au resize (retour interactif post-bascule)
