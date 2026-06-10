@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10j
+
+### Added — GPU-ISA v2 côté kernel (ADR-34 étape B)
+
+- `GPU_CAPS_KERNEL` ($019094) : capabilities lues au boot (read
+  GPU_TRIGGER = caps<<4|version ; carte v1 → 0). L'OS route selon les
+  CAPACITÉS, jamais selon l'identité de la carte — contrat GPU-ISA.
+- `kernel_gfx_blit_post` (poste sans drain, wait seulement si QFULL) +
+  `kernel_gfx_drain` (barrière) — segment GUICODE.
+- `kernel_wm_compose` : post-and-continue si cap FIFO (sync intact pour
+  carte v1), sans drain final — audit des 3 callers (task_wdraw_loop,
+  task_compact_loop, sys_win_flush) : aucun ne relit la SDRAM. Gain
+  mesuré −52 % de cycles CPU (test-oricos-gpu-async, Phosphoric).
+
 ## [Unreleased] - 2026-06-10i
 
 ### Clos — bug task_wm_starve (note event.s refermée, cause prouvée)

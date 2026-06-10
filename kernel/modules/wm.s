@@ -1301,7 +1301,16 @@ wcmp_default_stride:
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
 wcmp_do_blit:
+        ; ADR-34 B : post-and-continue si la carte a la FIFO (caps), sinon
+        ; chemin sync v1 — l'OS s'adapte aux capacités (contrat GPU-ISA).
+        lda f:GPU_CAPS_KERNEL
+        and #GPU_CAP_FIFO_BIT
+        beq wcmp_blit_sync
+        jsr kernel_gfx_blit_post        ; poste, le GPU enchaîne sans bulle
+        bra wcmp_blit_done
+wcmp_blit_sync:
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
+wcmp_blit_done:
 wcmp_next:
         lda WCMP_SLOT
         inc a
@@ -1322,6 +1331,15 @@ wcmp_done:
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
 wcmp_really_done:
+        ; ADR-34 B : PAS de drain — compose POSTE la composition et rend la
+        ; main, le GPU finit en parallèle (l'affichage rattrape à la frame
+        ; suivante : sémantique async normale). Audit des 3 callers
+        ; (task_wdraw_loop, task_compact_loop, sys_win_flush) : aucun ne
+        ; relit la SDRAM après compose. Tout futur lecteur CPU des zones
+        ; composées DOIT appeler kernel_gfx_drain d'abord. Les helpers gfx
+        ; sync qui suivent (fill_rect/...) restent corrects : leur poll BUSY
+        ; attend la file — ordre FIFO préservé. Carte v1 : no-op (les blits
+        ; sync ont déjà tout exécuté).
         plp
         rts
 

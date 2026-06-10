@@ -32,6 +32,12 @@ kernel_entry:
         ; ── OS-2.i.v2 : init log ring buffer (tôt, avant tout log/panic) ──
         jsr kernel_log_init
 
+        ; ── ADR-34 B : découverte GPU-ISA (caps<<4 | version). Une carte v1
+        ; lit 0 → l'OS reste sur les chemins sync. Contrat : s'adapter aux
+        ; CAPACITÉS, jamais à l'identité de la carte. ──
+        lda GPU_TRIGGER_IO
+        sta GPU_CAPS_KERNEL
+
         ; ── PH-cleanup-zombie (2026-05-09) ─────────────────────────
         ; Sprints 3.a/3.b kernel_hires2_clear + kernel_fill_rect_aligned
         ; retirés : code legacy ADR-19 v2 (écrivait en bank $80 = ex-VRAM

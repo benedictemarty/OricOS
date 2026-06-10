@@ -59,6 +59,13 @@
 ; (Phosphoric, make tests). Nouvelle adresse : zone data runtime $90xx,
 ; entre CURSOR_X ($9092) et BANK_FREE_LIST ($90A0).
 TICK_COUNTER    = $019093       ; 1B counter (tick T1, incrémenté par l'IRQ)
+; ADR-34 étape B (GPU-ISA v2) : capabilities lues au boot (read GPU_TRIGGER_IO
+; = caps<<4 | version ; 0 = carte v1 sans FIFO). L'OS route ses chemins gfx
+; selon CES bits, jamais selon l'identité de la carte — contrat ISA.
+GPU_CAPS_KERNEL = $019094       ; 1B : caps<<4 | version
+GPU_CAP_FIFO_BIT = $10          ; bit 4 : FIFO async disponible
+GPU_ST_QFULL    = $20           ; STATUS bit 5 : FIFO pleine
+GPU_ST_BUSY     = $80           ; STATUS bit 7 : busy
 ; SP-3.o S.4c : SENTINEL/VERSION relocalisés de $015000/$015010 vers la zone
 ; haute libre. Motif : le segment CODE a grandi au-delà de $5000 (toolkit
 ; widgets) et écrasait ces données runtime → corruption.
@@ -1218,7 +1225,8 @@ T1_PERIOD_HI    = $10
 .assert (__CODE_LOAD__ + __CODE_SIZE__) <= $5500, error, "CODE deborde le segment NMI_HANDLER ($5500)"
 ; ADR-32 §10.13 : TICK_COUNTER vit entre CURSOR_X et BANK_FREE_LIST.
 .assert CURSOR_X + 1     <= TICK_COUNTER,    error, "overlap CURSOR_X/TICK_COUNTER"
-.assert TICK_COUNTER + 1 <= BANK_FREE_LIST,  error, "overlap TICK_COUNTER/BANK_FREE_LIST"
+.assert TICK_COUNTER + 1 <= GPU_CAPS_KERNEL, error, "overlap TICK_COUNTER/GPU_CAPS_KERNEL"
+.assert GPU_CAPS_KERNEL + 1 <= BANK_FREE_LIST, error, "overlap GPU_CAPS_KERNEL/BANK_FREE_LIST"
 
 ; ── Cluster dense WM / ICON / TCB ($5A00-$5D40) ───────────────────────
 .assert WIDGET_TABLE + WM_MAX*16   <= WIDGET_COUNT,    error, "overlap WIDGET_TABLE"

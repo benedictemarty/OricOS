@@ -352,6 +352,65 @@ gfx_blit_done:
         rts
 
 ; ════════════════════════════════════════════════════════════════════
+;  ADR-34 étape B (GPU-ISA v2) — post-and-continue
+; ════════════════════════════════════════════════════════════════════
+        .segment "GUICODE"
+
+; ── kernel_gfx_blit_post : comme kernel_gfx_blit mais SANS drain final —
+;    attend seulement si la FIFO est pleine (QFULL) avant de poster. Le GPU
+;    exécute pendant que le CPU prépare la commande suivante. L'appelant
+;    DOIT drainer (kernel_gfx_drain) avant toute lecture CPU de la zone
+;    écrite. Pré-cond : GPU_CAPS_KERNEL bit FIFO (sinon utiliser blit sync).
+.export kernel_gfx_blit_post
+kernel_gfx_blit_post:
+        php                     ; OS-gpu-race : post atomique vs IRQ
+        sei
+gfx_bp_qwait:
+        lda GPU_STATUS_IO
+        and #GPU_ST_QFULL
+        bne gfx_bp_qwait        ; FIFO pleine → attend UNE place (pas le vide)
+        lda GFX_BASE_LO
+        sta GPU_ARG1_LO_IO
+        lda GFX_BASE_MID
+        sta GPU_ARG1_MID_IO
+        lda GFX_BASE_HI
+        sta GPU_ARG1_HI_IO
+        lda GFX_ARG2_LO
+        sta GPU_ARG2_LO_IO
+        lda GFX_ARG2_MID
+        sta GPU_ARG2_MID_IO
+        lda GFX_ARG2_HI
+        sta GPU_ARG2_HI_IO
+        lda GFX_ARG3_LO
+        sta GPU_ARG3_LO_IO
+        lda GFX_ARG3_MID
+        sta GPU_ARG3_MID_IO
+        lda #$00
+        sta GPU_ARG3_HI_IO
+        lda GFX_ARG4_LO
+        sta GPU_ARG4_LO_IO
+        lda GFX_ARG4_MID
+        sta GPU_ARG4_MID_IO
+        lda #$00
+        sta GPU_ARG4_HI_IO
+        lda #GPU_OP_BLIT
+        sta GPU_CMD_OP_IO
+        sta GPU_TRIGGER_IO      ; poste — PAS de wait : le CPU continue
+        plp
+        rts
+
+; ── kernel_gfx_drain : barrière — attend la FIFO vide (toutes les commandes
+;    postées exécutées). Obligatoire avant lecture CPU des zones écrites. ──
+.export kernel_gfx_drain
+kernel_gfx_drain:
+        lda GPU_STATUS_IO
+        and #GPU_ST_BUSY
+        bne kernel_gfx_drain
+        rts
+
+        .segment "CODE"
+
+; ════════════════════════════════════════════════════════════════════
 ;  kernel_gfx_line — exec GPU LINE Bresenham via I/O (Sprint GPU-3 v0.2)
 ; ════════════════════════════════════════════════════════════════════
 ;
