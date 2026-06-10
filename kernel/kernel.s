@@ -1000,6 +1000,11 @@ TC_FILESELECT_FLAG = $01EEB0      ; $A5 → spawn bundle_fileselect (file select
 TC_SCOREAPP_FLAG = $01EE80        ; ADR-30 capstone : $A5 → spawn bundle_score (app C démo
                                   ; complète exerçant FIELD + BUTTONs + MENU + set_value)
 TC_WM_FLAG       = $01EE60        ; ADR-28 Étape 2 : $A5 → crée task_wm (serveur WM passe-plat)
+                                  ;   BASCULE 2026-06-10 : posé $A5 PAR LE BOOT par défaut
+TC_WM_LEGACY     = $01EE90        ; ADR-28 bascule : $A5 (poké pré-boot par --wm-legacy ou
+                                  ;   un test) → opt-out explicite : pas de task_wm, l'IRQ
+                                  ;   rend comme avant (chemin legacy conservé et testé)
+PANIC_NO_TASK_SLOT = $E8          ; R5 : kernel_task_create → 0 pour une tâche SYSTÈME
 WM_TASKMODE      = $01EE68        ; ADR-32 §3 : $A5 → IRQ skip mouse_step + task_wm le fait
                                   ; (anti-revert ADR-28 Étape 3 ; default $00 = comportement
                                   ; actuel ; rollback runtime instantané possible)

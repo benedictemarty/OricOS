@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10n
+
+### Changed — BASCULE : WM_TASKMODE devient le mode par défaut (ADR-28 §8)
+
+Le boot pose TC_WM_FLAG = WM_TASKMODE = $A5 et crée task_wm lui-même
+(échec → kernel_panic PANIC_NO_TASK_SLOT, R5). L'IRQ souris ne fait
+plus que lecture device + push RAW_RING + sprite curseur ; la politique
+fenêtre ET le rendu (record des display-lists ADR-34 compris)
+s'exécutent en tâche serveur. Opt-out explicite : TC_WM_LEGACY = $A5
+($01EE90, --wm-legacy côté Phosphoric) → chemin IRQ legacy intégral,
+conservé et testé. Verrou levé par la clôture du bug task_wm_starve
+(bug émulateur prouvé, cf. docs/notes/BUG_task_wm_starve_CLOS.md).
+
+### Fixed — single-writer $D0..$D9 : task_wm vs event_pop des apps
+
+Le record d'événement ($D0..$D9, ZP partagée entre tâches) restait la
+propriété de task_wm pendant TOUT mouse_step (préemptible) ; une app
+qui faisait event_pop pendant ce temps l'écrasait → push_verbatim
+republiait le MAUVAIS événement (DOWN → MOVED, MSG_CONTENT perdu —
+rouge sur test_oricos_mainloop_message, vert après fix). Fix :
+Forbid/Permit (ADR-25, tâche↔tâche — IRQ et curseur restent vivants)
+sur la section pop→push de task_wm_entry ; jamais tenu sous raw_wait.
+Pré-existant depuis ADR-28 Étape 2, exposé par la bascule.
+
 ## [Unreleased] - 2026-06-10m
 
 ### Added — drag = replay translaté, widgets/menu/taskbar listés (ADR-34 C2b)

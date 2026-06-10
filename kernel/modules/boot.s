@@ -746,17 +746,30 @@ _skip_task_genui:
         lda #$00
         jsr kernel_task_create
 _skip_task_compact:
-        ; ADR-28 Étape 2 : task_wm (gated TC_WM_FLAG) — serveur WM passe-plat.
-        ; Si activée, l'IRQ pousse les events souris/clavier dans RAW_RING au lieu
-        ; d'EVENT_RING ; task_wm les republie dans EVENT_RING (comportement net
-        ; identique pour l'app, sauf le détour task — valide block/wake).
-        lda TC_WM_FLAG
+        ; ── ADR-28 BASCULE PAR DÉFAUT (2026-06-10) : task_wm est créée par
+        ; défaut et l'IRQ ne rend plus (WM_TASKMODE=$A5) — politique fenêtre
+        ; + rendu (display-lists ADR-34 comprises) en tâche serveur, curseur
+        ; sprite seul en IRQ. Le verrou « bug task_wm_starve » est CLOS
+        ; (docs/notes/BUG_task_wm_starve_CLOS.md : bug émulateur ASL mem
+        ; M=16, prouvé R1, gardes Klaus + starve dans make tests).
+        ; Opt-out EXPLICITE : TC_WM_LEGACY=$A5 (poké pré-boot par
+        ; --wm-legacy ou un test) → comportement IRQ legacy intégral.
+        ; L'IRQ pousse alors les events souris/clavier dans EVENT_RING et
+        ; fait mouse_step elle-même, comme avant la bascule. ──────────────
+        lda TC_WM_LEGACY
         cmp #$A5
-        bne _skip_task_wm
+        beq _skip_task_wm        ; legacy explicite : pas de task_wm
+        lda #$A5
+        sta TC_WM_FLAG           ; gates runtime existants : IRQ → RAW_RING
+        sta WM_TASKMODE          ;   + skip mouse_step en IRQ (handlers.s)
         ldx #<task_wm_entry
         ldy #>task_wm_entry
         lda #$00
         jsr kernel_task_create
+        cmp #$00                 ; R5 : tâche SYSTÈME — échec = BRUYANT
+        bne _skip_task_wm
+        lda #PANIC_NO_TASK_SLOT
+        jsr kernel_panic
 _skip_task_wm:
 
         ; ── Sprint 2.c/2.e : install charset + clear + console init + banner ──

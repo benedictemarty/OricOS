@@ -753,6 +753,16 @@ krpop_copy:
 .export task_wm_entry
 task_wm_entry:
         jsr kernel_raw_wait              ; bloque jusqu'à un record dispo
+        ; ── ADR-28 bascule (single-writer §5bis) : $D0..$D9 est un tampon
+        ; ZP PARTAGÉ entre tâches (event_pop des apps y écrit aussi, D=0
+        ; pour tous). task_wm garde son record RAW dedans pendant TOUT
+        ; mouse_step (préemptible) : une app qui pop pendant ce temps
+        ; écrase le record → push_verbatim republiait le MAUVAIS event
+        ; (vu : DOWN republié en MOVED → MSG_CONTENT perdu, test
+        ; mainloop_message). Forbid/Permit (ADR-25, tâche↔tâche — les IRQ
+        ; restent vivantes, curseur fluide) sur la section pop→push.
+        ; Jamais tenu pendant raw_wait (pas de blocage sous Forbid). ──
+        jsr kernel_forbid
         jsr kernel_raw_pop               ; $D0..$D9 = record (A = what)
         ; BUG_drag_glitch_taskmode (2026-06-02) : en taskmode, mouse_step
         ; ne doit JAMAIS lire le device MOUSE_DX/DY/BTN read-clear (déjà
@@ -766,10 +776,9 @@ task_wm_entry:
         jsr task_wm_install_event_state
 _twe_skip_install:
         ; ADR-32 §3 : si WM_TASKMODE=$A5, task_wm est le SEUL appelant de
-        ; mouse_step (l'IRQ a sauté son appel — atomicité). Default $00 →
-        ; pas d'appel ici, comportement legacy (mouse_step en IRQ).
-        ; Pré-requis pour activer ($A5) : Étape 4 ADR-32 (migration curseur)
-        ; non encore livrée → ne PAS flipper le défaut.
+        ; mouse_step (l'IRQ a sauté son appel — atomicité). ADR-28 §8
+        ; (2026-06-10) : $A5 est le DÉFAUT posé par le boot ; $00 =
+        ; opt-out legacy (TC_WM_LEGACY) — mouse_step en IRQ comme avant.
         lda WM_TASKMODE
         cmp #$A5
         bne task_wm_skip_mstep
@@ -777,7 +786,8 @@ _twe_skip_install:
 task_wm_skip_mstep:
         jsr kernel_event_push_verbatim   ; → EVENT_RING (drop si plein, OK v1)
         jsr kernel_event_wake            ; réveille l'app si elle attend
-        bra task_wm_entry
+        jsr kernel_permit                ; fin de section critique (l'app
+        bra task_wm_entry                ;   réveillée peut être élue)
 
 ; ════════════════════════════════════════════════════════════════════
 ;  task_wm_install_event_state — copie event ($D0..$D9) → MOUSE_* (taskmode)
