@@ -8,6 +8,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10
+
+### Investigation close — cause racine bug clock Opt-A : frame IRQ 8-bit vs M=16 (ADR-32 §10.9)
+
+La chasse au slot ZP (§10.5) est close : la collision n'est PAS un slot ZP.
+`kernel_irq_handler` (handlers.s) fait `sep #$30` puis `pha/phx/phy` 8-bit ;
+toute tâche/syscall interrompu **en M=16** entre un load et un store reprend
+avec A.high (registre B) = la valeur laissée par le code IRQ. Site déclencheur
+mesuré : `kernel_print_char` (console.s, fenêtre `rep #$20 … sta CURSOR_ADDR`),
+C=$BC98 → $5C98 au RTI → CURSOR_ADDR=$5C99 → prints hors écran → « clock:
+done » invisible. L'app clock ne hang PAS (exit propre) — c'est l'écran qui
+ne reçoit plus rien. Preuve : trace registres Phosphoric, repro pad+120 +
+no-SEI, test `test-oricos-irq-frame-m16` ROUGE 3/5 **y compris avec Opt-A en
+place** (Opt-A = fix de point par décalage de timing, pas de classe).
+
+Le risque était documenté (handlers.s en-tête, IRQ_CONFORMITE §3.3 A) mais
+l'audit ne couvrait que X/Y 16-bit — pas A/M=16. Fix à arbitrer (ADR-32
+§10.9, recommandation : option A = save/restore 16-bit, format frame change
+multi-fichiers : kernel_task_create, sys_yield, do_switch, block_switch).
+
+Découvertes collatérales tracées §10.9 : (a) `TICK_COUNTER=$015500` écrase
+l'opcode `rti` du segment NMI_HANDLER (même adresse — bénin v1, aucune source
+NMI, mais à réassigner) ; (c) `TCB_BITMAP` incohérent en fin de run cassé (à
+vérifier post-fix).
+
+### Added — exports test-infra `sys_gfx_fill_rect`/`sys_win_flush` (wm.s)
+
+Labels exportés pour les PC-hooks des harness Phosphoric (position-shift,
+zp-log). Aucun changement de comportement. + `tools/inject-pad-shift.py`
+(pad idempotent ±N octets devant `kernel_wm_redraw_drag`, outil principal
+§10.3bis de repro position-dépendante).
+
 ## [Unreleased] - 2026-06-09b
 
 ### Fixed — Réentrance IRQ↔syscall ZP scratch (Opt-A : sei ciblé)

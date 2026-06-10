@@ -6,6 +6,11 @@
 
 ; ════════════════════════════════════════════════════════════════════
 .export kernel_window_draw
+; [TEST-INFRA] Exposé pour test_oricos_position_shift (ADR-32 §10.5) :
+; le test installe un PC-hook sur l'entrée de sys_gfx_fill_rect pour
+; détecter la collision ZP sur GFX_ARG2_LO. Pas de changement de comportement.
+.export sys_gfx_fill_rect
+.export sys_win_flush
 kernel_window_draw:
         ; Pré-calcul X+W-1 et Y+H-1 (utilisés par les LINE du cadre)
         lda WIN_X
