@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10h
+
+### Added — SP-3.p M.1 : highlight GeoWorks du titre de menu ouvert
+
+`_menu_title_style` (GUICODE) : quand `MENU_I == MENU_OPEN`, le titre de la
+barre passe en vidéo inversée — fond blanc pleine hauteur de barre (largeur
+mesurée via kernel_tk_text_width + 2×4 px de marge) + texte noir. Menus
+fermés inchangés (blanc sur darkgray). Rouge→vert :
+test_oricos_menu_open_highlight (clic « System » → MENU_OPEN=0 + pixels
+noirs/blancs dans la bande du titre — 0 pixel noir avant le fix).
+Screenshot oricrobot validé. Reste parqué : highlight de l'item survolé
+dans le déroulant (chantier interaction, pas seulement rendu).
+
 ## [Unreleased] - 2026-06-10g
 
 ### Added — SP-3.p F.1 : fontes proportionnelles (suite GUI, réf GeoWorks)

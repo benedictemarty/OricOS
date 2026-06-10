@@ -238,6 +238,50 @@ tklp_loop:
 tklp_done:
         rts
 
+; ── _menu_title_style : highlight GeoWorks du titre de menu OUVERT (SP-3.p M.1).
+;    In : MENU_I = index du titre en cours, DP_PCPTR = titre (bank 1),
+;    WM_ARG_X = bar_x, WM_ARG_Y = 3, GFX_BASE = $100000 (posés par
+;    kernel_menu_draw). Out : GFX_COLOR = couleur du texte — $0F (blanc)
+;    pour un menu fermé ; pour le menu OUVERT : peint d'abord le fond
+;    inversé (blanc, pleine hauteur de barre, largeur mesurée du titre
+;    + 2×4 px de marge) puis GFX_COLOR = $00 (texte noir). ──────────────
+_menu_title_style:
+        lda MENU_I
+        cmp MENU_OPEN
+        beq _mts_open
+        lda #$0F
+        sta GFX_COLOR
+        rts
+_mts_open:
+        jsr kernel_tk_text_width ; WM_ARG_W = largeur du titre (DP_PCPTR intact)
+        rep #$20
+        lda WM_ARG_X
+        pha                      ; sauve bar_x (16-bit)
+        sec
+        sbc #4
+        sta WM_ARG_X             ; fond : bar_x-4 (marge gauche)
+        lda WM_ARG_W
+        clc
+        adc #8
+        sta WM_ARG_W             ; largeur titre + 2×4
+        lda #0
+        sta WM_ARG_Y
+        lda #MENU_BAR_H
+        sta WM_ARG_H             ; pleine hauteur de barre
+        sep #$20
+        lda #$0F
+        sta GFX_COLOR
+        jsr kernel_gfx_fill_rect16
+        rep #$20
+        pla
+        sta WM_ARG_X             ; restaure bar_x pour le label
+        lda #3
+        sta WM_ARG_Y
+        sep #$20
+        lda #$00
+        sta GFX_COLOR            ; texte noir sur fond blanc (inversion)
+        rts
+
         .segment "CODE"
 
 ; ── _tk_upload_str : copie la chaîne null-term [DP_PCPTR] (bank1) → SDRAM
@@ -1488,8 +1532,7 @@ _mdl_title_cmp_done:
         sta DP_PCPTR+1
         pla
         sta DP_PCPTR             ; (DP_PCPTR+2 reste $01)
-        lda #$0F
-        sta GFX_COLOR
+        jsr _menu_title_style    ; SP-3.p M.1 : inversion si MENU_I == MENU_OPEN
         jsr kernel_tk_label
         lda MENU_I
         inc a
