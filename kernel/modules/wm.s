@@ -5191,7 +5191,7 @@ ddb_addcancel:
         sta DP_PCPTR
         lda #>db_str_cancel
         sta DP_PCPTR+1
-        lda #60                 ; rel x
+        lda #72                 ; rel x (SP-GUI : décalé pour boutons 56 px)
         ldx #50                 ; rel y
         jsr _ddb_add_button
         jmp ddb_parse
@@ -5231,6 +5231,12 @@ ddb_close:
         jsr kernel_wm_clear_modal
         lda DLG_WIN
         jsr kernel_wm_close
+        ; SP-GUI : la fenêtre modale fermée a libéré une zone du bureau —
+        ; full redraw AVEC clear pour effacer ses pixels (kernel_wm_close
+        ; ne repeint que si WM_APP_DRIVEN ; ici on force, le dialogue était
+        ; visible). Sans ça, le dialogue restait « fantôme » à l'écran.
+        jsr kernel_wm_redraw
+        jsr kernel_wm_draw_cursor
         lda DLG_RESULT
         rts
 
@@ -5309,7 +5315,7 @@ sa_right_go:
 sa_run:
         jmp ddb_show            ; réutilise la boucle modale (rts → COP handler)
 
-; ── _ddb_add_button : ajoute un bouton dialogue (DLG_WIN, 44×18). A = rel x,
+; ── _ddb_add_button : ajoute un bouton dialogue (DLG_WIN, 56×18). A = rel x,
 ; X = rel y. Le LABEL est posé par l'appelant dans DP_PCPTR (chaîne bank 1)
 ; AVANT l'appel → libellés distincts OK/Cancel/Yes/No. Clobbers A, X.
 _ddb_add_button:
@@ -5331,8 +5337,8 @@ _ddb_add_button:
         lda WM_DP_TMP+1
         and #$00FF
         sta WM_ARG_Y
-        lda #44
-        sta WM_ARG_W
+        lda #56                 ; SP-GUI : 56 px (était 44) — « Cancel » en
+        sta WM_ARG_W            ;   proportionnel tient dans le cadre
         lda #18
         sta WM_ARG_H
         sep #$20

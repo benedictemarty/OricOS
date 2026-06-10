@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-10q
+
+### Fixed — dialogues : boutons élargis, Cancel repositionné, repaint à la fermeture (retour interactif)
+
+Retour interactif post-sprint GUI (« Cancel dépasse du contour ; OK/Cancel
+ne fonctionnent pas — le 2e plante win2 »). Causes mesurées (oricrobot +
+PPM) : (1) boutons de dialogue fixés à 44 px → « Cancel » proportionnel
+débordait → portés à 56 px, Cancel relx 60→72 (plus de chevauchement avec
+OK) ; (2) DoDlgBox fermait le dialogue (kernel_wm_close) SANS repeindre
+(close ne repeint que si WM_APP_DRIVEN) → le dialogue restait « fantôme »
+à l'écran, perçu comme un plantage de la fenêtre derrière → ddb_close
+force désormais kernel_wm_redraw + draw_cursor. (Tentative d'auto-largeur
+text_width écartée : corrompait la position des 2 boutons.) Garde
+rouge→vert : test_oricos_dlgbox vérifie l'effacement du corps après OK.
+
 ## [Unreleased] - 2026-06-10p
 
 ### Added — sprint « suite GUI » : hover menu, centrage, proportionnel partout
