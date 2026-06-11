@@ -8,6 +8,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11e
+
+### Fixed — « encore des traces » : ALIGN-X — le blit backing débordait d'1 px (x impair)
+
+CAUSE RACINE des traces résiduelles au drag interactif (reproduites en
+robot avec le NOUVEAU régime dense+timed : 30 moves de 9 px / 6k cyc,
+GPU modélisé) : `kernel_wm_compose_slot` calcule dst = $100000 + y·512
++ (x>>1) — en 4bpp (2 px/octet), une fenêtre à x IMPAIR fait déborder
+le BLIT du backing d'1 px à GAUCHE du rect fenêtre. L'erase du drag
+(rect exact) ne couvre jamais cette colonne → traînées verticales 1 px
+(couleur du backing, noir) semées aux positions impaires du chemin.
+Géométrie vérifiée : traits de h=24 px = chevauchement partiel entre
+l'ancien débord et le nouveau rect.
+
+Fix : **les fenêtres vivent à x PAIR** (contrainte classique 4bpp,
+cf. byte-align GEOS) — `and #$FFFE` à la création (wm_add) et au move,
+avec ANTI-DÉRIVE : le bit tronqué est conservé (WM_MV_XLSB $0191EF) et
+ré-injecté au move suivant — sans ça la fenêtre glissait de 1 px/move
+sous le curseur (mesuré : −20 px sur 20 moves). Mesures rouge→vert :
+89 px de traces → 0 ; position finale exacte (240 vs 220 avec dérive).
+_wm_draw_hotzones_for_slot déplacée en GUICODE (CODE débordait $5500).
+
+### Fixed — harnais : oricrobot ignorait le sprite ($0370 → VIA !) + mode timed
+
+Deux trous de fidélité du robot découverts en chassant les traces :
+(1) $0370-$037F (sprite curseur ADR-33) n'était pas routé → chaque
+mouvement de souris écrivait SPR_X/Y dans les registres VIA ($0370&$0F
+= ORB, T1 !) ; sprite_device câblé. (2) commande `timed` ajoutée
+(gpu_set_timed + gpu_tick + IRQ GPU) — le régime SDL interactif
+(FIFO + coalescing) est maintenant reproductible en headless ; les
+traces ne se manifestaient QUE dans ce régime (l'angle mort qui a fait
+dire « non reproduit » à la passe précédente).
+
 ## [Unreleased] - 2026-06-11d
 
 ### Fixed — restore bpl après le blit de la draguée (_wm_draw_one)

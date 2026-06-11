@@ -218,6 +218,8 @@ kernel_wm_init:
         sta f:WM_RD_SKIPPED
         sta f:WM_RD_DIRTY
         sta f:WM_RD_NOCLEAR
+        sta f:WM_MV_XLSB         ; ALIGN-X anti-dérive
+        sta f:WM_MV_XLSB+1       ; ($0191F0, lu avec en M=16)
         ; SP-3.f : vide la table des flags de titres (WM_MAX=8 × 1B = $00)
         lda #$00
         sta WM_TITLES+0
@@ -330,6 +332,10 @@ wm_add_init:
         sta WM_TABLE+WM_OFF_ID,X
         rep #$20
         lda WM_ARG_X
+        and #$FFFE               ; ALIGN-X (2026-06-11) : x PAIR — 4bpp = 2 px/octet,
+                                 ; le BLIT backing (dst = x>>1) arrondit à l'octet :
+                                 ; x impair ferait déborder le blit d'1 px à GAUCHE
+                                 ; du rect (jamais effacé → traînées 1px au drag)
         sta WM_TABLE+WM_OFF_X,X
         lda WM_ARG_Y
         sta WM_TABLE+WM_OFF_Y,X
@@ -586,6 +592,18 @@ wm_mv_x_pos:
         beq wm_mv_x_ok
         lda WM_CRH_TMP           ; clamp bord droit
 wm_mv_x_ok:
+        ; ALIGN-X : x pair (cf. wm_add — sinon le blit backing déborde
+        ; d'1 px à gauche du rect → traînées 1 px au drag). Anti-dérive :
+        ; le bit tronqué est conservé (WM_MV_XLSB) et ré-injecté au move
+        ; suivant — sans ça, x_table(pair) + dx impair re-tronqué =
+        ; -1 px de dérive PAR MOVE (la fenêtre glisse sous le curseur).
+        clc
+        adc f:WM_MV_XLSB         ; (M=16, XLSB ∈ {0,1} — octet sûr : $0191F0=0)
+        pha
+        and #$0001
+        sta f:WM_MV_XLSB         ; nouveau bit perdu (16-bit : écrit aussi $0191F0=0)
+        pla
+        and #$FFFE
         sta WM_TABLE+WM_OFF_X,X
         lda WM_TABLE+WM_OFF_Y,X
         clc
@@ -1703,63 +1721,6 @@ _wdo_after_widgets:
 _wdo_done:
         rts
 
-; ── _wm_draw_hotzones_for_slot : cadre 1px pour chaque hotzone active du
-; slot A. Appelé uniquement quand HOTZONE_DEBUG_FLAG = $A5.
-_wm_draw_hotzones_for_slot:
-        sta WIN_SLOT
-        ldx #$00
-hzd_loop:
-        lda f:HOTZONE_TABLE+0,x
-        cmp #HOTZONE_F_ACTIVE
-        beq hzd_check_slot
-        jmp hzd_next
-hzd_check_slot:
-        lda f:HOTZONE_TABLE+1,x
-        cmp WIN_SLOT
-        beq hzd_draw
-        jmp hzd_next
-hzd_draw:
-        phx
-        rep #$20
-        lda f:HOTZONE_TABLE+2,x
-        sta WG_RELX
-        lda f:HOTZONE_TABLE+4,x
-        sta WG_RELY
-        lda f:HOTZONE_TABLE+6,x
-        sta WG_RELW
-        lda f:HOTZONE_TABLE+8,x
-        sta WG_RELH
-        sep #$20
-        lda WIN_SLOT
-        jsr kernel_wm_offset
-        rep #$20
-        lda WM_TABLE+WM_OFF_X,x
-        clc
-        adc WG_RELX
-        sta WM_ARG_X
-        lda WM_TABLE+WM_OFF_Y,x
-        clc
-        adc WG_RELY
-        sta WM_ARG_Y
-        lda WG_RELW
-        sta WM_ARG_W
-        lda WG_RELH
-        sta WM_ARG_H
-        sep #$20
-        lda #$08                 ; darkgray
-        sta GFX_COLOR
-        jsr kernel_tk_frame
-        plx
-hzd_next:
-        txa
-        clc
-        adc #HOTZONE_ENTSZ
-        tax
-        cpx #(HOTZONE_N * HOTZONE_ENTSZ)
-        bcs hzd_done
-        jmp hzd_loop
-hzd_done:
-        rts
 
 ; ── _wm_draw_title_and_close : dessine le titre + bouton × dans la titlebar ──
 ; SP-3.f v0.1 (titre) + v0.2 (bouton fermer).
@@ -6777,3 +6738,63 @@ ssm_block:
 ; un simple RTI no-op.
 ;
 ; ════════════════════════════════════════════════════════════════════
+
+        .segment "GUICODE"
+; ── _wm_draw_hotzones_for_slot : cadre 1px pour chaque hotzone active du
+; slot A. Appelé uniquement quand HOTZONE_DEBUG_FLAG = $A5.
+_wm_draw_hotzones_for_slot:
+        sta WIN_SLOT
+        ldx #$00
+hzd_loop:
+        lda f:HOTZONE_TABLE+0,x
+        cmp #HOTZONE_F_ACTIVE
+        beq hzd_check_slot
+        jmp hzd_next
+hzd_check_slot:
+        lda f:HOTZONE_TABLE+1,x
+        cmp WIN_SLOT
+        beq hzd_draw
+        jmp hzd_next
+hzd_draw:
+        phx
+        rep #$20
+        lda f:HOTZONE_TABLE+2,x
+        sta WG_RELX
+        lda f:HOTZONE_TABLE+4,x
+        sta WG_RELY
+        lda f:HOTZONE_TABLE+6,x
+        sta WG_RELW
+        lda f:HOTZONE_TABLE+8,x
+        sta WG_RELH
+        sep #$20
+        lda WIN_SLOT
+        jsr kernel_wm_offset
+        rep #$20
+        lda WM_TABLE+WM_OFF_X,x
+        clc
+        adc WG_RELX
+        sta WM_ARG_X
+        lda WM_TABLE+WM_OFF_Y,x
+        clc
+        adc WG_RELY
+        sta WM_ARG_Y
+        lda WG_RELW
+        sta WM_ARG_W
+        lda WG_RELH
+        sta WM_ARG_H
+        sep #$20
+        lda #$08                 ; darkgray
+        sta GFX_COLOR
+        jsr kernel_tk_frame
+        plx
+hzd_next:
+        txa
+        clc
+        adc #HOTZONE_ENTSZ
+        tax
+        cpx #(HOTZONE_N * HOTZONE_ENTSZ)
+        bcs hzd_done
+        jmp hzd_loop
+hzd_done:
+        rts
+        .segment "CODE"

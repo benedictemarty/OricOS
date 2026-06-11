@@ -96,6 +96,10 @@ WM_RD_DIRTY      = $0191ED      ; 1B : $A5 = chaîne de dessin en mode dirty-rec
                                 ;   (redraw_drag) → fenêtres/menu/taskbar non
                                 ;   touchés par (ancien ∪ nouveau rect) skippés
 WM_RD_NOCLEAR    = $0191EE      ; 1B : $A5 (one-shot) = full redraw SANS le clear
+WM_MV_XLSB       = $0191EF      ; 2B lus/écrits en M=16 (bit perdu par l'ALIGN-X du
+                                ; move, anti-dérive : ré-injecté au move suivant —
+                                ; la fenêtre suit la souris à ±1 px au lieu de
+                                ; glisser 1 px/move). Init wm_init.
                                 ;   desktop — clic « focus pur », rien d'exposé,
                                 ;   tout repeint par-dessus (anti-flash bleu :
                                 ;   le clear 98k cyc GPU traversait le pipeline
