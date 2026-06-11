@@ -1661,6 +1661,21 @@ _wdo_setcol:
         beq _wdo_no_blit         ; slots système chrome-direct : pas de backing
         lda WIN_SLOT
         jsr kernel_wm_compose_slot
+        ; ── v3 (« cela ne fonctionne pas » 2026-06-11) : compose_slot règle
+        ; le bpl GPU au stride COMPACT de la fenêtre (byte_w, ex. 85) et ne
+        ; le restaure pas. Dans la boucle compose, wcmp_done restaure ; ICI
+        ; le chrome suit en REPLAY de display-list — que la garde C-2 (qui
+        ; ne couvre que les helpers directs) ne voit pas : tout le chrome
+        ; était rejoué au stride compact → fenêtre déchirée + fragments
+        ; (vu au drag d'une fenêtre d'app à backing compact). Restaure
+        ; bpl=0 (512) avant le chrome, même séquence que wcmp_done. ──
+        lda f:GFX_BPL_SHADOW
+        ora f:GFX_BPL_SHADOW+1
+        beq _wdo_no_blit         ; déjà stride 512 → rien à faire
+        lda #$00
+        sta GFX_BPL_LO
+        sta GFX_BPL_HI
+        jsr kernel_gfx_set_bpl
 _wdo_no_blit:
         ; ADR-34 C2 : chrome par display-list rejouable si la carte a les
         ; listes (chaînes du chrome 100 % stables : titres $012000+slot,

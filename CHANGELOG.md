@@ -8,6 +8,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11d
+
+### Fixed — restore bpl après le blit de la draguée (_wm_draw_one)
+
+Suite au retour « cela ne fonctionne pas » : kernel_wm_compose_slot
+règle le bpl GPU au stride compact de la fenêtre et ne le restaure pas ;
+dans la boucle compose, wcmp_done restaure, mais le bloc blit de
+_wm_draw_one enchaînait sur le REPLAY de display-list, hors de portée
+de la garde C-2 (helpers directs seulement). Restore bpl=0 ajouté après
+le blit (même séquence que wcmp_done). Correction d'INVARIANT (ADR-27
+§0ter « bpl ne doit pas leak ») : le red-check visuel n'a PAS rougi
+(le blit backing maquille l'intérieur de la fenêtre et le coalescing
+timed masque les frames touchées) — défense en profondeur, pas fix
+prouvé du symptôme.
+
+### Note de session — symptôme « cela ne fonctionne pas » NON reproduit
+
+Batterie robot complète sur le kernel courant, mesures pixel : drag
+fenêtre démo ✓, drag fenêtre APP à backing (gui_demo) rapide et lent ✓
+(0 octet desktop dans corps+titlebar pendant ET après le geste), resize
+✓ (rendu == table), drag+resize ✓. Deux fausses pistes d'analyse
+documentées dans le dossier (l'« artefact » récurrent était la fenêtre
+démo Editor DERRIÈRE la draguée — z-order correct). Le symptôme
+interactif reste à caractériser : geste, app, effet visuel.
+
 ## [Unreleased] - 2026-06-11c
 
 ### Fixed — RÉGRESSION « c'est pire ! » : bloc blit v1 clobbait X → resize fantôme
