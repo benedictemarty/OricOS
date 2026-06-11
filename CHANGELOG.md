@@ -8,6 +8,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11f
+
+### Fixed — « glitchs + souris arrêtée » : curseur sprite, 3 causes empilées
+
+Symptôme interactif : glitchs fugaces (pas sous la fenêtre draguée) +
+arrêts de souris en drag. Mesuré par la nouvelle garde
+test_sprite_cursor_atomicity (drag dense, échantillonnage à la cadence
+du compositor 50 Hz) : **245 frames sur ~245 avec curseur téléporté
+(écart jusqu'à 260 px)** sur le kernel d'avant → **0 frame, écart ≤
+32 px** (latence d'un event) après. Trois fixes :
+
+1. **Single-writer sprite (réalise « curseur seul en IRQ », ADR-28)** :
+   en taskmode, le top-half IRQ positionne seul le sprite
+   (kernel_wm_draw_cursor_irq, MOUSE_X frais post-mouse_read, I=1
+   atomique). Les sites tâche (mouse_step dans task_wm) re-écrivaient
+   des positions d'events PÉRIMÉS par-dessus celles de l'IRQ, avec
+   déchirement LO/HI interruptible en plus → gate WM_TASKMODE dans
+   kernel_wm_draw_cursor (legacy inchangé : mouse_step est EN IRQ).
+2. **Attentes GPU IRQ-OUVERTES** : les helpers sync attendaient la fin
+   d'exécution SOUS sei (garde OS-gpu-race, écrite à l'époque
+   non-timée). En GPU timé, un TEXT16/blit dure des milliers de cycles
+   → IRQ souris gelée à chaque commande GUI (l'horloge taskbar à elle
+   seule gelait ~1×/s : les « glitchs au repos au bout de quelques
+   secondes »). Fix : la section critique couvre args+trigger (les args
+   sont consommés au trigger — FIFO ou exec immédiat), le poll BUSY se
+   fait IRQ du caller rétablies (7 helpers) ; les polls QFULL (5 sites)
+   ouvrent une fenêtre d'IRQ par itération en taskmode (en legacy :
+   spin sous sei, l'IRQ y dessine).
+3. **Latch atomique côté device** (Phosphoric, note ADR-33) : commit de
+   (x,y) à l'écriture de Y_HI.
+
 ## [Unreleased] - 2026-06-11e
 
 ### Fixed — « encore des traces » : ALIGN-X — le blit backing débordait d'1 px (x impair)

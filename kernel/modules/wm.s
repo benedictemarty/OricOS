@@ -1338,7 +1338,20 @@ _gfr16_direct:
 gfx_fr16_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
+        beq _gfr16q_go
+        ; Fix gel souris (2026-06-11) : FIFO pleine = attente potentiellement
+        ; LONGUE (16 cmds timées). En taskmode l'IRQ ne poste aucune commande
+        ; GPU (sprite = registres dédiés) → on ouvre une fenêtre d'IRQ par
+        ; itération. En legacy (mouse_step dessine EN IRQ) : spin sous sei,
+        ; comportement historique.
+        lda f:WM_TASKMODE
+        cmp #$A5
         bne gfx_fr16_qwait
+        plp
+        php
+        sei
+        bra gfx_fr16_qwait
+_gfr16q_go:
         lda #GPU_OP_FILL_RECT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
@@ -1348,6 +1361,9 @@ gfx_fr16_sync:
         lda #GPU_OP_FILL_RECT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        plp                     ; fix gel souris : poll IRQ du caller rétablies
+        php
+        sep #$20
         ldx #$00
 gfx_fr16_wait:
         lda GPU_STATUS_IO
@@ -3531,12 +3547,29 @@ _dr_done:
 ; juste MOUSE_X/Y aux registres SPR_X/Y. Modifie A.
 .export kernel_wm_draw_cursor
 kernel_wm_draw_cursor:
+        ; SINGLE-WRITER (fix glitchs/souris arrêtée 2026-06-11, réalise
+        ; « curseur seul en IRQ » d'ADR-28) : en WM_TASKMODE le sprite est
+        ; positionné par le TOP-HALF IRQ seul (kernel_wm_draw_cursor_irq,
+        ; MOUSE_X frais post-mouse_read). Les sites tâche (mouse_step dans
+        ; task_wm) re-écrivaient des positions d'events PÉRIMÉS par-dessus
+        ; celles de l'IRQ, avec en plus un déchirement LO/HI interruptible
+        ; → sprite téléporté ±256 px, « glitchs hors fenêtre draguée » et
+        ; curseur « arrêté ». Mesuré : écart max 230 px, 1,58 M de steps
+        ; téléportés sur le drag dense (garde sprite_cursor_atomicity).
+        ; En legacy (mouse_step EN IRQ), ce gate est transparent.
+        lda f:WM_TASKMODE
+        cmp #$A5
+        bne kernel_wm_draw_cursor_irq
+        rts
+.export kernel_wm_draw_cursor_irq
+kernel_wm_draw_cursor_irq:
         ; ADR-33 : force M=8 — appelée depuis IRQ (M=8 garanti) MAIS aussi
-        ; depuis task_wm en mode WM_TASKMODE (M state non garanti). En M=16
-        ; lda/sta opèrent sur 16 bits, sta f:SPR_X_LO écrirait à SPR_X_LO+1
-        ; aussi, etc — sprite ne suit plus la souris en taskmode.
+        ; depuis le chemin legacy. En M=16 lda/sta opèrent sur 16 bits,
+        ; sta f:SPR_X_LO écrirait à SPR_X_LO+1 aussi.
+        ; P2 (ADR-32) : sei — les 4 stores forment une transaction.
         php
         sep #$20
+        sei
         .a8
         lda MOUSE_X
         sta f:SPR_X_LO
@@ -5833,7 +5866,15 @@ _wlx_post:
 _wlx_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
+        beq _wlxq_go
+        lda f:WM_TASKMODE       ; fix gel souris : fenêtre d'IRQ par itération
+        cmp #$A5                ; (taskmode : l'IRQ ne poste pas de GPU)
         bne _wlx_qwait
+        plp
+        php
+        sei
+        bra _wlx_qwait
+_wlxq_go:
         lda f:WL_SCRATCH16
         sta GPU_ARG1_LO_IO
         lda f:WL_SCRATCH16+1

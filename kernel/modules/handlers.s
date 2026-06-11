@@ -216,8 +216,15 @@ irq_mou_zp_save:
         ; inchangé (mouse_step en IRQ comme avant).
         lda WM_TASKMODE
         cmp #$A5
-        beq irq_skip_mouse_step
+        beq irq_taskmode_cursor
         jsr kernel_wm_mouse_step
+        bra irq_skip_mouse_step
+irq_taskmode_cursor:
+        ; Single-writer sprite (fix glitchs 2026-06-11) : le TOP-HALF
+        ; positionne le curseur avec MOUSE_X FRAIS (post-mouse_read),
+        ; sous I=1 — atomique. task_wm ne touche plus au sprite
+        ; (kernel_wm_draw_cursor gate sur WM_TASKMODE).
+        jsr kernel_wm_draw_cursor_irq
 irq_skip_mouse_step:
         ; ── SP-3.n G.1 : poste l'événement souris dans la file (edge-detect ──
         ; bouton gauche : down/up sur transition, moved sinon). Coexiste avec

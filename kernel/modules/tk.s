@@ -135,7 +135,20 @@ _gt16_direct:
 gfx_t16_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
+        beq _gt16q_go
+        ; Fix gel souris (2026-06-11) : FIFO pleine = attente potentiellement
+        ; LONGUE (16 cmds timées). En taskmode l'IRQ ne poste aucune commande
+        ; GPU (sprite = registres dédiés) → on ouvre une fenêtre d'IRQ par
+        ; itération. En legacy (mouse_step dessine EN IRQ) : spin sous sei,
+        ; comportement historique.
+        lda f:WM_TASKMODE
+        cmp #$A5
         bne gfx_t16_qwait
+        plp
+        php
+        sei
+        bra gfx_t16_qwait
+_gt16q_go:
         lda #GPU_OP_TEXT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
@@ -145,6 +158,9 @@ gfx_t16_sync:
         lda #GPU_OP_TEXT16
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        plp                     ; fix gel souris : poll IRQ du caller rétablies
+        php
+        sep #$20
         ldx #$00
 gfx_t16_wait:
         lda GPU_STATUS_IO
@@ -572,7 +588,15 @@ _tkll_end:
 _tkll_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
+        beq _tkllq_go
+        lda f:WM_TASKMODE       ; fix gel souris : fenêtre d'IRQ par itération
+        cmp #$A5                ; (taskmode : l'IRQ ne poste pas de GPU)
         bne _tkll_qwait
+        plp
+        php
+        sei
+        bra _tkll_qwait
+_tkllq_go:
         lda f:TK_LP_LISTB
         sta GPU_ARG1_LO_IO
         lda f:TK_LP_LISTB+1

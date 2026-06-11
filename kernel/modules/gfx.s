@@ -229,7 +229,14 @@ kernel_gfx_clear:
         sta GPU_CMD_OP_IO
         ; Trigger
         sta GPU_TRIGGER_IO
-        ; Poll busy (timeout 256 itérations)
+        ; Fix gel souris (2026-06-11) : le POLL se fait IRQ du caller
+        ; RÉTABLIES — les args sont consommés au trigger (FIFO/exec), la
+        ; section critique n'a plus rien à protéger. En GPU timé, attendre
+        ; sous sei gelait la souris (sprite figé, events retardés) pendant
+        ; toute la durée de la commande.
+        plp
+        php
+        sep #$20
         ldx #$00
 gfx_clear_wait:
         lda GPU_STATUS_IO
@@ -294,7 +301,14 @@ kernel_gfx_fill_rect:
         sta GPU_CMD_OP_IO
         ; Trigger
         sta GPU_TRIGGER_IO
-        ; Poll busy (timeout 256)
+        ; Fix gel souris (2026-06-11) : le POLL se fait IRQ du caller
+        ; RÉTABLIES — les args sont consommés au trigger (FIFO/exec), la
+        ; section critique n'a plus rien à protéger. En GPU timé, attendre
+        ; sous sei gelait la souris (sprite figé, events retardés) pendant
+        ; toute la durée de la commande.
+        plp
+        php
+        sep #$20
         ldx #$00
 gfx_fill_wait:
         lda GPU_STATUS_IO
@@ -356,6 +370,14 @@ kernel_gfx_blit:
         lda #GPU_OP_BLIT
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        ; Fix gel souris (2026-06-11) : le POLL se fait IRQ du caller
+        ; RÉTABLIES — les args sont consommés au trigger (FIFO/exec), la
+        ; section critique n'a plus rien à protéger. En GPU timé, attendre
+        ; sous sei gelait la souris (sprite figé, events retardés) pendant
+        ; toute la durée de la commande.
+        plp
+        php
+        sep #$20
         ldx #$00
 gfx_blit_wait:
         lda GPU_STATUS_IO
@@ -384,7 +406,15 @@ kernel_gfx_blit_post:
 gfx_bp_qwait:
         lda GPU_STATUS_IO
         and #GPU_ST_QFULL
-        bne gfx_bp_qwait        ; FIFO pleine → attend UNE place (pas le vide)
+        beq _gbpq_go            ; place libre → poste (sous sei)
+        lda f:WM_TASKMODE       ; fix gel souris : fenêtre d'IRQ par itération
+        cmp #$A5                ; en taskmode (l'IRQ ne poste pas de GPU) ;
+        bne gfx_bp_qwait        ; legacy : spin sous sei (historique)
+        plp
+        php
+        sei
+        bra gfx_bp_qwait
+_gbpq_go:
         lda GFX_BASE_LO
         sta GPU_ARG1_LO_IO
         lda GFX_BASE_MID
@@ -475,6 +505,14 @@ kernel_gfx_line:
         lda #GPU_OP_LINE
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        ; Fix gel souris (2026-06-11) : le POLL se fait IRQ du caller
+        ; RÉTABLIES — les args sont consommés au trigger (FIFO/exec), la
+        ; section critique n'a plus rien à protéger. En GPU timé, attendre
+        ; sous sei gelait la souris (sprite figé, events retardés) pendant
+        ; toute la durée de la commande.
+        plp
+        php
+        sep #$20
         ldx #$00
 gfx_line_wait:
         lda GPU_STATUS_IO
@@ -540,6 +578,14 @@ kernel_gfx_text:
         lda #GPU_OP_TEXT
         sta GPU_CMD_OP_IO
         sta GPU_TRIGGER_IO
+        ; Fix gel souris (2026-06-11) : le POLL se fait IRQ du caller
+        ; RÉTABLIES — les args sont consommés au trigger (FIFO/exec), la
+        ; section critique n'a plus rien à protéger. En GPU timé, attendre
+        ; sous sei gelait la souris (sprite figé, events retardés) pendant
+        ; toute la durée de la commande.
+        plp
+        php
+        sep #$20
         ldx #$00
 gfx_text_wait:
         lda GPU_STATUS_IO
