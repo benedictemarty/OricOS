@@ -3619,6 +3619,20 @@ _kwsi_lp:
         iny
         cpy #128
         bcc _kwsi_lp
+        ; Position initiale VISIBLE (centre 512,384) — fix « souris plus
+        ; affichée » 2026-06-11 : depuis le single-writer (sprite positionné
+        ; par le top-half IRQ seul), AUCUN event souris = sprite resté à
+        ; (0,0) device (coin menubar, quasi invisible). Avant, un appel
+        ; tâche du premier redraw le plaçait par effet de bord. Ordre :
+        ; X_LO,X_HI,Y_LO,Y_HI — le commit (latch device) part sur Y_HI.
+        lda #$00
+        sta f:SPR_X_LO           ; X = 512 = $200
+        lda #$02
+        sta f:SPR_X_HI
+        lda #$80
+        sta f:SPR_Y_LO           ; Y = 384 = $180
+        lda #$01
+        sta f:SPR_Y_HI
         lda #SPR_ENABLE_ON
         sta f:SPR_ENABLE
         rts

@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11g
+
+### Fixed — « souris plus affichée » : position initiale du sprite au boot
+
+Effet de bord du single-writer (11f) : le sprite n'était positionné QUE
+par le top-half IRQ → sans event souris (capture SDL pas encore engagée
+par un clic), il restait à (0,0) device (coin menubar, quasi invisible).
+Avant 11f, un appel draw_cursor côté tâche du premier redraw le plaçait
+par effet de bord. Fix : kernel_wm_sprite_init pose (512,384) — centre
+écran — à l'upload du bitmap (ordre X_LO..Y_HI : le commit latch part
+sur Y_HI). Vérifié robot : sprite visible au centre dès le boot
+(cursorpx 126 px), suit en moverel.
+
+NB diagnostic : sur l'arbre courant, kernel→device→overlay→render sont
+prouvés fonctionnels (positions suivies en absolu et relatif, 124-126 px
+de curseur rendus). Si le curseur reste invisible en SDL interactif
+APRÈS ce fix, la piste restante est l'engagement de la capture souris
+(un CLIC dans la fenêtre est requis — comportement anti-double-curseur).
+
 ## [Unreleased] - 2026-06-11f
 
 ### Fixed — « glitchs + souris arrêtée » : curseur sprite, 3 causes empilées
