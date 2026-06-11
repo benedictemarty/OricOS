@@ -1618,23 +1618,6 @@ _wdo_visible:
         bcs _wdo_no_cull
         jmp _wdo_done           ; intacte → skip
 _wdo_no_cull:
-        ; ── ADR-27 C2 fix traces : pendant le geste, task_wm est le SEUL
-        ; peintre de la draguée — son CONTENU (backing store) est blitté
-        ; ICI, sous le chrome (le compose-loop de l'app la skip). Position
-        ; lue dans la même passe que le move → cohérente, zéro course. ──
-        lda f:WM_RD_DIRTY
-        cmp #$A5
-        bne _wdo_no_blit
-        lda WIN_SLOT
-        cmp WM_FOCUS
-        bne _wdo_no_blit
-        tax
-        lda f:WM_NO_BACKING_FLAGS,X
-        cmp #WM_NO_BACKING_MAGIC
-        beq _wdo_no_blit         ; slots système chrome-direct : pas de backing
-        lda WIN_SLOT
-        jsr kernel_wm_compose_slot
-_wdo_no_blit:
         ; Couleur titlebar selon focus (v0.8)
         lda WIN_SLOT
         cmp WM_FOCUS
@@ -1656,6 +1639,29 @@ _wdo_setcol:
         lda WM_TABLE+WM_OFF_H,X
         sta WM_ARG_H
         sep #$20
+        ; ── ADR-27 C2 fix traces (v2 — « c'est pire » 2026-06-11) : pendant
+        ; le geste, task_wm est le SEUL peintre de la draguée — son CONTENU
+        ; (backing store) est blitté ICI, sous le chrome (le compose-loop de
+        ; l'app la skip). Position lue dans la même passe que le move →
+        ; cohérente, zéro course. PLACÉ APRÈS la copie WM_ARG_* : la v1 de
+        ; ce bloc vivait AVANT et clobbait X (slot×10 attendu par la copie)
+        ; → WM_ARG_* corrompus → chrome record/dessiné à des coords bidon
+        ; dès que la liste devait être re-recordée (resize : fenêtre
+        ; rapetissée/déplacée — régression interactive). Ici X est mort
+        ; (les chemins listé/direct recalculent leur offset). ──
+        lda f:WM_RD_DIRTY
+        cmp #$A5
+        bne _wdo_no_blit
+        lda WIN_SLOT
+        cmp WM_FOCUS
+        bne _wdo_no_blit
+        tax
+        lda f:WM_NO_BACKING_FLAGS,X
+        cmp #WM_NO_BACKING_MAGIC
+        beq _wdo_no_blit         ; slots système chrome-direct : pas de backing
+        lda WIN_SLOT
+        jsr kernel_wm_compose_slot
+_wdo_no_blit:
         ; ADR-34 C2 : chrome par display-list rejouable si la carte a les
         ; listes (chaînes du chrome 100 % stables : titres $012000+slot,
         ; X/O/_ boot-uploadées). C2b : les WIDGETS sont dans la liste eux

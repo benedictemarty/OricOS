@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11c
+
+### Fixed — RÉGRESSION « c'est pire ! » : bloc blit v1 clobbait X → resize fantôme
+
+Retour interactif immédiat de Bénédicte après le fix traces. Cause
+prouvée (repro robot resize coin bas-droit, rouge→vert) : le bloc blit
+du fix traces (v1) vivait AVANT la copie x/y/w/h de `_wm_draw_one` et
+clobbait X (slot×10 attendu) — `tax` avec le slot id, puis
+`kernel_wm_compose_slot` clobbe X aussi. WM_ARG_* corrompus pour tout
+ce qui suit. Invisible au drag pur (replay translaté n'utilise pas
+WM_ARG_*), mais au RESIZE la liste est invalidée à chaque move → le
+chrome re-recordé gardait l'ANCIENNE géométrie : table à w=156 mais
+fenêtre rendue 80×60 — fenêtre fantôme, hit-test décalé du rendu.
+Fix : bloc déplacé APRÈS la copie WM_ARG_* (X y est mort, les chemins
+listé/direct recalculent leur offset). Mesures : resize rendu = table
+(156×134) ; drag tallwin 0 traînée ; drag Editor complet. Garde
+géométrie ajoutée à test_resize_grow_no_flicker (rouge-checkée :
+« rendu != table après resize (fenêtre fantôme) » vue sur le kernel v1).
+Leçon : la v1 avait été repérée comme suspecte pendant la bissection
+win_app PUIS écartée à tort quand le test différentiel a innocenté le
+chemin — un invariant de registre (X=slot×10 jusqu'à la copie ARG) se
+vérifie sur TOUS les chemins, pas sur celui du test en cours.
+
 ## [Unreleased] - 2026-06-11b
 
 ### Fixed — audit R6 : WM_OWNER sentinelle $FF (bug latent close_owner)
