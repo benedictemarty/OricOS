@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 
 
+## [Unreleased] - 2026-06-11h
+
+### Fixed — « fenêtre blanche » (capture utilisatrice) : compose CLIENT-ONLY + chrome au create
+
+La capture F12/écran montrait la fenêtre tallwin = carré blanc 200×200
+SANS chrome, redevenant normale en drag. DEUX défauts de design ADR-27
+masqués l'un par l'autre depuis la livraison C2 :
+
+1. **Le compose recouvrait le chrome** : kernel_wm_compose_slot blittait
+   le backing PLEIN RECT (titlebar comprise) — l'app tallwin remplit son
+   backing en blanc → titlebar blanchie à chaque tour de compose-loop.
+   Pendant un drag, le gate single-writer suspendait le compose → chrome
+   rejoué visible (« redevient normale en drag »). Fix : le blit SAUTE
+   12 lignes (titlebar) côté src ET dst — identité préservée pour la
+   zone cliente (y≥12 inchangé), le chrome appartient au WM. Compact :
+   src += 12·byte_w ; legacy : src += $1800.
+2. **Personne ne dessinait le chrome au SYS_WIN_CREATE** : une fenêtre
+   créée par syscall sans UI_DEFINE n'avait JAMAIS sa titlebar — le
+   compose plein-rect blanc masquait ce trou (le « carré blanc » ÉTAIT
+   l'apparence de tallwin depuis sa création). Fix : sys_win_create
+   dessine le chrome (_wm_draw_one) après set_focus, sous Forbid.
+
+Vérifié : tallwin = titlebar lightblue focus + « _ O × » + client blanc
+app. Garde durcie (pixel titlebar == 9) rouge-checkée (=15 avant).
+kernel_wm_compose_slot déplacée en GUICODE (CODE plein).
+
 ## [Unreleased] - 2026-06-11g
 
 ### Fixed — « souris plus affichée » : position initiale du sprite au boot

@@ -17,7 +17,7 @@
 int main(void) {
     oricos_print_string("win_hello: creation fenetre\r\n");
     oricos_win_create(100, 80, 200, 120);     /* G.2 : fenêtre + focus */
-    oricos_gfx_fill_rect(0, 0, 8, 8, 15);     /* G.4 : dessin local (blanc) */
+    oricos_gfx_fill_rect(0, 16, 8, 8, 15);    /* G.4 : dessin local (blanc), rel y>=12 : zone cliente (client-only 2026-06-11) */
     oricos_win_flush();                       /* G.4bis : composite → écran */
     oricos_print_string("win_hello: attente touche\r\n");
     oricos_read_char();                       /* G.3 : clavier au focus */

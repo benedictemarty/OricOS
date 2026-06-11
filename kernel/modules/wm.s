@@ -1430,6 +1430,9 @@ _wcmp_no_gesture:
 _wcmp_skip_no_backing:
         jmp wcmp_next
 
+
+
+        .segment "GUICODE"
 ; ── kernel_wm_compose_slot : A = slot id → BLIT le backing store de CE
 ;    slot vers le framebuffer XVGA (base multi-banques C2, stride compact
 ;    B2.b, post-and-continue par capacités). Cœur extrait de la boucle
@@ -1457,7 +1460,13 @@ kernel_wm_compose_slot:
         lsr a                           ; xb = x>>1
         sta WCMP_XB                     ; WCMP_XB = xb (slot id no longer needed)
         lda WM_TABLE+WM_OFF_Y,X
-        asl a                           ; y*2 = (mid,hi) de y*512
+        clc
+        adc #12                         ; CLIENT-ONLY (2026-06-11) : le blit
+                                        ; SAUTE la titlebar (12 px) — le
+                                        ; chrome appartient au WM ; l'app
+                                        ; tallwin recouvrait sa titlebar
+                                        ; (« fenêtre blanche » interactive)
+        asl a                           ; (y+12)*2 = (mid,hi) de (y+12)*512
         sta WCMP_MIDHI
         lda WCMP_XB
         xba                             ; retenue xb>>8 (0/1) en octet bas
@@ -1479,7 +1488,9 @@ kernel_wm_compose_slot:
         lda WM_TABLE+WM_OFF_W,X
         lsr a                           ; byte_w = w>>1 (4bpp : pixels→octets)
         sta GFX_ARG3_LO                 ; 16-bit store → $76 (LO) et $77 (MID)
-        lda WM_TABLE+WM_OFF_H,X         ; byte_h = h (déjà en octets ligne/ligne)
+        lda WM_TABLE+WM_OFF_H,X         ; byte_h = h − 12 (client-only :
+        sec                             ; la bande titlebar n'est pas blittée)
+        sbc #12
         sta GFX_ARG4_LO                 ; 16-bit store → $6E (LO) et $6F (MID)
         sep #$20                        ; force M=8 explicite (post `rep #$20`)
         ; ADR-27 B2.b : si le slot est en mode compact, stride source = byte_w
@@ -1494,8 +1505,23 @@ kernel_wm_compose_slot:
         lda GFX_ARG3_MID                ; byte_w (HI)
         sta GFX_BPL_HI
         jsr kernel_gfx_set_bpl
+        ; client-only : src += 12 lignes × byte_w (stride compacte).
+        ; GFX_BASE_LO/MID valent 0 à ce point → pas de retenue vers HI.
+        rep #$20
+        lda GFX_ARG3_LO                 ; byte_w 16-bit
+        asl a
+        asl a                           ; ×4
+        sta WCMP_MIDHI                  ; temp (dst déjà posé, réutilisable)
+        asl a                           ; ×8
+        clc
+        adc WCMP_MIDHI                  ; ×12
+        sta GFX_BASE_LO                 ; (base LO/MID était 0)
+        sep #$20
         bra wcmp_do_blit
 wcmp_default_stride:
+        ; client-only : src += 12 lignes × 512 = $1800 (stride par défaut).
+        lda #$18
+        sta GFX_BASE_MID                ; (BASE_LO/MID étaient 0)
         ; Stride par défaut : ne touche bpl que si shadow != 0 (cas usuel).
         ; M=8 garanti par le sep #$20 ci-dessus (lda f: lit 1 octet, propre).
         lda f:GFX_BPL_SHADOW
@@ -1517,6 +1543,7 @@ wcmp_blit_sync:
         jsr kernel_gfx_blit             ; BLIT backing store → framebuffer
 wcmp_blit_done:
         rts                             ; fin de kernel_wm_compose_slot
+        .segment "CODE"
 
 wcmp_next:
         lda WCMP_SLOT
@@ -4062,6 +4089,14 @@ swc_focus:
         ; SP-3.m G.6 : la fenêtre prend le focus (chaîne clavier G.3).
         lda f:SWC_SLOT
         jsr kernel_wm_set_focus ; A = id
+        ; CLIENT-ONLY (2026-06-11) : dessine le CHROME de la nouvelle
+        ; fenêtre. Personne ne le faisait — le compose plein-rect (qui
+        ; recouvrait la titlebar) masquait ce trou depuis la livraison :
+        ; une fenêtre créée par syscall sans UI_DEFINE n'avait JAMAIS son
+        ; chrome (le « carré blanc » tallwin). Sous Forbid (cf. en-tête),
+        ; l'IRQ ne dessine plus (taskmode) → pas de course.
+        lda f:SWC_SLOT
+        jsr _wm_draw_one
         lda f:SWC_SLOT          ; A = handle (valeur de retour)
 swc_done:
         rts

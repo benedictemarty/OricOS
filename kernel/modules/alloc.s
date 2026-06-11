@@ -857,8 +857,11 @@ task_wdraw_entry:
         cop #$AA
         sta TASK_WIN_HANDLE
         ; SYS_GFX_FILL_RECT ABI 2026-05-31 : args via $D0-$D4.
+        ; Client-only 2026-06-11 : dessin à rel y=16 (≥ 12) — la bande
+        ; titlebar du backing n'est plus blittée (chrome = WM).
         lda #$00
         sta $D0
+        lda #16
         sta $D1
         lda #$08
         sta $D2
